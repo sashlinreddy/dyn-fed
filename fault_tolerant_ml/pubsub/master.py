@@ -25,7 +25,10 @@ class Master(object):
         self.publisher.bind("tcp://*:5563")
 
         self.receiver = self.context.socket(zmq.REP)
-        self.receiver.bind("tcp://*:5564")    
+        self.receiver.bind("tcp://*:5564")
+
+        self.ctrl_socket = self.context.socket(zmq.ROUTER)
+        self.ctrl_socket.bind("tcp://*:5565")
 
     def start(self):
         arr_size = 100
@@ -37,81 +40,43 @@ class Master(object):
         i = 0
         
         time.sleep(1)
-        start = self.receiver.recv()
+        worker_id, start = self.ctrl_socket.recv_multipart()
+        worker_id = worker_id.decode()
+        if worker_id not in self.workers:
+            self.workers.add(worker_id)
+
+        print(f"Worker ids={self.workers}")
+
         self.logger.info(start.decode())
 
         try:
             while i < n_iterations:
                 # Write two messages, each with an envelope and content
-                self.publisher.send_multipart([b"A", msg])
-                self.publisher.send_multipart([b"B", msg])
+                # self.publisher.send_multipart([b"A", msg])
+                self.publisher.send_multipart([b"", msg])
                 i += 1
                 # time.sleep(0.25)
 
-            time.sleep(1)
-            self.publisher.send_multipart([b"B", b"EXIT"])
+            # Tell workers to exit
+            self.done()
+            
         except KeyboardInterrupt as e:
             pass
         finally:
-            # We never get here but clean up anyhow
             self.logger.info("Exiting peacefully. Cleaning up...")
             self.kill()
 
     def kill(self):
         self.publisher.close()
         self.receiver.close()
+        self.ctrl_socket.close()
         self.context.term()
 
     def done(self):
-        pass
-
-def main():
-    """main method"""
-
-    # Prepare our context and publisher
-    context   = zmq.Context()
-    publisher = context.socket(zmq.PUB)
-    publisher.bind("tcp://*:5563")
-
-    receiver = context.socket(zmq.REP)
-    receiver.bind("tcp://*:5564")
-
-    workers = set()
-
-    arr_size = 100
-    x = np.random.randint(0, 10, size=(arr_size,), dtype=np.int32)
-    print(f"Initialized array of size {arr_size}")
-    # print(f"x={x}")
-    msg = x.tostring()
-    n_iterations = 1000
-    i = 0
-    
-    time.sleep(1)
-    start = receiver.recv()
-    print(start.decode())
-
-    try:
-        while i < n_iterations:
-            # Write two messages, each with an envelope and content
-            publisher.send_multipart([b"A", msg])
-            publisher.send_multipart([b"B", msg])
-            i += 1
-            # time.sleep(0.25)
-
         time.sleep(1)
-        publisher.send_multipart([b"B", b"EXIT"])
-    except KeyboardInterrupt as e:
-        pass
-    finally:
-        # We never get here but clean up anyhow
-        print("Exiting peacefully. Cleaning up...")
-        publisher.close()
-        receiver.close()
-        context.term()
-
+        self.publisher.send_multipart([b"B", b"EXIT"])
 
 if __name__ == "__main__":
-    # main()
     logger = setup_logger()
     master = Master()
     master.connect()
