@@ -21,6 +21,6 @@ class DummyData(BaseData):
 
         # X = np.random.randint(self.lower_bound, self.upper_bound, size=(self.n_samples,), dtype=np.int32)
         self.X = np.random.randn(self.n_samples, self.n_features)
-        self.y = np.random.randn(self.n_features, self.n_classes)
+        self.y = np.random.randn(self.n_samples, self.n_classes)
 
         return self.X, self.y

@@ -2,8 +2,11 @@ import time
 import zmq
 import numpy as np
 import logging
+
+# Local
+from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.utils import setup_logger
-from fault_tolerant_ml.data import DummyData
+from fault_tolerant_ml.data import DummyData, OccupancyData
 
 START       = 0
 MAP         = 1
@@ -20,6 +23,7 @@ class Master(object):
 
         self.workers = set()
         self.state = START
+        self.alpha = 0.01
 
         # Setup logger
         self.logger = logging.getLogger("masters")
@@ -51,13 +55,28 @@ class Master(object):
         #     self.push_socket.send(data)
 
         self.logger.debug("Distributing data")
-        batch_size = int(np.ceil(self.dummy_data.n_samples / len(self.workers)))
-        batch_gen = self.dummy_data.next_batch(batch_size)
+        batch_size = int(np.ceil(self.data.n_samples / len(self.workers)))
+        batch_gen = self.data.next_batch(self.data.X_train, self.data.y_train, batch_size)
+
+        ns_enc = str(self.data.n_samples).encode()
+        samp_feat_d = dict(
+            n_samples=self.data.n_samples,
+            n_features=self.data.n_features,
+            n_classes=self.data.n_classes
+        )
+
         for worker in self.workers:
 
             X_batch, y_batch = next(batch_gen)
-            msg = X_batch.tostring()
-            self.ctrl_socket.send_multipart([worker, msg])
+            self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
+            batch_data = np.hstack((X_batch, y_batch))
+            msg = batch_data.tostring()
+            
+            self.ctrl_socket.send(worker, zmq.SNDMORE)
+            zhelpers.send_array(self.ctrl_socket, batch_data)
+            self.ctrl_socket.send(worker, zmq.SNDMORE)
+            self.ctrl_socket.send_json(samp_feat_d)
+            # self.ctrl_socket.send_multipart([worker, msg])
 
     def register_workers(self):
         
@@ -83,7 +102,9 @@ class Master(object):
         if self.state == DIST_PARAMS:
             msg = self.theta.tostring()
             self.logger.debug("Distributing parameters")
-            self.publisher.send_multipart([b"", msg])
+            # self.logger.debug(f"Distributing parameters = {self.theta}")
+            # self.publisher.send_multipart([b"", msg])
+            zhelpers.send_array(self.publisher, self.theta)
             self.state = REDUCE
 
     def get_gradients(self):
@@ -107,13 +128,16 @@ class Master(object):
 
     def start(self):
         n_samples = 100
-        n_workers = 3
 
-        self.dummy_data = DummyData(n_samples=n_samples, n_features=10, n_classes=1)
-        self.dummy_data.transform()
-        self.logger.info(f"Initialized dummy data of size {self.dummy_data}")
+        # self.data = DummyData(n_samples=n_samples, n_features=10, n_classes=1)
+        # self.data.transform()
 
-        self.theta = np.random.randn(self.dummy_data.n_features, self.dummy_data.n_classes)
+        self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt")
+        self.data.transform()
+        
+        self.logger.info(f"Initialized dummy data of size {self.data}")
+
+        self.theta = np.random.randn(self.data.n_features, self.data.n_classes)
         
         poller = zmq.Poller()
 
@@ -125,7 +149,7 @@ class Master(object):
 
             n_start_subs = 3
 
-            # TODO: Detect workers
+            # TODO: Detect workers properly without hardcoded number of workers
             for i in range(n_start_subs):
                 # Don't use the results if they've already been counted
                 command = self.pull_socket.recv(flags=zmq.SNDMORE)
@@ -155,6 +179,11 @@ class Master(object):
                             
                             # Receive updated parameters from workers
                             d_theta = self.get_gradients()
+
+                            # Update the global parameters with weighted error
+                            for k in np.arange(self.data.n_classes):
+                                self.theta[:, k] = self.theta[:, k] - self.alpha * d_theta[:, k]
+
                             i += 1
                             self.state = DIST_PARAMS
                             self.logger.debug("Update parameters")
@@ -191,7 +220,9 @@ class Master(object):
 
     def done(self):
         time.sleep(1)
-        self.publisher.send_multipart([b"B", b"EXIT"])
+        # self.publisher.send_multipart([b"B", b"EXIT"])
+        msg = {"EXIT" : 1}
+        self.publisher.send_json(msg)
 
 if __name__ == "__main__":
     logger = setup_logger()
