@@ -4,6 +4,8 @@ class BaseData(object):
 
     def __init__(self, filepath):
         self.filepath = filepath
+        self.X = None
+        self.y = None
 
     def prepare_data(self):
         raise NotImplementedError("Child required to implement prepare data method")
@@ -23,6 +25,6 @@ class BaseData(object):
         """
 
         # loop over our dataset `X` in mini-batches of size `batchSize`
-        for i in np.arange(0, X.shape[0], batch_size):
+        for i in np.arange(0, self.X.shape[0], batch_size):
             # yield a tuple of the current batched data and labels
-            yield (X[i:i + batch_size], y[i:i + batch_size])
+            yield (self.X[i:i + batch_size], self.y[i:i + batch_size])

@@ -3,19 +3,24 @@ import numpy as np
 
 class DummyData(BaseData):
 
-    def __init__(self, filepath, n_samples=100, lower_bound=0, upper_bound=10):
+    def __init__(self, filepath="", n_samples=100, n_features=10, n_classes=1, lower_bound=None, upper_bound=None):
         super().__init__(filepath)
         self.n_samples = n_samples
+        self.n_features = n_features
+        self.n_classes = n_classes
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
-
-        self.X = self.prepare_data()
 
     def to_string(self):
         return self.X.tostring()
 
-    def prepare_data(self):
+    def __repr__(self):
+        return f'<DummyData X={self.X.shape}, y={self.y.shape}>'
 
-        X = np.random.randint(self.lower_bound, self.upper_bound, size=(self.n_samples,), dtype=np.int32)
+    def transform(self):
 
-        return X
+        # X = np.random.randint(self.lower_bound, self.upper_bound, size=(self.n_samples,), dtype=np.int32)
+        self.X = np.random.randn(self.n_samples, self.n_features)
+        self.y = np.random.randn(self.n_features, self.n_classes)
+
+        return self.X, self.y
