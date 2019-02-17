@@ -121,15 +121,20 @@ class Worker(object):
                     self.logger.info("Connecting to server")
                     self.push_socket.send_multipart([b"CONNECT", self.worker_id.encode()])
 
+                    # Receive X, y
                     worker_id = self.ctrl_socket.recv()
                     data = zhelpers.recv_array(self.ctrl_socket)
 
+                    # Receive shape of X, y so we can reshape
                     worker_id = self.ctrl_socket.recv()
                     samp_feat_d = self.ctrl_socket.recv_json()
                     n_samples = samp_feat_d["n_samples"]
                     n_features = samp_feat_d["n_features"]
                     n_classes = samp_feat_d["n_classes"]
+                    
                     self.X, self.y = data[:, :n_features], data[:, -n_classes:]
+
+                    # Check if we need to add a new axis if the dimension of y is not 2d
                     if len(self.y.shape) < 2:
                         self.y = self.y[:, np.newaxis]
                     self.logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")

@@ -7,6 +7,8 @@ import logging
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData
+from fault_tolerant_ml.ml import hypotheses
+from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
 
 START       = 0
 MAP         = 1
@@ -26,6 +28,7 @@ class Master(object):
 
         self.alpha = 0.1
         self.samples_per_worker = {}
+        self.hypothesis = hypotheses.log_hypothesis
 
         # Setup logger
         # self.logger = logging.getLogger("masters")
@@ -149,15 +152,15 @@ class Master(object):
         return d_theta, epoch_loss
 
     def start(self):
-        n_samples = 100
 
+        # n_samples = 100
         # self.data = DummyData(n_samples=n_samples, n_features=10, n_classes=1)
         # self.data.transform()
 
         # For reproducibility
         np.random.seed(42)
 
-        self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt")
+        self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
         self.data.transform()
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
@@ -173,7 +176,7 @@ class Master(object):
         
         try:
 
-            n_start_subs = 3
+            n_start_subs = 5
 
             # TODO: Detect workers properly without hardcoded number of workers
             for i in range(n_start_subs):
@@ -234,6 +237,13 @@ class Master(object):
             end = time.time()
             self.logger.info("Time taken for %d iterations is %7.6fs" % (n_iterations, end-start))
 
+            # Print confusion matrix
+            confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.theta)
+            self.logger.info(f"Confusion matrix=\n{confusion_matrix}")
+
+            # Accuracy
+            acc = accuracy(self.data.X_test, self.data.y_test, self.theta, self.hypothesis)
+            self.logger.info(f"Accuracy={acc * 100:7.4f}%")
             
         except KeyboardInterrupt as e:
             pass
