@@ -16,7 +16,8 @@ class Worker(object):
         self.worker_id = str(uuid.uuid4())
         self.subscriber = None
         self.starter = None
-        self.logger = logging.getLogger("masters")
+        # self.logger = logging.getLogger("masters")
+        self.logger = setup_logger(filename=f'log-{self.worker_id}.log')
         self.have_work = False
         self.hypothesis = hypotheses.log_hypothesis
         self.gradient = loss_fns.cross_entropy_gradient
@@ -61,7 +62,7 @@ class Worker(object):
         for k in np.arange(n_classes):
             d_theta[:, k] = self.gradient(X, e[:, np.newaxis, k])
 
-        return d_theta
+        return d_theta, batch_loss
 
     def start(self):
 
@@ -100,19 +101,20 @@ class Worker(object):
                             buf = memoryview(msg)
                             theta = np.frombuffer(buf, dtype=contents['dtype'])
                             theta = theta.reshape(contents['shape'])
-                            # theta = np.frombuffer(contents, dtype=np.float64)
                             self.logger.info(f"theta.shape{theta.shape}")
                             
                             theta = theta.copy()
 
                             # theta /= 2
-                            d_theta = self.do_work(self.X, self.y, theta)
+                            d_theta, batch_loss = self.do_work(self.X, self.y, theta)
+                            self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
                             i += 1
                             msg = d_theta.tostring()
+                            loss = str(batch_loss).encode()
 
                             # self.push_socket.send(msg)
-                            self.push_socket.send_multipart([b"WORK", msg])
-                            self.logger.info("Sent result back to master")
+                            self.push_socket.send_multipart([b"WORK", msg, loss])
+                            # self.logger.info("Sent result back to master")
                             # self.logger.info("[%s] %s" % (address, contents))
                 else:
 
@@ -127,10 +129,10 @@ class Worker(object):
                     n_samples = samp_feat_d["n_samples"]
                     n_features = samp_feat_d["n_features"]
                     n_classes = samp_feat_d["n_classes"]
-                    self.X, self.y = data[:, :n_features], data[:, :-n_classes]
-                    # worker_id, data = self.ctrl_socket.recv_multipart()
-                    # np_data = np.frombuffer(data, dtype=np.float64)
-                    self.logger.info(f"Received data, shape={data.shape}")
+                    self.X, self.y = data[:, :n_features], data[:, -n_classes:]
+                    if len(self.y.shape) < 2:
+                        self.y = self.y[:, np.newaxis]
+                    self.logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
                     self.have_work = True
 
             end = time.time()
@@ -152,7 +154,6 @@ class Worker(object):
         # self.context.term()
 
 if __name__ == "__main__":
-    logger = setup_logger()
     worker = Worker()
     worker.connect()
     time.sleep(1)

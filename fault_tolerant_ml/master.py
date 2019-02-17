@@ -23,10 +23,13 @@ class Master(object):
 
         self.workers = set()
         self.state = START
-        self.alpha = 0.01
+
+        self.alpha = 0.1
+        self.samples_per_worker = {}
 
         # Setup logger
-        self.logger = logging.getLogger("masters")
+        # self.logger = logging.getLogger("masters")
+        self.logger = setup_logger()
 
     def connect(self):
         
@@ -71,6 +74,7 @@ class Master(object):
             self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
             batch_data = np.hstack((X_batch, y_batch))
             msg = batch_data.tostring()
+            self.samples_per_worker[worker] = X_batch.shape[0]
             
             self.ctrl_socket.send(worker, zmq.SNDMORE)
             zhelpers.send_array(self.ctrl_socket, batch_data)
@@ -100,31 +104,49 @@ class Master(object):
             self.state = DIST_PARAMS
 
         if self.state == DIST_PARAMS:
-            msg = self.theta.tostring()
-            self.logger.debug("Distributing parameters")
-            # self.logger.debug(f"Distributing parameters = {self.theta}")
+            # msg = self.theta.tostring()
+            # self.logger.debug("Distributing parameters")
+            # self.logger.debug(f"Distributing params, theta = {self.theta}")
             # self.publisher.send_multipart([b"", msg])
             zhelpers.send_array(self.publisher, self.theta)
             self.state = REDUCE
 
     def get_gradients(self):
 
-        d_theta = self.pull_socket.recv()
-        d_theta = np.frombuffer(d_theta, dtype=np.float64)
-        d_theta = d_theta.reshape(self.theta.shape)
-        d_theta = d_theta.copy()
+        d_theta = np.zeros(self.theta.shape)
+        epoch_loss = 0.0
 
-        for j in range(len(self.workers) - 1):
+        for i, worker in enumerate(self.workers):
 
-            cmd, d_theta_temp = self.pull_socket.recv_multipart()
-            d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
-            d_theta_temp = d_theta_temp.reshape(self.theta.shape)
-            d_theta += d_theta_temp
+            samples_for_worker = self.samples_per_worker[worker]
+            beta = (samples_for_worker / self.data.n_samples)
+
+            if i == 0:
+                d_theta, epoch_loss = self.pull_socket.recv_multipart()
+                d_theta = np.frombuffer(d_theta, dtype=np.float64)
+                d_theta = d_theta.reshape(self.theta.shape)
+                d_theta = d_theta.copy()
+
+                epoch_loss = float(epoch_loss.decode())
+
+                d_theta += beta * d_theta               
+                epoch_loss += beta * epoch_loss
+            else:
+
+                cmd, d_theta_temp, loss = self.pull_socket.recv_multipart()
+                d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
+                d_theta_temp = d_theta_temp.reshape(self.theta.shape)
+
+                loss = float(loss.decode())
+                
+                d_theta += beta * d_theta_temp               
+                epoch_loss += beta * loss
 
         # Average parameters
-        d_theta /= len(self.workers)
+        # d_theta /= len(self.workers)
+        # epoch_loss /= len(self.workers)
         
-        return d_theta
+        return d_theta, epoch_loss
 
     def start(self):
         n_samples = 100
@@ -132,12 +154,16 @@ class Master(object):
         # self.data = DummyData(n_samples=n_samples, n_features=10, n_classes=1)
         # self.data.transform()
 
+        # For reproducibility
+        np.random.seed(42)
+
         self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt")
         self.data.transform()
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
         self.theta = np.random.randn(self.data.n_features, self.data.n_classes)
+        self.logger.debug(f"Init theta={self.theta}")
         
         poller = zmq.Poller()
 
@@ -159,7 +185,9 @@ class Master(object):
 
             completed = False
             i = 0
-            n_iterations = 10
+            n_iterations = 300
+            delta = 1.0
+            start = time.time()
 
             while not completed:
 
@@ -177,16 +205,19 @@ class Master(object):
 
                         elif command == b"WORK":
                             
+                            theta_p = self.theta.copy()
                             # Receive updated parameters from workers
-                            d_theta = self.get_gradients()
+                            d_theta, epoch_loss = self.get_gradients()
 
                             # Update the global parameters with weighted error
                             for k in np.arange(self.data.n_classes):
                                 self.theta[:, k] = self.theta[:, k] - self.alpha * d_theta[:, k]
 
-                            i += 1
+                            delta = np.max(np.abs(theta_p - self.theta))
+
                             self.state = DIST_PARAMS
-                            self.logger.debug("Update parameters")
+                            self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+                            i += 1
                 else:
                     if events.get(self.pull_socket) == zmq.POLLIN:
                         # Don't use the results if they've already been counted
@@ -200,6 +231,9 @@ class Master(object):
 
             # Tell workers to exit
             self.done()
+            end = time.time()
+            self.logger.info("Time taken for %d iterations is %7.6fs" % (n_iterations, end-start))
+
             
         except KeyboardInterrupt as e:
             pass
@@ -225,7 +259,6 @@ class Master(object):
         self.publisher.send_json(msg)
 
 if __name__ == "__main__":
-    logger = setup_logger()
     master = Master()
     master.connect()
     time.sleep(1)

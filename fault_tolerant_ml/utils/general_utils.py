@@ -2,6 +2,7 @@ import sys
 import logging
 import pprint
 import os
+import shutil as sh
 
 pp = pprint.PrettyPrinter()
 
@@ -68,7 +69,11 @@ def setup_logger(filename='logfile.log', level=10, console_logging=True):
     """
     # Creating log directory if it doesn't exist
 
-    # path = os.path.join(LOG_DIR, filename)
+    path = os.path.join("logs", filename)
+    # # Clear old logs
+    # for f in os.listdir("logs"):
+    #     os.remove(f)
+
     logger = logging.getLogger('masters')
     # Setting level
     logger.setLevel(level)
@@ -77,10 +82,10 @@ def setup_logger(filename='logfile.log', level=10, console_logging=True):
                                   "%Y-%m-%d %H:%M:%S")
 
     # FileHandler
-    # fh = logging.FileHandler(path, mode='w')
-    # fh.setLevel(level)
-    # fh.setFormatter(formatter)
-    # logger.addHandler(fh)
+    fh = logging.FileHandler(path, mode='w')
+    fh.setLevel(level)
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
 
     # StreamHandler which outputs to the console
     if console_logging:
