@@ -2,6 +2,7 @@ import time
 import zmq
 import numpy as np
 import logging
+import click
 
 # Local
 from fault_tolerant_ml.utils import zhelpers
@@ -17,8 +18,9 @@ REDUCE      = 3
 
 class Master(object):
 
-    def __init__(self):
+    def __init__(self, n_iterations, learning_rate, verbose):
         
+        # ZMQ variables
         self.ctrl_socket = None
         self.publisher = None
         self.receiver = None
@@ -26,13 +28,16 @@ class Master(object):
         self.workers = set()
         self.state = START
 
-        self.alpha = 0.1
-        self.samples_per_worker = {}
+        # Model variables
+        self.n_iterations = n_iterations
+        self.alpha = learning_rate
         self.hypothesis = hypotheses.log_hypothesis
+
+        self.samples_per_worker = {}
 
         # Setup logger
         # self.logger = logging.getLogger("masters")
-        self.logger = setup_logger()
+        self.logger = setup_logger(level=verbose)
 
     def connect(self):
         
@@ -122,8 +127,13 @@ class Master(object):
         for i, worker in enumerate(self.workers):
 
             samples_for_worker = self.samples_per_worker[worker]
-            beta = (samples_for_worker / self.data.n_samples)
+            # beta = (samples_for_worker / self.data.n_samples)
+            beta = 1.0
 
+            # Since we received the command then we only receive the gradients, and epoch loss
+            # for the first worker that we are receiving information from. 
+            # TODO: Need to correctly weight each worker with the amount of work they have done. 
+            # Cannot use a push pull socket
             if i == 0:
                 d_theta, epoch_loss = self.pull_socket.recv_multipart()
                 d_theta = np.frombuffer(d_theta, dtype=np.float64)
@@ -136,6 +146,7 @@ class Master(object):
                 epoch_loss += beta * epoch_loss
             else:
 
+                # Receive multipart including command message
                 cmd, d_theta_temp, loss = self.pull_socket.recv_multipart()
                 d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
                 d_theta_temp = d_theta_temp.reshape(self.theta.shape)
@@ -146,8 +157,8 @@ class Master(object):
                 epoch_loss += beta * loss
 
         # Average parameters
-        # d_theta /= len(self.workers)
-        # epoch_loss /= len(self.workers)
+        d_theta /= len(self.workers)
+        epoch_loss /= len(self.workers)
         
         return d_theta, epoch_loss
 
@@ -188,7 +199,6 @@ class Master(object):
 
             completed = False
             i = 0
-            n_iterations = 300
             delta = 1.0
             start = time.time()
 
@@ -229,13 +239,13 @@ class Master(object):
                         if command == b"CONNECT":
                             self.register_workers()
 
-                if i > n_iterations:
+                if i > self.n_iterations:
                     completed = True
 
             # Tell workers to exit
             self.done()
             end = time.time()
-            self.logger.info("Time taken for %d iterations is %7.6fs" % (n_iterations, end-start))
+            self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
 
             # Print confusion matrix
             confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.theta)
@@ -268,8 +278,20 @@ class Master(object):
         msg = {"EXIT" : 1}
         self.publisher.send_json(msg)
 
-if __name__ == "__main__":
-    master = Master()
+
+@click.command()
+@click.option('--n_iterations', '-i', default=400, type=int)
+@click.option('--learning_rate', '-lr', default=0.1, type=float)
+@click.option('--verbose', '-v', default=10, type=int)
+def run(n_iterations, learning_rate, verbose):
+    master = Master(
+        n_iterations=n_iterations,
+        learning_rate=learning_rate,
+        verbose=verbose
+    )
     master.connect()
     time.sleep(1)
     master.start()
+
+if __name__ == "__main__":
+    run()

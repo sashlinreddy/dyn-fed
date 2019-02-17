@@ -3,6 +3,7 @@ import time
 import numpy as np
 import uuid
 import logging
+import click
 
 # Local
 from fault_tolerant_ml.utils import setup_logger
@@ -11,13 +12,13 @@ from fault_tolerant_ml.ml import hypotheses, loss_fns
 
 class Worker(object):
 
-    def __init__(self):
+    def __init__(self, verbose):
 
         self.worker_id = str(uuid.uuid4())
         self.subscriber = None
         self.starter = None
         # self.logger = logging.getLogger("masters")
-        self.logger = setup_logger(filename=f'log-{self.worker_id}.log')
+        self.logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self.have_work = False
         self.hypothesis = hypotheses.log_hypothesis
         self.gradient = loss_fns.cross_entropy_gradient
@@ -131,7 +132,7 @@ class Worker(object):
                     n_samples = samp_feat_d["n_samples"]
                     n_features = samp_feat_d["n_features"]
                     n_classes = samp_feat_d["n_classes"]
-                    
+
                     self.X, self.y = data[:, :n_features], data[:, -n_classes:]
 
                     # Check if we need to add a new axis if the dimension of y is not 2d
@@ -158,8 +159,15 @@ class Worker(object):
         self.ctrl_socket.close()
         # self.context.term()
 
-if __name__ == "__main__":
-    worker = Worker()
+@click.command()
+@click.option('--verbose', '-v', default=10, type=int)
+def run(verbose):
+    worker = Worker(
+        verbose=verbose
+    )
     worker.connect()
     time.sleep(1)
     worker.start()
+
+if __name__ == "__main__":
+    run()
