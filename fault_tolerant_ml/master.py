@@ -18,7 +18,7 @@ REDUCE      = 3
 
 class Master(object):
 
-    def __init__(self, n_iterations, learning_rate, verbose):
+    def __init__(self, n_iterations, learning_rate, verbose, scenario):
         
         # ZMQ variables
         self.ctrl_socket = None
@@ -34,10 +34,28 @@ class Master(object):
         self.hypothesis = hypotheses.log_hypothesis
 
         self.samples_per_worker = {}
+        self.scenario = scenario
 
         # Setup logger
         # self.logger = logging.getLogger("masters")
         self.logger = setup_logger(level=verbose)
+
+    @staticmethod
+    def get_quantized_params(theta):
+        min_theta_val = theta.min() + 1e-8
+        max_theta_val = theta.max() + 1e-8
+        interval = 8
+        bins = np.linspace(min_theta_val, max_theta_val, interval)
+        theta_bins = np.digitize(theta, bins).astype(np.int8)
+
+        struct_field_names = ["min_val", "max_val", "interval", "bins"]
+        struct_field_types = [np.float32, np.float32, np.int32, 'b']
+        struct_field_shapes = [1, 1, 1, (theta.shape)]
+
+        msg = np.zeros(1, dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes))))
+        msg[0] = (min_theta_val, max_theta_val, interval, theta_bins)
+
+        return msg
 
     def connect(self):
         
@@ -73,7 +91,8 @@ class Master(object):
         samp_feat_d = dict(
             n_samples=self.data.n_samples,
             n_features=self.data.n_features,
-            n_classes=self.data.n_classes
+            n_classes=self.data.n_classes,
+            scenario=self.scenario
         )
 
         for worker in self.workers:
@@ -116,7 +135,16 @@ class Master(object):
             # self.logger.debug("Distributing parameters")
             # self.logger.debug(f"Distributing params, theta = {self.theta}")
             # self.publisher.send_multipart([b"", msg])
-            zhelpers.send_array(self.publisher, self.theta)
+            if self.scenario == 0:
+                zhelpers.send_array(self.publisher, self.theta)
+            elif self.scenario == 1:
+                
+                theta_q = Master.get_quantized_params(self.theta)
+                self.logger.debug(f"Quantized theta bytes = {theta_q.nbytes}")
+                flags = 0
+                self.publisher.send_json({"": ""}, flags|zmq.SNDMORE)
+                self.publisher.send(theta_q.tostring())
+
             self.state = REDUCE
 
     def get_gradients(self):
@@ -187,15 +215,17 @@ class Master(object):
         
         try:
 
-            n_start_subs = 5
+            # Detect all workers by polling by whoevers sending their worker ids
+            while True:
+                events = dict(poller.poll())
 
-            # TODO: Detect workers properly without hardcoded number of workers
-            for i in range(n_start_subs):
-                # Don't use the results if they've already been counted
-                command = self.pull_socket.recv(flags=zmq.SNDMORE)
+                if events.get(self.pull_socket) == zmq.POLLIN:
+                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
 
-                if command == b"CONNECT":
-                    self.register_workers()
+                    if command == b"CONNECT":
+                        self.register_workers()
+                else:
+                    break
 
             completed = False
             i = 0
@@ -207,8 +237,6 @@ class Master(object):
                 events = dict(poller.poll())
 
                 if len(self.workers) > 0:
-                    if events.get(self.push_socket) == zmq.POLLOUT:
-                        self.start_next_task()
                     if events.get(self.pull_socket) == zmq.POLLIN:
                         # Don't use the results if they've already been counted
                         command = self.pull_socket.recv(flags=zmq.SNDMORE)
@@ -231,6 +259,8 @@ class Master(object):
                             self.state = DIST_PARAMS
                             self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
+                    if events.get(self.push_socket) == zmq.POLLOUT:
+                        self.start_next_task()
                 else:
                     if events.get(self.pull_socket) == zmq.POLLIN:
                         # Don't use the results if they've already been counted
@@ -283,11 +313,13 @@ class Master(object):
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
-def run(n_iterations, learning_rate, verbose):
+@click.option('--scenario', '-s', default=1, type=int)
+def run(n_iterations, learning_rate, verbose, scenario):
     master = Master(
         n_iterations=n_iterations,
         learning_rate=learning_rate,
-        verbose=verbose
+        verbose=verbose,
+        scenario=scenario
     )
     master.connect()
     time.sleep(1)

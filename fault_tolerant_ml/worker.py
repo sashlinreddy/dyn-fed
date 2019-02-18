@@ -77,6 +77,10 @@ class Worker(object):
         try:
             start = time.time()
             i = 0
+            self.scenario = 0
+            n_samples = 0
+            n_features = 0
+            n_classes = 0
 
             # self.starter.send_multipart([b"READY", self.worker_id.encode()])
             # self.ctrl_socket.send(b"READY")
@@ -98,15 +102,29 @@ class Worker(object):
                             self.logger.info("Received EXIT command")
                             break
                         else:
-                            msg = self.subscriber.recv(flags=flags, copy=True, track=False)
-                            buf = memoryview(msg)
-                            theta = np.frombuffer(buf, dtype=contents['dtype'])
-                            theta = theta.reshape(contents['shape'])
-                            self.logger.info(f"theta.shape{theta.shape}")
-                            
-                            theta = theta.copy()
 
-                            # theta /= 2
+                            if self.scenario == 0:
+                                msg = self.subscriber.recv(flags=flags, copy=True, track=False)
+                                buf = memoryview(msg)
+                                theta = np.frombuffer(buf, dtype=contents['dtype'])
+                                theta = theta.reshape(contents['shape'])
+                                self.logger.info(f"theta.shape{theta.shape}")
+                                
+                                theta = theta.copy()
+                            elif self.scenario == 1:
+                                struct_field_names = ["min_val", "max_val", "interval", "bins"]
+                                struct_field_types = [np.float32, np.float32, np.int32, 'b']
+                                struct_field_shapes = [1, 1, 1, ((n_features, n_classes))]
+                                msg = self.subscriber.recv(flags=flags, copy=True, track=False)
+                                buf = memoryview(msg)
+
+                                dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
+                                
+                                data = np.frombuffer(msg, dtype=dtype)
+                                min_theta_val, max_theta_val, interval, theta_bins = data[0]
+                                bins = np.linspace(min_theta_val, max_theta_val, interval)
+                                theta = bins[theta_bins].reshape(-1, 1)
+
                             d_theta, batch_loss = self.do_work(self.X, self.y, theta)
                             self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
                             i += 1
@@ -128,10 +146,11 @@ class Worker(object):
 
                     # Receive shape of X, y so we can reshape
                     worker_id = self.ctrl_socket.recv()
-                    samp_feat_d = self.ctrl_socket.recv_json()
-                    n_samples = samp_feat_d["n_samples"]
-                    n_features = samp_feat_d["n_features"]
-                    n_classes = samp_feat_d["n_classes"]
+                    setup_vars = self.ctrl_socket.recv_json()
+                    n_samples = setup_vars["n_samples"]
+                    n_features = setup_vars["n_features"]
+                    n_classes = setup_vars["n_classes"]
+                    self.scenario = setup_vars["scenario"]
 
                     self.X, self.y = data[:, :n_features], data[:, -n_classes:]
 
