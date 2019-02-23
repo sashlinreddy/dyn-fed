@@ -34,7 +34,9 @@ class Master(object):
         self.hypothesis = hypotheses.log_hypothesis
 
         self.samples_per_worker = {}
+        self.worker_idxs = {}
         self.scenario = scenario
+        self.times = []
 
         # Setup logger
         # self.logger = logging.getLogger("masters")
@@ -71,6 +73,7 @@ class Master(object):
         self.push_socket.bind("tcp://*:5564")
 
         self.ctrl_socket = self.context.socket(zmq.ROUTER)
+        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
         self.ctrl_socket.bind("tcp://*:5565")
 
     def distribute_data(self):
@@ -95,19 +98,25 @@ class Master(object):
             scenario=self.scenario
         )
 
-        for worker in self.workers:
+        for i, worker in enumerate(self.workers):
 
             X_batch, y_batch = next(batch_gen)
             self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
             batch_data = np.hstack((X_batch, y_batch))
             msg = batch_data.tostring()
             self.samples_per_worker[worker] = X_batch.shape[0]
+            lower_bound = X_batch.shape[0] * i
+            upper_bound = lower_bound + X_batch.shape[0]
+            self.worker_idxs[worker] = np.arange(lower_bound, upper_bound)
             
             self.ctrl_socket.send(worker, zmq.SNDMORE)
+            # self.ctrl_socket.send(b"", zmq.SNDMORE)
             zhelpers.send_array(self.ctrl_socket, batch_data)
             self.ctrl_socket.send(worker, zmq.SNDMORE)
             self.ctrl_socket.send_json(samp_feat_d)
             # self.ctrl_socket.send_multipart([worker, msg])
+
+        self.logger.debug(f"Worker ranges={[(np.min(idxs), np.max(idxs)) for idxs in self.worker_idxs.values()]}")
 
     def register_workers(self):
         
@@ -135,14 +144,16 @@ class Master(object):
             # self.logger.debug("Distributing parameters")
             # self.logger.debug(f"Distributing params, theta = {self.theta}")
             # self.publisher.send_multipart([b"", msg])
+            self.times.append(time.time())
             if self.scenario == 0:
                 zhelpers.send_array(self.publisher, self.theta)
             elif self.scenario == 1:
                 
-                theta_q = Master.get_quantized_params(self.theta)
-                self.logger.debug(f"Quantized theta bytes = {theta_q.nbytes}")
+                # theta_q = Master.get_quantized_params(self.theta)
+                # self.logger.debug(f"Quantized theta bytes = {theta_q.nbytes}")
                 flags = 0
                 self.publisher.send_json({"": ""}, flags|zmq.SNDMORE)
+                theta_q = np.array(0)
                 self.publisher.send(theta_q.tostring())
 
             self.state = REDUCE
@@ -237,6 +248,9 @@ class Master(object):
                 events = dict(poller.poll())
 
                 if len(self.workers) > 0:
+                    if events.get(self.push_socket) == zmq.POLLOUT:
+                        self.start_next_task()
+
                     if events.get(self.pull_socket) == zmq.POLLIN:
                         # Don't use the results if they've already been counted
                         command = self.pull_socket.recv(flags=zmq.SNDMORE)
@@ -259,8 +273,6 @@ class Master(object):
                             self.state = DIST_PARAMS
                             self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
-                    if events.get(self.push_socket) == zmq.POLLOUT:
-                        self.start_next_task()
                 else:
                     if events.get(self.pull_socket) == zmq.POLLIN:
                         # Don't use the results if they've already been counted
@@ -276,6 +288,9 @@ class Master(object):
             self.done()
             end = time.time()
             self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
+
+            diff = np.diff(self.times)
+            self.logger.debug(f"Times={diff.mean():7.6f}s")
 
             # Print confusion matrix
             confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.theta)

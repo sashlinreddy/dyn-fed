@@ -112,18 +112,23 @@ class Worker(object):
                                 
                                 theta = theta.copy()
                             elif self.scenario == 1:
-                                struct_field_names = ["min_val", "max_val", "interval", "bins"]
-                                struct_field_types = [np.float32, np.float32, np.int32, 'b']
-                                struct_field_shapes = [1, 1, 1, ((n_features, n_classes))]
-                                msg = self.subscriber.recv(flags=flags, copy=True, track=False)
-                                buf = memoryview(msg)
+                                # struct_field_names = ["min_val", "max_val", "interval", "bins"]
+                                # struct_field_types = [np.float32, np.float32, np.int32, 'b']
+                                # struct_field_shapes = [1, 1, 1, ((n_features, n_classes))]
+                                # msg = self.subscriber.recv(flags=flags, copy=True, track=False)
+                                # buf = memoryview(msg)
 
-                                dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
+                                # dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
                                 
-                                data = np.frombuffer(msg, dtype=dtype)
-                                min_theta_val, max_theta_val, interval, theta_bins = data[0]
-                                bins = np.linspace(min_theta_val, max_theta_val, interval)
-                                theta = bins[theta_bins].reshape(-1, 1)
+                                # data = np.frombuffer(msg, dtype=dtype)
+                                # min_theta_val, max_theta_val, interval, theta_bins = data[0]
+                                # bins = np.linspace(min_theta_val, max_theta_val, interval)
+                                # theta = bins[theta_bins].reshape(-1, 1)
+                                msg = self.subscriber.recv(flags=flags, copy=True, track=False)
+                                # buf = memoryview(msg)
+                                # theta = np.frombuffer(buf, dtype=np.float64)
+                                theta = np.random.randn(n_features, n_classes)
+                                
 
                             d_theta, batch_loss = self.do_work(self.X, self.y, theta)
                             self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
@@ -133,6 +138,7 @@ class Worker(object):
 
                             # self.push_socket.send(msg)
                             self.push_socket.send_multipart([b"WORK", msg, loss])
+                            # self.ctrl_socket.send_multipart([b"MASTER", b"WORK", msg, loss])
                             # self.logger.info("Sent result back to master")
                             # self.logger.info("[%s] %s" % (address, contents))
                 else:
@@ -141,6 +147,8 @@ class Worker(object):
                     self.push_socket.send_multipart([b"CONNECT", self.worker_id.encode()])
 
                     # Receive X, y
+                    # address, worker_id = self.ctrl_socket.recv_multipart()
+                    # print(f"worker-id={worker_id.decode()}")
                     worker_id = self.ctrl_socket.recv()
                     data = zhelpers.recv_array(self.ctrl_socket)
 
