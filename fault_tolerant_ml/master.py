@@ -17,7 +17,8 @@ DIST_PARAMS = 2
 REDUCE      = 3 
 
 class Master(object):
-
+    """Master class for distributed machine learning system
+    """
     def __init__(self, n_iterations, learning_rate, verbose, scenario):
         
         # ZMQ variables
@@ -34,6 +35,7 @@ class Master(object):
         self.hypothesis = hypotheses.log_hypothesis
 
         self.samples_per_worker = {}
+        self.most_representative = {}
         self.worker_idxs = {}
         self.scenario = scenario
         self.times = []
@@ -44,6 +46,15 @@ class Master(object):
 
     @staticmethod
     def get_quantized_params(theta):
+        """Quantizes parameters
+
+        Arguments:
+            theta (np.ndarray): Parameter matrix to be quantized
+
+        Returns:
+            msg (np.ndarray): Structured numpy array that is quantized
+
+        """
         min_theta_val = theta.min() + 1e-8
         max_theta_val = theta.max() + 1e-8
         interval = 8
@@ -60,7 +71,8 @@ class Master(object):
         return msg
 
     def connect(self):
-        
+        """Connects to necessary sockets
+        """
         # Prepare our context and publisher
         self.context   = zmq.Context()
         self.publisher = self.context.socket(zmq.PUB)
@@ -77,49 +89,47 @@ class Master(object):
         self.ctrl_socket.bind("tcp://*:5565")
 
     def distribute_data(self):
+        """Distributes the data to the workers
+        """
         # Distribute data/data indices to work on
-
-        # batch_size = int(np.ceil(data.n_samples / n_workers))
-        # for X_batch, y_batch in data.next_batch(batch_size):
-
-        #     data = X_batch.tostring()
-        #     self.logger.info("Sending data")
-        #     self.push_socket.send(data)
-
         self.logger.debug("Distributing data")
         batch_size = int(np.ceil(self.data.n_samples / len(self.workers)))
         batch_gen = self.data.next_batch(self.data.X_train, self.data.y_train, batch_size)
 
-        ns_enc = str(self.data.n_samples).encode()
-        samp_feat_d = dict(
-            n_samples=self.data.n_samples,
-            n_features=self.data.n_features,
-            n_classes=self.data.n_classes,
-            scenario=self.scenario
-        )
+        # Encode to bytes
+        n_samples = str(self.data.n_samples).encode()
+        n_features = str(self.data.n_features).encode()
+        n_classes = str(self.data.n_classes).encode()
+        scenario = str(self.scenario).encode()
 
+        # Iterate through workers and send
         for i, worker in enumerate(self.workers):
 
+            # Get next batch to send
             X_batch, y_batch = next(batch_gen)
             self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
             batch_data = np.hstack((X_batch, y_batch))
+
+            # Encode data
+            dtype = batch_data.dtype.str.encode()
+            shape = str(batch_data.shape).encode()
             msg = batch_data.tostring()
+
+            # Keep track of samples per worker
             self.samples_per_worker[worker] = X_batch.shape[0]
             lower_bound = X_batch.shape[0] * i
             upper_bound = lower_bound + X_batch.shape[0]
             self.worker_idxs[worker] = np.arange(lower_bound, upper_bound)
-            
-            self.ctrl_socket.send(worker, zmq.SNDMORE)
-            # self.ctrl_socket.send(b"", zmq.SNDMORE)
-            zhelpers.send_array(self.ctrl_socket, batch_data)
-            self.ctrl_socket.send(worker, zmq.SNDMORE)
-            self.ctrl_socket.send_json(samp_feat_d)
-            # self.ctrl_socket.send_multipart([worker, msg])
+            self.most_representative[worker] = np.zeros((100,))
+
+            self.ctrl_socket.send_multipart([worker, batch_data, dtype, shape])
+            self.ctrl_socket.send_multipart([worker, n_samples, n_features, n_classes, scenario])
 
         self.logger.debug(f"Worker ranges={[(np.min(idxs), np.max(idxs)) for idxs in self.worker_idxs.values()]}")
 
     def register_workers(self):
-        
+        """Registers workers in a round robin fashion
+        """
         worker_id = self.pull_socket.recv()
 
         if worker_id not in self.workers:
@@ -130,7 +140,8 @@ class Master(object):
             self.logger.debug("Worker asking for work again?")
 
     def start_next_task(self):
-
+        """Starts new task depending on the state of the system
+        """
         if self.state == START:
 
             self.state = MAP
@@ -159,25 +170,29 @@ class Master(object):
             self.state = REDUCE
 
     def get_gradients(self):
-
+        """Receives gradients from workers
+        """
         d_theta = np.zeros(self.theta.shape)
         epoch_loss = 0.0
 
-        for i, worker in enumerate(self.workers):
+        for i in np.arange(len(self.workers)):
 
-            samples_for_worker = self.samples_per_worker[worker]
+            # samples_for_worker = self.samples_per_worker[worker]
             # beta = (samples_for_worker / self.data.n_samples)
-            beta = 1.0
+            # beta = 1.0
 
             # Since we received the command then we only receive the gradients, and epoch loss
             # for the first worker that we are receiving information from. 
             # TODO: Need to correctly weight each worker with the amount of work they have done. 
             # Cannot use a push pull socket
             if i == 0:
-                d_theta, epoch_loss = self.pull_socket.recv_multipart()
+                worker, d_theta, epoch_loss, mr = self.pull_socket.recv_multipart()
+                samples_for_worker = self.samples_per_worker[worker]
+                beta = (samples_for_worker / self.data.n_samples)
                 d_theta = np.frombuffer(d_theta, dtype=np.float64)
                 d_theta = d_theta.reshape(self.theta.shape)
                 d_theta = d_theta.copy()
+                self.most_representative[worker] = np.frombuffer(mr, dtype=np.int)
 
                 epoch_loss = float(epoch_loss.decode())
 
@@ -186,9 +201,12 @@ class Master(object):
             else:
 
                 # Receive multipart including command message
-                cmd, d_theta_temp, loss = self.pull_socket.recv_multipart()
+                cmd, worker, d_theta_temp, loss, mr = self.pull_socket.recv_multipart()
+                samples_for_worker = self.samples_per_worker[worker]
+                beta = (samples_for_worker / self.data.n_samples)
                 d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
                 d_theta_temp = d_theta_temp.reshape(self.theta.shape)
+                self.most_representative[worker] = np.frombuffer(mr, dtype=np.int)
 
                 loss = float(loss.decode())
                 
@@ -202,10 +220,8 @@ class Master(object):
         return d_theta, epoch_loss
 
     def start(self):
-
-        # n_samples = 100
-        # self.data = DummyData(n_samples=n_samples, n_features=10, n_classes=1)
-        # self.data.transform()
+        """Starts work of master. First connects to workers and then performs machine learning training
+        """
 
         # For reproducibility
         np.random.seed(42)
@@ -221,6 +237,7 @@ class Master(object):
         poller = zmq.Poller()
 
         poller.register(self.pull_socket, zmq.POLLIN)
+        # poller.register(self.ctrl_socket, zmq.POLLIN)
         poller.register(self.push_socket, zmq.POLLOUT)
         poller.register(self.publisher, zmq.POLLOUT)
         
@@ -230,6 +247,7 @@ class Master(object):
             while True:
                 events = dict(poller.poll())
 
+                self.logger.debug(f"events={events}")
                 if events.get(self.pull_socket) == zmq.POLLIN:
                     command = self.pull_socket.recv(flags=zmq.SNDMORE)
 
@@ -237,6 +255,8 @@ class Master(object):
                         self.register_workers()
                 else:
                     break
+
+            self.logger.debug("Signed up all workers")
 
             completed = False
             i = 0
@@ -253,7 +273,7 @@ class Master(object):
 
                     if events.get(self.pull_socket) == zmq.POLLIN:
                         # Don't use the results if they've already been counted
-                        command = self.pull_socket.recv(flags=zmq.SNDMORE)
+                        command = self. pull_socket.recv(flags=zmq.SNDMORE)
 
                         if command == b"CONNECT":
                             self.register_workers()
@@ -312,12 +332,16 @@ class Master(object):
             self.kill()
 
     def kill(self):
+        """Kills sockets
+        """
         self.publisher.close()
         self.push_socket.close()
         self.ctrl_socket.close()
         # self.context.term()
 
     def done(self):
+        """Sends exit signal to workers
+        """
         time.sleep(1)
         # self.publisher.send_multipart([b"B", b"EXIT"])
         msg = {"EXIT" : 1}
@@ -328,7 +352,7 @@ class Master(object):
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
-@click.option('--scenario', '-s', default=1, type=int)
+@click.option('--scenario', '-s', default=0, type=int)
 def run(n_iterations, learning_rate, verbose, scenario):
     master = Master(
         n_iterations=n_iterations,

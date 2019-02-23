@@ -52,6 +52,8 @@ class Worker(object):
         log_loss = -y * np.log(h) - (1 - y) * np.log(1 - h)
 
         # TODO: Calculate most representative data points
+        # We regard data points that have a high loss to be most representative
+        most_representative = np.argsort(-log_loss.flatten())[0:100]
 
         # Calculate processor loss - this is aggregated
         batch_loss = np.mean(log_loss)
@@ -63,7 +65,7 @@ class Worker(object):
         for k in np.arange(n_classes):
             d_theta[:, k] = self.gradient(X, e[:, np.newaxis, k])
 
-        return d_theta, batch_loss
+        return d_theta, batch_loss, most_representative
 
     def start(self):
 
@@ -130,14 +132,15 @@ class Worker(object):
                                 theta = np.random.randn(n_features, n_classes)
                                 
 
-                            d_theta, batch_loss = self.do_work(self.X, self.y, theta)
+                            d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
                             self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
                             i += 1
                             msg = d_theta.tostring()
                             loss = str(batch_loss).encode()
+                            mr = most_representative.tostring()
 
                             # self.push_socket.send(msg)
-                            self.push_socket.send_multipart([b"WORK", msg, loss])
+                            self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
                             # self.ctrl_socket.send_multipart([b"MASTER", b"WORK", msg, loss])
                             # self.logger.info("Sent result back to master")
                             # self.logger.info("[%s] %s" % (address, contents))
@@ -149,16 +152,20 @@ class Worker(object):
                     # Receive X, y
                     # address, worker_id = self.ctrl_socket.recv_multipart()
                     # print(f"worker-id={worker_id.decode()}")
-                    worker_id = self.ctrl_socket.recv()
-                    data = zhelpers.recv_array(self.ctrl_socket)
+                    # worker_id = self.ctrl_socket.recv()
+                    # data = zhelpers.recv_array(self.ctrl_socket)
+                    worker_id, data, dtype, shape = self.ctrl_socket.recv_multipart()
+                    shape = shape.decode()
+                    data = np.frombuffer(data, dtype=dtype)
+                    data = data.reshape(eval(shape))
 
                     # Receive shape of X, y so we can reshape
-                    worker_id = self.ctrl_socket.recv()
-                    setup_vars = self.ctrl_socket.recv_json()
-                    n_samples = setup_vars["n_samples"]
-                    n_features = setup_vars["n_features"]
-                    n_classes = setup_vars["n_classes"]
-                    self.scenario = setup_vars["scenario"]
+                    worker_id, n_samples, n_features, n_classes, scenario = self.ctrl_socket.recv_multipart()
+                    worker_id = worker_id.decode()
+                    n_samples = int(n_samples.decode())
+                    n_features = int(n_features.decode())
+                    n_classes = int(n_classes.decode())
+                    self.scenario = int(scenario.decode())
 
                     self.X, self.y = data[:, :n_features], data[:, -n_classes:]
 
