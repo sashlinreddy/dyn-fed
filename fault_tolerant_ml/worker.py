@@ -1,4 +1,4 @@
-import zmq
+import zmq.green as zmq
 import time
 import numpy as np
 import uuid
@@ -72,6 +72,7 @@ class Worker(object):
         poller = zmq.Poller()
         poller.register(self.subscriber, zmq.POLLIN)
         poller.register(self.pull_socket, zmq.POLLIN)
+        poller.register(self.ctrl_socket, zmq.POLLIN)
         # poller.register(self.push_socket, zmq.POLLOUT)
 
         self.logger.info('Started Worker %s' % self.worker_id)
@@ -92,6 +93,12 @@ class Worker(object):
                 if self.have_work:
 
                     events = dict(poller.poll())
+
+                    if events.get(self.ctrl_socket) == zmq.POLLIN:
+                        worker_id, command = self.ctrl_socket.recv_multipart()
+                        if command == b"HEARTBEAT":
+                            self.ctrl_socket.send_multipart([b"MASTER", b"PONG"])
+                            self.logger.debug("PONG")
 
                     if events.get(self.subscriber) == zmq.POLLIN:
                         # Read envelope with address
@@ -139,7 +146,7 @@ class Worker(object):
 
                                 # Generate lineared space vector
                                 bins = np.linspace(min_theta_val, max_theta_val, interval)
-                                theta = bins[theta_bins].reshape(n_features, n_classes)                              
+                                theta = bins[theta_bins].reshape(n_features, n_classes)                             
 
                             # Each worker does work and we get the resulting gradients
                             d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
@@ -184,6 +191,7 @@ class Worker(object):
                         self.y = self.y[:, np.newaxis]
                     self.logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
                     self.have_work = True
+                    # poller.register(self.ctrl_socket, zmq.POLLIN)
 
             end = time.time()
 
