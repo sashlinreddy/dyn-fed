@@ -95,55 +95,65 @@ class Worker(object):
 
                     if events.get(self.subscriber) == zmq.POLLIN:
                         # Read envelope with address
-                        # [address, contents] = self.subscriber.recv_multipart()
-                        flags = 0
-                        contents = self.subscriber.recv_json(flags=flags)
-                        # finished = contents == b"EXIT"
-                        # print(contents == b"EXIT")
-                        if "EXIT" in contents:
+                        contents = self.subscriber.recv_multipart()
+                        address = contents[0]
+                        cmd = contents[1]
+                        msg = contents[2:]
+                        packet_size = np.sum([len(m) for m in contents])
+
+                        self.logger.debug(f"Packet size={packet_size} bytes")
+
+                        if cmd == b"EXIT":
                             self.logger.info("Received EXIT command")
                             break
                         else:
 
                             if self.scenario == 0:
-                                msg = self.subscriber.recv(flags=flags, copy=True, track=False)
-                                buf = memoryview(msg)
-                                theta = np.frombuffer(buf, dtype=contents['dtype'])
-                                theta = theta.reshape(contents['shape'])
+
+                                # Receive parameter matrix on the subscriber socket
+                                data, dtype, shape = msg
+                                shape = shape.decode()
+
+                                # Reconstruct numpy array
+                                buf = memoryview(data)
+                                theta = np.frombuffer(buf, dtype=dtype)
+                                theta = theta.reshape(eval(shape))
                                 self.logger.info(f"theta.shape{theta.shape}")
                                 
                                 theta = theta.copy()
                             elif self.scenario == 1:
-                                # struct_field_names = ["min_val", "max_val", "interval", "bins"]
-                                # struct_field_types = [np.float32, np.float32, np.int32, 'b']
-                                # struct_field_shapes = [1, 1, 1, ((n_features, n_classes))]
+
+                                # Receive numpy struct array
                                 # msg = self.subscriber.recv(flags=flags, copy=True, track=False)
-                                # buf = memoryview(msg)
+                                buf = memoryview(msg[0])
 
-                                # dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
-                                
-                                # data = np.frombuffer(msg, dtype=dtype)
-                                # min_theta_val, max_theta_val, interval, theta_bins = data[0]
-                                # bins = np.linspace(min_theta_val, max_theta_val, interval)
-                                # theta = bins[theta_bins].reshape(-1, 1)
-                                msg = self.subscriber.recv(flags=flags, copy=True, track=False)
-                                # buf = memoryview(msg)
-                                # theta = np.frombuffer(buf, dtype=np.float64)
-                                theta = np.random.randn(n_features, n_classes)
-                                
+                                # Reconstruct theta matrix from min, max, no. of intervals and which bins
+                                # each parameter value falls in
+                                struct_field_names = ["min_val", "max_val", "interval", "bins"]
+                                struct_field_types = [np.float32, np.float32, np.int32, 'b']
+                                struct_field_shapes = [1, 1, 1, ((n_features, n_classes))]
+                                dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
+                                                                
+                                data = np.frombuffer(buf, dtype=dtype)
+                                min_theta_val, max_theta_val, interval, theta_bins = data[0]
 
+                                # Generate lineared space vector
+                                bins = np.linspace(min_theta_val, max_theta_val, interval)
+                                theta = bins[theta_bins].reshape(n_features, n_classes)                              
+
+                            # Each worker does work and we get the resulting gradients
                             d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
                             self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
                             i += 1
+
+                            # Get messages ready to send by converting them to bytes format. We do not
+                            # need to send the shape since the gradients have the same shape as theta which
+                            # the master already owns
                             msg = d_theta.tostring()
                             loss = str(batch_loss).encode()
                             mr = most_representative.tostring()
 
-                            # self.push_socket.send(msg)
                             self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
-                            # self.ctrl_socket.send_multipart([b"MASTER", b"WORK", msg, loss])
-                            # self.logger.info("Sent result back to master")
-                            # self.logger.info("[%s] %s" % (address, contents))
                 else:
 
                     self.logger.info("Connecting to server")

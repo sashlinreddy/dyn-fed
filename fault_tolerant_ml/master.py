@@ -151,21 +151,24 @@ class Master(object):
             self.state = DIST_PARAMS
 
         if self.state == DIST_PARAMS:
-            # msg = self.theta.tostring()
-            # self.logger.debug("Distributing parameters")
-            # self.logger.debug(f"Distributing params, theta = {self.theta}")
-            # self.publisher.send_multipart([b"", msg])
+            self.logger.debug("Distributing parameters")
             self.times.append(time.time())
             if self.scenario == 0:
-                zhelpers.send_array(self.publisher, self.theta)
+                
+                # Get message send ready
+                msg = self.theta.tostring()
+                dtype = self.theta.dtype.str.encode()
+                shape = str(self.theta.shape).encode()
+
+                self.publisher.send_multipart([b"", b"WORK", msg, dtype, shape])
             elif self.scenario == 1:
                 
-                # theta_q = Master.get_quantized_params(self.theta)
-                # self.logger.debug(f"Quantized theta bytes = {theta_q.nbytes}")
-                flags = 0
-                self.publisher.send_json({"": ""}, flags|zmq.SNDMORE)
-                theta_q = np.array(0)
-                self.publisher.send(theta_q.tostring())
+                # Quantize parameters
+                theta_q = Master.get_quantized_params(self.theta)
+                # Get message send ready
+                msg = theta_q.tostring()
+
+                self.publisher.send_multipart([b"", b"WORK", msg])
 
             self.state = REDUCE
 
@@ -231,7 +234,7 @@ class Master(object):
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
-        self.theta = np.random.randn(self.data.n_features, self.data.n_classes)
+        self.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(np.float32)
         self.logger.debug(f"Init theta={self.theta}")
         
         poller = zmq.Poller()
@@ -343,10 +346,7 @@ class Master(object):
         """Sends exit signal to workers
         """
         time.sleep(1)
-        # self.publisher.send_multipart([b"B", b"EXIT"])
-        msg = {"EXIT" : 1}
-        self.publisher.send_json(msg)
-
+        self.publisher.send_multipart([b"", b"EXIT"])
 
 @click.command()
 @click.option('--n_iterations', '-i', default=400, type=int)
