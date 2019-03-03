@@ -5,6 +5,7 @@ import logging
 import click
 import gevent
 import signal
+import binascii
 
 # Local
 from fault_tolerant_ml.utils import zhelpers
@@ -17,7 +18,7 @@ START       = 0
 MAP         = 1
 DIST_PARAMS = 2
 REDUCE      = 3 
-
+COMPLETE    = 4
 class Master(object):
     """Master class for distributed machine learning system
     """
@@ -26,9 +27,10 @@ class Master(object):
         # ZMQ variables
         self.ctrl_socket = None
         self.publisher = None
-        self.receiver = None
+        self.context   = zmq.Context()
 
         self.workers = set()
+        self.worker_states = {}
         self.state = START
 
         # Model variables
@@ -76,141 +78,39 @@ class Master(object):
         """Connects to necessary sockets
         """
         # Prepare our context and publisher
-        self.context   = zmq.Context()
         self.publisher = self.context.socket(zmq.PUB)
         self.publisher.bind("tcp://*:5563")
 
         self.pull_socket = self.context.socket(zmq.PULL)
         self.pull_socket.bind("tcp://*:5562")
 
-        self.push_socket = self.context.socket(zmq.PUSH)
-        self.push_socket.bind("tcp://*:5564")
+        self.router_socket = self.context.socket(zmq.ROUTER)
+        self.router_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
+        self.router_socket.bind("tcp://*:5564")
 
         self.ctrl_socket = self.context.socket(zmq.ROUTER)
         self.ctrl_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
         self.ctrl_socket.bind("tcp://*:5565")
+    
+    def setup_poller(self):
+        poller = zmq.Poller()
+        poller.register(self.pull_socket, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.router_socket, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.publisher, zmq.POLLOUT | zmq.POLLERR)
+
+        return poller
+
+    def send_heartbeat(self):
+        for worker in self.workers:
+            self.logger.debug('PING')
+            self.worker_states[worker] = False
+            self.ctrl_socket.send_multipart([worker, b'HEARTBEAT'])
 
     def heartbeat_loop(self):
-        while True:
-            for worker in self.workers:
-                self.logger.debug('PING')
-                self.ctrl_socket.send_multipart([worker, b'HEARTBEAT'])
-                # address, msg = self.ctrl_socket.recv_multipart()
-                self.logger.debug(f"Heartbeat check for worker {worker.decode()}")
-            gevent.sleep(1)
-
-    def main_loop(self):
-        # For reproducibility
-        np.random.seed(42)
-
-        self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
-        self.data.transform()
-        
-        self.logger.info(f"Initialized dummy data of size {self.data}")
-
-        self.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(np.float32)
-        self.logger.debug(f"Init theta={self.theta}")
-        
-        self.poller = zmq.Poller()
-
-        self.poller.register(self.pull_socket, zmq.POLLIN)
-        self.poller.register(self.ctrl_socket, zmq.POLLIN)
-        self.poller.register(self.push_socket, zmq.POLLOUT)
-        self.poller.register(self.publisher, zmq.POLLOUT)
-        
-        try:
-
-            # Detect all workers by polling by whoevers sending their worker ids
-            while True:
-                events = dict(self.poller.poll())
-
-                self.logger.debug(f"events={events}")
-                if events.get(self.pull_socket) == zmq.POLLIN:
-                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                    if command == b"CONNECT":
-                        self.register_workers()
-                else:
-                    break
-
-            self.logger.debug("Signed up all workers")
-
-            completed = False
-            i = 0
-            delta = 1.0
-            start = time.time()
-
-            while not completed:
-
-                events = dict(self.poller.poll())
-
-                if len(self.workers) > 0:
-                    if events.get(self.push_socket) == zmq.POLLOUT:
-                        self.start_next_task()
-
-                    if events.get(self.pull_socket) == zmq.POLLIN:
-                        # Don't use the results if they've already been counted
-                        command = self. pull_socket.recv(flags=zmq.SNDMORE)
-
-                        if command == b"CONNECT":
-                            self.register_workers()
-
-                        elif command == b"WORK":
-                            
-                            theta_p = self.theta.copy()
-                            # Receive updated parameters from workers
-                            d_theta, epoch_loss = self.get_gradients()
-
-                            # Update the global parameters with weighted error
-                            for k in np.arange(self.data.n_classes):
-                                self.theta[:, k] = self.theta[:, k] - self.alpha * d_theta[:, k]
-
-                            delta = np.max(np.abs(theta_p - self.theta))
-
-                            self.state = DIST_PARAMS
-                            self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-                            i += 1
-
-                    if events.get(self.ctrl_socket) == zmq.POLLIN:
-                        address, msg = self.ctrl_socket.recv_multipart()
-                        self.logger.debug(f"Msg={msg.decode()}")
-                else:
-                    if events.get(self.pull_socket) == zmq.POLLIN:
-                        # Don't use the results if they've already been counted
-                        command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                        if command == b"CONNECT":
-                            self.register_workers()
-
-                if i > self.n_iterations:
-                    completed = True
-
-            # Tell workers to exit
-            self.done()
-            end = time.time()
-            self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
-
-            diff = np.diff(self.times)
-            self.logger.debug(f"Times={diff.mean():7.6f}s")
-
-            # Print confusion matrix
-            confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.theta)
-            self.logger.info(f"Confusion matrix=\n{confusion_matrix}")
-
-            # Accuracy
-            acc = accuracy(self.data.X_test, self.data.y_test, self.theta, self.hypothesis)
-            self.logger.info(f"Accuracy={acc * 100:7.4f}%")
-            
-        except KeyboardInterrupt as e:
-            pass
-        except zmq.ZMQError as zmq_err:
-            self.logger.error(zmq_err)
-            self.done()
-        finally:
-            self.logger.info("Exiting peacefully. Cleaning up...")
-            self.poller.unregister(self.pull_socket)
-            self.poller.unregister(self.push_socket)
-            self.kill()
+        while self.state != COMPLETE:
+            self.send_heartbeat()
+            gevent.sleep(0.5)
 
     def distribute_data(self):
         """Distributes the data to the workers
@@ -259,6 +159,7 @@ class Master(object):
         if worker_id not in self.workers:
             self.logger.info(f"Worker Registered: {worker_id}")
             self.workers.add(worker_id)
+            self.worker_states[worker_id] = True
             # self.ctrl_socket.send_multipart([worker_id, ])
         else:
             self.logger.debug("Worker asking for work again?")
@@ -275,6 +176,7 @@ class Master(object):
             self.state = DIST_PARAMS
 
         if self.state == DIST_PARAMS:
+            # self.send_heartbeat()
             self.logger.debug("Distributing parameters")
             self.times.append(time.time())
             if self.scenario == 0:
@@ -296,55 +198,204 @@ class Master(object):
 
             self.state = REDUCE
 
-    def get_gradients(self):
+    def get_gradients(self, events):
         """Receives gradients from workers
         """
         d_theta = np.zeros(self.theta.shape)
         epoch_loss = 0.0
 
-        for i in np.arange(len(self.workers)):
+        self.logger.debug(f"Receiving gradients")
+        n_alive_workers = sum(self.worker_states.values())
+        self.logger.debug(f"Alive workers={n_alive_workers}")
 
-            # samples_for_worker = self.samples_per_worker[worker]
-            # beta = (samples_for_worker / self.data.n_samples)
-            # beta = 1.0
+        i = 0
+        timeout = 1 # We give 1 seconds to poll worker if state changed since poll event
+        running_time = 0
 
-            # Since we received the command then we only receive the gradients, and epoch loss
-            # for the first worker that we are receiving information from. 
-            # TODO: Need to correctly weight each worker with the amount of work they have done. 
-            # Cannot use a push pull socket
-            if i == 0:
-                worker, d_theta, epoch_loss, mr = self.pull_socket.recv_multipart()
+        workers_received = set()
+
+        while True:
+
+            if i >= n_alive_workers:
+                break
+
+            start_i = time.time()
+
+            if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                try:
+                    msg = self.pull_socket.recv_multipart(zmq.NOBLOCK)
+                    self.logger.debug("Got msg in the bag")
+                except zmq.ZMQError as e:
+                    if e.errno == zmq.EAGAIN:
+                        # state changed since poll event
+                        running_time += time.time() - start_i
+                        if running_time > timeout:
+                            self.logger.debug(f"Running time exceeded timeout={running_time}")
+                            diff = self.workers - workers_received
+                            for w in diff:
+                                self.worker_states[w] = False
+                            break
+
+                        continue
+
+                self.logger.debug(f"Alive workers={n_alive_workers}")
+                if i == 0:
+                    worker, d_theta_temp, epoch_loss_temp, mr = msg
+                else:
+
+                    # Receive multipart including command message
+                    # cmd, worker, d_theta_temp, loss, mr = msg
+                    cmd, worker, d_theta_temp, epoch_loss_temp, mr = msg
+
+                # Calculate weighting
                 samples_for_worker = self.samples_per_worker[worker]
                 beta = (samples_for_worker / self.data.n_samples)
-                d_theta = np.frombuffer(d_theta, dtype=np.float64)
-                d_theta = d_theta.reshape(self.theta.shape)
-                d_theta = d_theta.copy()
-                self.most_representative[worker] = np.frombuffer(mr, dtype=np.int)
 
-                epoch_loss = float(epoch_loss.decode())
-
-                d_theta += beta * d_theta               
-                epoch_loss += beta * epoch_loss
-            else:
-
-                # Receive multipart including command message
-                cmd, worker, d_theta_temp, loss, mr = self.pull_socket.recv_multipart()
-                samples_for_worker = self.samples_per_worker[worker]
-                beta = (samples_for_worker / self.data.n_samples)
+                # Decode gradient matrix
                 d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
                 d_theta_temp = d_theta_temp.reshape(self.theta.shape)
+
+                # Store most representative points
                 self.most_representative[worker] = np.frombuffer(mr, dtype=np.int)
 
-                loss = float(loss.decode())
-                
-                d_theta += beta * d_theta_temp               
-                epoch_loss += beta * loss
+                # Decode loss
+                epoch_loss_temp = float(epoch_loss_temp.decode())
+
+                # Weight parameters and loss
+                d_theta += beta * d_theta_temp              
+                epoch_loss += beta * epoch_loss_temp
+
+                workers_received.add(worker)
+
+                i += 1
+                running_time = 0
+
+            # n_alive_workers = sum(self.worker_states.values())
 
         # Average parameters
-        d_theta /= len(self.workers)
-        epoch_loss /= len(self.workers)
+        # d_theta /= len(self.workers)
+        # epoch_loss /= len(self.workers)
+        # self.logger.debug(f"Len worker={len(self.workers)}, i-1={i-1}")
+        assert i > 0
+        assert i > 0
+        d_theta /= i
+        epoch_loss /= i
+
+        self.logger.debug("Calculated gradients")
         
         return d_theta, epoch_loss
+
+    def main_loop(self):
+        # For reproducibility
+        np.random.seed(42)
+
+        self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
+        self.data.transform()
+        
+        self.logger.info(f"Initialized dummy data of size {self.data}")
+
+        self.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(np.float32)
+        self.logger.debug(f"Init theta={self.theta}")
+        
+        self.poller = self.setup_poller()
+        
+        try:
+
+            # Detect all workers by polling by whoevers sending their worker ids
+            while True:
+                events = dict(self.poller.poll())
+
+                self.logger.debug(f"events={events}")
+
+                if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                    if command == b"CONNECT":
+                        self.register_workers()
+                else:
+                    break
+
+            self.logger.debug(f"Signed up all workers = {self.workers}")
+
+            completed = False
+            i = 0
+            delta = 1.0
+            start = time.time()
+
+            while not completed:
+
+                events = dict(self.poller.poll())
+
+                if len(self.workers) > 0:
+                    if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
+                        self.start_next_task()
+                        # self.send_heartbeat()
+
+                    # if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                    # Check heartbeat
+                    if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
+                        address, msg = self.ctrl_socket.recv_multipart()
+                        self.worker_states[address] = True
+                        self.logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
+
+                    if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                        # Don't use the results if they've already been counted
+                        command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                        if command == b"CONNECT":
+                            self.register_workers()
+
+                        elif command == b"WORK":
+                            theta_p = self.theta.copy()
+                            # Receive updated parameters from workers
+                            # msg = ""
+                            d_theta, epoch_loss = self.get_gradients(events)
+
+                            # Update the global parameters with weighted error
+                            for k in np.arange(self.data.n_classes):
+                                self.theta[:, k] = self.theta[:, k] - self.alpha * d_theta[:, k]
+
+                            delta = np.max(np.abs(theta_p - self.theta))
+
+                            self.state = DIST_PARAMS
+                            self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+                            i += 1
+                else:
+                    if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                        # Don't use the results if they've already been counted
+                        command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                        if command == b"CONNECT":
+                            self.register_workers()
+
+                if i > self.n_iterations:
+                    completed = True
+
+            # Tell workers to exit
+            self.done()
+            self.state = COMPLETE
+            end = time.time()
+            self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
+
+            diff = np.diff(self.times)
+            self.logger.debug(f"Times={diff.mean():7.6f}s")
+
+            # Print confusion matrix
+            confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.theta)
+            self.logger.info(f"Confusion matrix=\n{confusion_matrix}")
+
+            # Accuracy
+            acc = accuracy(self.data.X_test, self.data.y_test, self.theta, self.hypothesis)
+            self.logger.info(f"Accuracy={acc * 100:7.4f}%")
+            
+        except KeyboardInterrupt as e:
+            pass
+        except zmq.ZMQError as zmq_err:
+            self.logger.error(zmq_err)
+            self.done()
+        finally:
+            self.logger.info("Exiting peacefully. Cleaning up...")
+            # self.kill()
 
     def start(self):
         """Starts work of master. First connects to workers and then performs machine learning training
@@ -353,18 +404,24 @@ class Master(object):
         gevent.signal(signal.SIGQUIT, gevent.kill)
 
         main_loop = gevent.spawn(self.main_loop)
-        heartbeat_loop = gevent.spawn(self.heartbeat_loop)
+        # heartbeat_loop = gevent.spawn(self.heartbeat_loop)
         
         gevent.joinall([
             main_loop, 
-            heartbeat_loop,
+            # heartbeat_loop,
         ])
+
+        self.kill()
 
     def kill(self):
         """Kills sockets
         """
+        self.poller.unregister(self.pull_socket)
+        self.poller.unregister(self.router_socket)
+        self.poller.unregister(self.publisher)
+        self.pull_socket.close()
         self.publisher.close()
-        self.push_socket.close()
+        self.router_socket.close()
         self.ctrl_socket.close()
         # self.context.term()
 

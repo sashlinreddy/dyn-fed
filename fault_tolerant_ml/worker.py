@@ -33,12 +33,21 @@ class Worker(object):
         self.push_socket = self.context.socket(zmq.PUSH)
         self.push_socket.connect("tcp://localhost:5562")
 
-        self.pull_socket = self.context.socket(zmq.PULL)
-        self.pull_socket.connect("tcp://localhost:5564")
+        self.router_socket = self.context.socket(zmq.DEALER)
+        self.router_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
+        self.router_socket.connect("tcp://localhost:5564")
 
-        self.ctrl_socket = self.context.socket(zmq.ROUTER)
+        self.ctrl_socket = self.context.socket(zmq.DEALER)
         self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
         self.ctrl_socket.connect("tcp://localhost:5565")
+
+    def setup_poller(self):
+        poller = zmq.Poller()
+        poller.register(self.subscriber, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.router_socket, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
+
+        return poller
 
     def do_work(self, X, y, theta):
 
@@ -69,10 +78,7 @@ class Worker(object):
 
     def start(self):
 
-        poller = zmq.Poller()
-        poller.register(self.subscriber, zmq.POLLIN)
-        poller.register(self.pull_socket, zmq.POLLIN)
-        poller.register(self.ctrl_socket, zmq.POLLIN)
+        poller = self.setup_poller()
         # poller.register(self.push_socket, zmq.POLLOUT)
 
         self.logger.info('Started Worker %s' % self.worker_id)
@@ -94,14 +100,16 @@ class Worker(object):
 
                     events = dict(poller.poll())
 
-                    if events.get(self.ctrl_socket) == zmq.POLLIN:
-                        worker_id, command = self.ctrl_socket.recv_multipart()
+                    if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
+                        command = self.ctrl_socket.recv()
+                        self.logger.debug(f"Command={command}")
                         if command == b"HEARTBEAT":
-                            self.ctrl_socket.send_multipart([b"MASTER", b"PONG"])
+                            self.ctrl_socket.send(b"PONG")
                             self.logger.debug("PONG")
 
-                    if events.get(self.subscriber) == zmq.POLLIN:
+                    if (self.subscriber in events) and (events.get(self.subscriber) == zmq.POLLIN):
                         # Read envelope with address
+                        self.logger.debug("Receiving contents")
                         contents = self.subscriber.recv_multipart()
                         address = contents[0]
                         cmd = contents[1]
@@ -160,25 +168,27 @@ class Worker(object):
                             loss = str(batch_loss).encode()
                             mr = most_representative.tostring()
 
+                            # self.push_socket.send(b"WORK")
+                            # self.router_socket.send_multipart([b"MASTER", b"WORK"])
+                            # self.logger.debug("Sent work command")
+                            # self.router_socket.send_multipart([b"WORK", msg, loss, mr], zmq.NOBLOCK)
                             self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
+
+                            self.logger.debug("Sent work back to master")
                 else:
 
                     self.logger.info("Connecting to server")
                     self.push_socket.send_multipart([b"CONNECT", self.worker_id.encode()])
+                    self.logger.debug("Connected")
 
                     # Receive X, y
-                    # address, worker_id = self.ctrl_socket.recv_multipart()
-                    # print(f"worker-id={worker_id.decode()}")
-                    # worker_id = self.ctrl_socket.recv()
-                    # data = zhelpers.recv_array(self.ctrl_socket)
-                    worker_id, data, dtype, shape = self.ctrl_socket.recv_multipart()
+                    data, dtype, shape = self.ctrl_socket.recv_multipart()
                     shape = shape.decode()
                     data = np.frombuffer(data, dtype=dtype)
                     data = data.reshape(eval(shape))
 
                     # Receive shape of X, y so we can reshape
-                    worker_id, n_samples, n_features, n_classes, scenario = self.ctrl_socket.recv_multipart()
-                    worker_id = worker_id.decode()
+                    n_samples, n_features, n_classes, scenario = self.ctrl_socket.recv_multipart()
                     n_samples = int(n_samples.decode())
                     n_features = int(n_features.decode())
                     n_classes = int(n_classes.decode())
@@ -201,13 +211,13 @@ class Worker(object):
         except zmq.ZMQError:
             self.logger.info("ZMQError")
         finally:
-            poller.unregister(self.pull_socket)
+            poller.unregister(self.router_socket)
             poller.unregister(self.subscriber)
             self.kill()
 
     def kill(self):
         self.subscriber.close()
-        self.pull_socket.close()
+        self.router_socket.close()
         self.ctrl_socket.close()
         # self.context.term()
 
