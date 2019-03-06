@@ -19,7 +19,7 @@ class Worker(object):
         self.starter = None
         # self.logger = logging.getLogger("masters")
         self.logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
-        self.have_work = False
+        self.connected = False
         self.hypothesis = hypotheses.log_hypothesis
         self.gradient = loss_fns.cross_entropy_gradient
 
@@ -62,7 +62,7 @@ class Worker(object):
 
         # TODO: Calculate most representative data points
         # We regard data points that have a high loss to be most representative
-        most_representative = np.argsort(-log_loss.flatten())[0:100]
+        most_representative = np.argsort(-log_loss.flatten())[0:10]
 
         # Calculate processor loss - this is aggregated
         batch_loss = np.mean(log_loss)
@@ -75,6 +75,30 @@ class Worker(object):
             d_theta[:, k] = self.gradient(X, e[:, np.newaxis, k])
 
         return d_theta, batch_loss, most_representative
+
+    def receive_data(self):
+        data, dtype, shape = self.ctrl_socket.recv_multipart()
+        shape = shape.decode()
+        data = np.frombuffer(data, dtype=dtype)
+        data = data.reshape(eval(shape))
+
+        # Receive shape of X, y so we can reshape
+        _, n_samples, n_features, n_classes, scenario = self.ctrl_socket.recv_multipart()
+        n_samples = int(n_samples.decode())
+        n_features = int(n_features.decode())
+        n_classes = int(n_classes.decode())
+        self.scenario = int(scenario.decode())
+
+        self.X, self.y = data[:, :n_features], data[:, -n_classes:]
+
+        # Check if we need to add a new axis if the dimension of y is not 2d
+        if len(self.y.shape) < 2:
+            self.y = self.y[:, np.newaxis]
+        self.logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
+        self.have_work = True
+
+        return n_samples, n_features, n_classes
+                    
 
     def start(self):
 
@@ -96,13 +120,17 @@ class Worker(object):
 
             while True:
 
-                if self.have_work:
+                if self.connected:
 
                     events = dict(poller.poll())
 
                     if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
-                        command = self.ctrl_socket.recv()
+                        command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
                         self.logger.debug(f"Command={command}")
+
+                        if command == b"WORK":
+                            n_samples, n_features, n_classes = self.receive_data()
+
                         if command == b"HEARTBEAT":
                             self.ctrl_socket.send(b"PONG")
                             self.logger.debug("PONG")
@@ -180,27 +208,15 @@ class Worker(object):
                     self.logger.info("Connecting to server")
                     self.push_socket.send_multipart([b"CONNECT", self.worker_id.encode()])
                     self.logger.debug("Connected")
+                    self.connected = True
+
+                    command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
+
+                    if command == b"WORK":
+                            n_samples, n_features, n_classes = self.receive_data()
 
                     # Receive X, y
-                    data, dtype, shape = self.ctrl_socket.recv_multipart()
-                    shape = shape.decode()
-                    data = np.frombuffer(data, dtype=dtype)
-                    data = data.reshape(eval(shape))
-
-                    # Receive shape of X, y so we can reshape
-                    n_samples, n_features, n_classes, scenario = self.ctrl_socket.recv_multipart()
-                    n_samples = int(n_samples.decode())
-                    n_features = int(n_features.decode())
-                    n_classes = int(n_classes.decode())
-                    self.scenario = int(scenario.decode())
-
-                    self.X, self.y = data[:, :n_features], data[:, -n_classes:]
-
-                    # Check if we need to add a new axis if the dimension of y is not 2d
-                    if len(self.y.shape) < 2:
-                        self.y = self.y[:, np.newaxis]
-                    self.logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
-                    self.have_work = True
+                    # n_samples, n_features, n_classes = self.receive_data()
                     # poller.register(self.ctrl_socket, zmq.POLLIN)
 
             end = time.time()

@@ -13,12 +13,15 @@ from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData
 from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
+from fault_tolerant_ml.core import WorkerState, WorkerStates
 
 START       = 0
 MAP         = 1
-DIST_PARAMS = 2
-REDUCE      = 3 
-COMPLETE    = 4
+REMAP       = 2
+DIST_PARAMS = 3
+REDUCE      = 4 
+COMPLETE    = 5
+
 class Master(object):
     """Master class for distributed machine learning system
     """
@@ -29,8 +32,10 @@ class Master(object):
         self.publisher = None
         self.context   = zmq.Context()
 
+        self.ws = WorkerStates()
         self.workers = set()
         self.worker_states = {}
+        self.mapping = {}
         self.state = START
 
         # Model variables
@@ -38,14 +43,10 @@ class Master(object):
         self.alpha = learning_rate
         self.hypothesis = hypotheses.log_hypothesis
 
-        self.samples_per_worker = {}
-        self.most_representative = {}
-        self.worker_idxs = {}
         self.scenario = scenario
         self.times = []
 
         # Setup logger
-        # self.logger = logging.getLogger("masters")
         self.logger = setup_logger(level=verbose)
 
     @staticmethod
@@ -117,8 +118,8 @@ class Master(object):
         """
         # Distribute data/data indices to work on
         self.logger.debug("Distributing data")
-        batch_size = int(np.ceil(self.data.n_samples / len(self.workers)))
-        batch_gen = self.data.next_batch(self.data.X_train, self.data.y_train, batch_size)
+        batch_size = int(np.ceil(self.data.n_samples / self.ws.n_alive()))
+        batch_gen = self.data.next_batch(self.X_train, self.y_train, batch_size)
 
         # Encode to bytes
         n_samples = str(self.data.n_samples).encode()
@@ -127,51 +128,86 @@ class Master(object):
         scenario = str(self.scenario).encode()
 
         # Iterate through workers and send
-        for i, worker in enumerate(self.workers):
+        i = 0
+        for worker in self.ws:
 
-            # Get next batch to send
-            X_batch, y_batch = next(batch_gen)
-            self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
-            batch_data = np.hstack((X_batch, y_batch))
+            if worker.state:
+                worker.mr_idxs_used = False
+                # Get next batch to send
+                X_batch, y_batch = next(batch_gen)
+                self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
+                batch_data = np.hstack((X_batch, y_batch))
 
-            # Encode data
-            dtype = batch_data.dtype.str.encode()
-            shape = str(batch_data.shape).encode()
-            msg = batch_data.tostring()
+                # Encode data
+                dtype = batch_data.dtype.str.encode()
+                shape = str(batch_data.shape).encode()
+                msg = batch_data.tostring()
 
-            # Keep track of samples per worker
-            self.samples_per_worker[worker] = X_batch.shape[0]
-            lower_bound = X_batch.shape[0] * i
-            upper_bound = lower_bound + X_batch.shape[0]
-            self.worker_idxs[worker] = np.arange(lower_bound, upper_bound)
-            self.most_representative[worker] = np.zeros((100,))
+                # Keep track of samples per worker
+                worker.n_samples = X_batch.shape[0]
+                lower_bound = X_batch.shape[0] * i
+                upper_bound = lower_bound + X_batch.shape[0]
+                worker.idxs = np.arange(lower_bound, upper_bound)
+                if worker.most_representative is None:
+                    worker.most_representative = np.zeros((10,))
 
-            self.ctrl_socket.send_multipart([worker, batch_data, dtype, shape])
-            self.ctrl_socket.send_multipart([worker, n_samples, n_features, n_classes, scenario])
+                self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
+                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario])
+                i += 1
 
-        self.logger.debug(f"Worker ranges={[(np.min(idxs), np.max(idxs)) for idxs in self.worker_idxs.values()]}")
+        self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.ws]}")
 
     def register_workers(self):
         """Registers workers in a round robin fashion
         """
         worker_id = self.pull_socket.recv()
 
-        if worker_id not in self.workers:
+        if worker_id not in self.ws:
             self.logger.info(f"Worker Registered: {worker_id}")
-            self.workers.add(worker_id)
-            self.worker_states[worker_id] = True
-            # self.ctrl_socket.send_multipart([worker_id, ])
+            self.ws.add_worker(worker_id)
         else:
             self.logger.debug("Worker asking for work again?")
 
     def start_next_task(self):
-        """Starts new task depending on the state of the system
+        """Starts new task depending on the state of the system.
+
+        Possible states range from mapping of data, remapping of data (if worker dies or another worker is added),
+        or distributing parameters.
         """
         if self.state == START:
 
             self.state = MAP
 
         if self.state == MAP:
+            self.distribute_data()
+            self.state = DIST_PARAMS
+
+        if self.state == REMAP:
+
+            self.logger.debug(f"Redistributing data")
+            # Stack all indices from current dataset that we will use to remap
+            global_idxs = np.hstack([w.idxs for w in self.ws if not w.mr_idxs_used])
+            new_range = np.arange(global_idxs.shape[0])
+            self.logger.debug(f"new data idxs shape={global_idxs.shape}")
+
+            self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+            
+            # If we have had a failure before we need to just keep track of the global indices
+            if self.mapping:
+                # The new dataset will be smaller than the original dataset. We still would like to only 
+                # use indices of the original dataset to simplify things. This recalculates those indices
+                global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
+
+            self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+            self.logger.debug("Updating mapping")
+            self.mapping = dict(zip(new_range, global_idxs))
+
+            self.X_train, self.y_train = self.data.update_xy(global_idxs)
+
+            for w in self.ws:
+                if not w.mr_idxs_used:
+                    w.mr_idxs_used = True
+
             self.distribute_data()
             self.state = DIST_PARAMS
 
@@ -200,12 +236,19 @@ class Master(object):
 
     def get_gradients(self, events):
         """Receives gradients from workers
+
+        Args:
+            events (dict): Dictionary of events from our poller
+
+        Returns:
+            d_theta (numpy.ndarray): Our gradient matrix that is aggregated with a weighting according to the number    of samples each worker has
+            epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
         """
         d_theta = np.zeros(self.theta.shape)
         epoch_loss = 0.0
 
         self.logger.debug(f"Receiving gradients")
-        n_alive_workers = sum(self.worker_states.values())
+        n_alive_workers = self.ws.n_alive()
         self.logger.debug(f"Alive workers={n_alive_workers}")
 
         i = 0
@@ -216,9 +259,13 @@ class Master(object):
 
         while True:
 
+            # Stop condition
             if i >= n_alive_workers:
                 break
 
+            # Timer to calculate running time for an iteration. We can then calculate the running time for 
+            # an iteration so that if a state changes since a poll event, we can break if the running time 
+            # exceeds the timeout
             start_i = time.time()
 
             if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
@@ -231,9 +278,16 @@ class Master(object):
                         running_time += time.time() - start_i
                         if running_time > timeout:
                             self.logger.debug(f"Running time exceeded timeout={running_time}")
-                            diff = self.workers - workers_received
+                            active_workers = set([w.identity for w in self.ws if w.state])
+                            # Get workers that we did not receive work from
+                            diff = active_workers - workers_received
                             for w in diff:
-                                self.worker_states[w] = False
+                                # Set dead workers state to false and replace their worker idxs with their
+                                # most representative samples
+                                self.ws[w].state = False
+                                self.ws[w].idxs = self.ws[w].most_representative
+                            
+                            self.state = REMAP
                             break
 
                         continue
@@ -242,13 +296,11 @@ class Master(object):
                 if i == 0:
                     worker, d_theta_temp, epoch_loss_temp, mr = msg
                 else:
-
                     # Receive multipart including command message
-                    # cmd, worker, d_theta_temp, loss, mr = msg
                     cmd, worker, d_theta_temp, epoch_loss_temp, mr = msg
 
                 # Calculate weighting
-                samples_for_worker = self.samples_per_worker[worker]
+                samples_for_worker = self.ws[worker].n_samples
                 beta = (samples_for_worker / self.data.n_samples)
 
                 # Decode gradient matrix
@@ -256,7 +308,9 @@ class Master(object):
                 d_theta_temp = d_theta_temp.reshape(self.theta.shape)
 
                 # Store most representative points
-                self.most_representative[worker] = np.frombuffer(mr, dtype=np.int)
+                mr = np.frombuffer(mr, dtype=np.int)
+                # Determine current index - we will map this back to the global index if worker dies
+                self.ws[worker].most_representative = np.min(self.ws[worker].idxs) + mr
 
                 # Decode loss
                 epoch_loss_temp = float(epoch_loss_temp.decode())
@@ -269,8 +323,6 @@ class Master(object):
 
                 i += 1
                 running_time = 0
-
-            # n_alive_workers = sum(self.worker_states.values())
 
         # Average parameters
         # d_theta /= len(self.workers)
@@ -285,12 +337,36 @@ class Master(object):
         
         return d_theta, epoch_loss
 
+    def detect_workers(self):
+        """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
+        """
+        while True:
+            events = dict(self.poller.poll())
+
+            if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                if command == b"CONNECT":
+                    self.register_workers()
+            else:
+                break
+
+        self.logger.debug(f"Signed up all workers = {self.ws}")
+
     def main_loop(self):
+        """Main loop for training.
+
+        First detects workers who are willing to do work. Then distributes the data accordingly. Then we perform 
+        gradient descent iteratively. We parallelize the gradient calculation and calculate a weighted average
+        gradient matrix. This weighted average is calculated as the number of samples that a worker received as a 
+        fraction of the total number of samples in the entire dataset.
+        """
         # For reproducibility
         np.random.seed(42)
 
         self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
         self.data.transform()
+        self.X_train, self.y_train = self.data.X_train, self.data.y_train
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
@@ -302,20 +378,7 @@ class Master(object):
         try:
 
             # Detect all workers by polling by whoevers sending their worker ids
-            while True:
-                events = dict(self.poller.poll())
-
-                self.logger.debug(f"events={events}")
-
-                if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
-                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                    if command == b"CONNECT":
-                        self.register_workers()
-                else:
-                    break
-
-            self.logger.debug(f"Signed up all workers = {self.workers}")
+            self.detect_workers()
 
             completed = False
             i = 0
@@ -326,12 +389,10 @@ class Master(object):
 
                 events = dict(self.poller.poll())
 
-                if len(self.workers) > 0:
+                if len(self.ws) > 0:
                     if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
                         self.start_next_task()
-                        # self.send_heartbeat()
 
-                    # if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
                     # Check heartbeat
                     if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
                         address, msg = self.ctrl_socket.recv_multipart()
@@ -348,7 +409,6 @@ class Master(object):
                         elif command == b"WORK":
                             theta_p = self.theta.copy()
                             # Receive updated parameters from workers
-                            # msg = ""
                             d_theta, epoch_loss = self.get_gradients(events)
 
                             # Update the global parameters with weighted error
@@ -357,7 +417,8 @@ class Master(object):
 
                             delta = np.max(np.abs(theta_p - self.theta))
 
-                            self.state = DIST_PARAMS
+                            if self.state != REMAP:
+                                self.state = DIST_PARAMS
                             self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
                 else:
@@ -400,7 +461,6 @@ class Master(object):
     def start(self):
         """Starts work of master. First connects to workers and then performs machine learning training
         """
-
         gevent.signal(signal.SIGQUIT, gevent.kill)
 
         main_loop = gevent.spawn(self.main_loop)
@@ -437,6 +497,14 @@ class Master(object):
 @click.option('--verbose', '-v', default=10, type=int)
 @click.option('--scenario', '-s', default=0, type=int)
 def run(n_iterations, learning_rate, verbose, scenario):
+    """Controller function which creates the master and starts off the training
+
+    Args:
+        n_iterations (int): No. of iterations we perform for training
+        learning_rate (float): The rate at which we want our model to learn
+        verbose (int): The logger level as an integer. See more in the logging file for different options
+        scenario (int): The scenario we would like to run
+    """
     master = Master(
         n_iterations=n_iterations,
         learning_rate=learning_rate,
