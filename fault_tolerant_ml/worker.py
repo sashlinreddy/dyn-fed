@@ -62,7 +62,7 @@ class Worker(object):
 
         # TODO: Calculate most representative data points
         # We regard data points that have a high loss to be most representative
-        most_representative = np.argsort(-log_loss.flatten())[0:10]
+        most_representative = np.argsort(-log_loss.flatten())[0:self.n_most_representative]
 
         # Calculate processor loss - this is aggregated
         batch_loss = np.mean(log_loss)
@@ -83,11 +83,12 @@ class Worker(object):
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes, scenario = self.ctrl_socket.recv_multipart()
+        _, n_samples, n_features, n_classes, scenario, n_most_representative = self.ctrl_socket.recv_multipart()
         n_samples = int(n_samples.decode())
         n_features = int(n_features.decode())
         n_classes = int(n_classes.decode())
         self.scenario = int(scenario.decode())
+        self.n_most_representative = int(n_most_representative.decode())
 
         self.X, self.y = data[:, :n_features], data[:, -n_classes:]
 

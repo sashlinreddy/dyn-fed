@@ -25,7 +25,7 @@ COMPLETE    = 5
 class Master(object):
     """Master class for distributed machine learning system
     """
-    def __init__(self, n_iterations, learning_rate, verbose, scenario):
+    def __init__(self, n_iterations, learning_rate, verbose, scenario, n_most_representative):
         
         # ZMQ variables
         self.ctrl_socket = None
@@ -44,6 +44,7 @@ class Master(object):
         self.hypothesis = hypotheses.log_hypothesis
 
         self.scenario = scenario
+        self.n_most_representative = n_most_representative
         self.times = []
 
         # Setup logger
@@ -126,6 +127,7 @@ class Master(object):
         n_features = str(self.data.n_features).encode()
         n_classes = str(self.data.n_classes).encode()
         scenario = str(self.scenario).encode()
+        n_most_representative = str(self.n_most_representative).encode()
 
         # Iterate through workers and send
         i = 0
@@ -149,10 +151,10 @@ class Master(object):
                 upper_bound = lower_bound + X_batch.shape[0]
                 worker.idxs = np.arange(lower_bound, upper_bound)
                 if worker.most_representative is None:
-                    worker.most_representative = np.zeros((10,))
+                    worker.most_representative = np.zeros((self.n_most_representative,))
 
                 self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
-                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario])
+                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative])
                 i += 1
 
         self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.ws]}")
@@ -496,7 +498,8 @@ class Master(object):
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
 @click.option('--scenario', '-s', default=0, type=int)
-def run(n_iterations, learning_rate, verbose, scenario):
+@click.option('--n_most_representative', '-nmr', default=100, type=int)
+def run(n_iterations, learning_rate, verbose, scenario, n_most_representative):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -509,7 +512,8 @@ def run(n_iterations, learning_rate, verbose, scenario):
         n_iterations=n_iterations,
         learning_rate=learning_rate,
         verbose=verbose,
-        scenario=scenario
+        scenario=scenario,
+        n_most_representative=n_most_representative
     )
     master.connect()
     time.sleep(1)
