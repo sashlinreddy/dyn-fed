@@ -167,6 +167,8 @@ class Master(object):
         if worker_id not in self.ws:
             self.logger.info(f"Worker Registered: {worker_id}")
             self.ws.add_worker(worker_id)
+        elif not self.ws[worker_id].state:
+            self.ws[worker_id].state = True
         else:
             self.logger.debug("Worker asking for work again?")
 
@@ -407,6 +409,7 @@ class Master(object):
 
                         if command == b"CONNECT":
                             self.register_workers()
+                            self.state = MAP
 
                         elif command == b"WORK":
                             theta_p = self.theta.copy()
