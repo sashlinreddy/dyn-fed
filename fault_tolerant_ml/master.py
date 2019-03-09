@@ -390,10 +390,10 @@ class Master(object):
                             # Get workers that we did not receive work from
                             diff = active_workers - workers_received
                             for w in diff:
-                                # Set dead workers state to false and replace their worker idxs with their
-                                # most representative samples
+                                # Set dead workers state to false
                                 self.ws[w].state = False
-                                # self.ws[w].idxs = self.ws[w].most_representative
+                                if self.scenario != 2:
+                                    self.ws[w].idxs = self.ws[w].most_representative
                             
                             self.state = REMAP
                             break
@@ -620,7 +620,7 @@ class Master(object):
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
-@click.option('--scenario', '-s', default=2, type=int)
+@click.option('--scenario', '-s', default=0, type=int)
 @click.option('--n_most_representative', '-nmr', default=100, type=int)
 @click.option('--delay', '-d', default=1, type=int)
 @click.option('--switch_delta', '-sd', default=0.0074, type=float)
