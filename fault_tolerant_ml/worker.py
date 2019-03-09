@@ -60,9 +60,10 @@ class Worker(object):
         # Calculate log loss
         log_loss = -y * np.log(h) - (1 - y) * np.log(1 - h)
 
-        # TODO: Calculate most representative data points
+        # Calculate most representative data points
         # We regard data points that have a high loss to be most representative
         most_representative = np.argsort(-log_loss.flatten())[0:self.n_most_representative]
+        self.logger.debug(f"MR points={most_representative}")
 
         # Calculate processor loss - this is aggregated
         batch_loss = np.mean(log_loss)
@@ -76,21 +77,27 @@ class Worker(object):
 
         return d_theta, batch_loss, most_representative
 
-    def receive_data(self):
+    def receive_data(self, start=True):
         data, dtype, shape = self.ctrl_socket.recv_multipart()
         shape = shape.decode()
         data = np.frombuffer(data, dtype=dtype)
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes, scenario, n_most_representative = self.ctrl_socket.recv_multipart()
+        _, n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay = self.ctrl_socket.recv_multipart()
         n_samples = int(n_samples.decode())
         n_features = int(n_features.decode())
         n_classes = int(n_classes.decode())
         self.scenario = int(scenario.decode())
         self.n_most_representative = int(n_most_representative.decode())
+        self.alpha = float(alpha.decode())
+        self.delay = int(delay.decode())
 
-        self.X, self.y = data[:, :n_features], data[:, -n_classes:]
+        if self.scenario == 2 and not start:
+            self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])
+            self.logger.debug(f"New data shape={self.X.shape}")
+        else:
+            self.X, self.y = data[:, :n_features], data[:, -n_classes:]
 
         # Check if we need to add a new axis if the dimension of y is not 2d
         if len(self.y.shape) < 2:
@@ -130,7 +137,7 @@ class Worker(object):
                         self.logger.debug(f"Command={command}")
 
                         if command == b"WORK":
-                            n_samples, n_features, n_classes = self.receive_data()
+                            n_samples, n_features, n_classes = self.receive_data(start=False)
 
                         if command == b"HEARTBEAT":
                             self.ctrl_socket.send(b"PONG")
@@ -152,9 +159,11 @@ class Worker(object):
                             break
                         else:
 
-                            if self.scenario == 0:
+                            if self.scenario != 1:
 
                                 # Receive parameter matrix on the subscriber socket
+                                if cmd == b"WORKNODELAY":
+                                    self.delay = 1
                                 data, dtype, shape = msg
                                 shape = shape.decode()
 
@@ -185,10 +194,25 @@ class Worker(object):
                                 bins = np.linspace(min_theta_val, max_theta_val, interval)
                                 theta = bins[theta_bins].reshape(n_features, n_classes)                             
 
+                            theta_g = theta.copy()
+                            count = 1
+                            while True:
                             # Each worker does work and we get the resulting gradients
-                            d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
-                            self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
-                            i += 1
+                                d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
+                                self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
+
+                                # Update the global parameters with weighted error
+                                for k in np.arange(n_classes):
+                                    theta[:, k] = theta[:, k] - self.alpha * d_theta[:, k]
+
+                                # Let global theta influence local theta
+                                for k in np.arange(theta.shape[1]):
+                                    theta[:, k] = (self.alpha) * theta[:, k] + (1 - self.alpha) * theta_g[:, k]
+
+                                i += 1
+                                if count == self.delay:
+                                    break
+                                count += 1
 
                             # Get messages ready to send by converting them to bytes format. We do not
                             # need to send the shape since the gradients have the same shape as theta which
@@ -214,7 +238,7 @@ class Worker(object):
                     command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
 
                     if command == b"WORK":
-                            n_samples, n_features, n_classes = self.receive_data()
+                        n_samples, n_features, n_classes = self.receive_data()
 
                     # Receive X, y
                     # n_samples, n_features, n_classes = self.receive_data()
@@ -222,7 +246,7 @@ class Worker(object):
 
             end = time.time()
 
-            self.logger.info("Time taken for %d iterations is %7.6fs" % (i, end-start))
+            self.logger.info("Time taken for %d iterations is %7.6fs" % (i-1, end-start))
         except KeyboardInterrupt as e:
             self.logger.info("Keyboard quit")
         except zmq.ZMQError:

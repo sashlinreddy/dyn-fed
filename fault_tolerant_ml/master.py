@@ -25,7 +25,8 @@ COMPLETE    = 5
 class Master(object):
     """Master class for distributed machine learning system
     """
-    def __init__(self, n_iterations, learning_rate, verbose, scenario, n_most_representative):
+    def __init__(self, n_iterations, learning_rate, verbose, scenario, n_most_representative,
+    delay, switch_delta):
         
         # ZMQ variables
         self.ctrl_socket = None
@@ -39,9 +40,12 @@ class Master(object):
         self.state = START
 
         # Model variables
-        self.n_iterations = n_iterations
+        self.delay = delay
+        self.switch_delta = switch_delta
+        self.n_iterations = int(np.ceil(n_iterations / self.delay))
         self.alpha = learning_rate
         self.hypothesis = hypotheses.log_hypothesis
+        self.delay_change = False
 
         self.scenario = scenario
         self.n_most_representative = n_most_representative
@@ -128,6 +132,8 @@ class Master(object):
         n_classes = str(self.data.n_classes).encode()
         scenario = str(self.scenario).encode()
         n_most_representative = str(self.n_most_representative).encode()
+        alpha = str(self.alpha).encode()
+        delay = str(self.delay).encode()
 
         # Iterate through workers and send
         i = 0
@@ -152,17 +158,20 @@ class Master(object):
                 worker.idxs = np.arange(lower_bound, upper_bound)
                 if worker.most_representative is None:
                     worker.most_representative = np.zeros((self.n_most_representative,))
+                    worker.lower_bound = lower_bound
+                    worker.upper_bound = upper_bound
 
                 self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
-                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative])
+                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay])
                 i += 1
 
         self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.ws]}")
 
-    def register_workers(self):
+    def register_workers(self, worker_id=None):
         """Registers workers in a round robin fashion
         """
-        worker_id = self.pull_socket.recv()
+        if not worker_id:
+            worker_id = self.pull_socket.recv()
 
         if worker_id not in self.ws:
             self.logger.info(f"Worker Registered: {worker_id}")
@@ -189,44 +198,138 @@ class Master(object):
         if self.state == REMAP:
 
             self.logger.debug(f"Redistributing data")
-            # Stack all indices from current dataset that we will use to remap
-            global_idxs = np.hstack([w.idxs for w in self.ws if not w.mr_idxs_used])
-            new_range = np.arange(global_idxs.shape[0])
-            self.logger.debug(f"new data idxs shape={global_idxs.shape}")
+            if self.scenario == 2:
+                
+                # Remap only data for workers that went down in previous iteration
+                # Get indices for dead workers
+                if self.mapping:
+                    dead_worker = [w for w in self.ws if not w.mr_idxs_used and not w.state][0]
+                    remap_idxs = np.hstack([[w.mapping.get(i) for i in w.most_representative] for w in self.ws if not w.mr_idxs_used and not w.state])
+                    worker_ids_down = [w.identity for w in self.ws if not w.mr_idxs_used and not w.state]
+                    self.logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
+                    self.logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
+                    # idxs = []
+                    # for w in self.ws:
+                    #     w_idxs = []
+                    #     if not w.mr_idxs_used and not w.state:
+                    #         for i in w.idxs:
+                    #             w_idxs.append(w.mapping.get(i))
+                    #     idxs.append(w_idxs)
 
-            self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
-            
-            # If we have had a failure before we need to just keep track of the global indices
-            if self.mapping:
-                # The new dataset will be smaller than the original dataset. We still would like to only 
-                # use indices of the original dataset to simplify things. This recalculates those indices
-                global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
+                    # test = np.hstack(idxs)
+                    # assert np.all(remap_idxs == test)
+                    
+                    self.logger.debug(f"Remap idxs={remap_idxs.shape}")
+                else:
+                    remap_idxs = np.hstack([w.most_representative for w in self.ws if not w.mr_idxs_used and not w.state])
 
-            self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
-            self.logger.debug("Updating mapping")
-            self.mapping = dict(zip(new_range, global_idxs))
+                n_samples = remap_idxs.shape[0]
+                new_range = np.arange(n_samples)
 
-            self.X_train, self.y_train = self.data.update_xy(global_idxs)
+                self.logger.debug(f"N samples = {n_samples}")
 
-            for w in self.ws:
-                if not w.mr_idxs_used:
-                    w.mr_idxs_used = True
+                self.mapping = dict(zip(new_range, remap_idxs))
 
-            self.distribute_data()
+                self.logger.debug(f"Mapping={self.mapping}")
+
+                X_train, y_train = self.data.X_train[remap_idxs], self.data.y_train[remap_idxs]
+
+                for w in self.ws:
+                    if not w.mr_idxs_used:
+                        w.mr_idxs_used = True
+
+                # Calculate batch size
+                batch_size = int(np.ceil(n_samples / self.ws.n_alive()))
+                batch_gen = self.data.next_batch(X_train, y_train, batch_size)
+
+                n_samples = str(n_samples).encode()
+                n_features = str(self.data.n_features).encode()
+                n_classes = str(self.data.n_classes).encode()
+                scenario = str(self.scenario).encode()
+                n_most_representative = str(self.n_most_representative).encode()
+                alpha = str(self.alpha).encode()
+                delay = str(self.delay).encode()
+
+                i = 0
+                # Distribute amongst workers
+                for worker in self.ws:
+
+                    if worker.state:
+                        worker.mr_idxs_used = False
+                        X_batch, y_batch = next(batch_gen)
+                        batch_data = np.hstack((X_batch, y_batch))
+
+                        # Encode data
+                        dtype = batch_data.dtype.str.encode()
+                        shape = str(batch_data.shape).encode()
+                        msg = batch_data.tostring()
+
+                        # Keep track of samples per worker
+                        worker.n_samples += X_batch.shape[0]
+                        lower_bound = X_batch.shape[0] * i
+                        upper_bound = lower_bound + X_batch.shape[0]
+                        batch_range = np.arange(lower_bound, upper_bound)
+                        new_range = np.arange(worker.upper_bound, worker.upper_bound + batch_range.shape[0]) 
+                        self.logger.debug(f"New range={new_range}, worker max idx={np.max(worker.idxs)}, upper bound={worker.upper_bound}")
+                        worker.upper_bound = worker.upper_bound + batch_range.shape[0]
+                        if not worker.mapping:
+                            worker.mapping = dict(zip(worker.idxs, worker.idxs))
+                        
+                        self.logger.debug(f"Batch range shape={batch_range}, i={i}")
+                        global_idxs = [self.mapping.get(j) for j in batch_range]
+                        self.logger.debug(f"global idxs={global_idxs}, i={i}")
+                        worker.mapping.update(dict(zip(new_range, global_idxs)))
+                        worker.idxs = np.hstack((worker.idxs, global_idxs))
+                        if worker.most_representative is None:
+                            worker.most_representative = np.zeros((self.n_most_representative,))
+
+                        self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
+                        self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay])
+                        i += 1
+
+            else:
+                # Stack all indices from current dataset that we will use to remap
+                global_idxs = np.hstack([w.idxs for w in self.ws if not w.mr_idxs_used])
+                new_range = np.arange(global_idxs.shape[0])
+                self.logger.debug(f"new data idxs shape={global_idxs.shape}")
+
+                self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+                
+                # If we have had a failure before we need to just keep track of the global indices
+                if self.mapping:
+                    # The new dataset will be smaller than the original dataset. We still would like to only 
+                    # use indices of the original dataset to simplify things. This recalculates those indices
+                    global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
+
+                self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+                self.logger.debug("Updating mapping")
+                self.mapping = dict(zip(new_range, global_idxs))
+
+                self.X_train, self.y_train = self.data.update_xy(global_idxs)
+
+                for w in self.ws:
+                    if not w.mr_idxs_used:
+                        w.mr_idxs_used = True
+
+                self.distribute_data()
             self.state = DIST_PARAMS
 
         if self.state == DIST_PARAMS:
             # self.send_heartbeat()
             self.logger.debug("Distributing parameters")
             self.times.append(time.time())
-            if self.scenario == 0:
+            if self.scenario == 0 or self.scenario == 2:
                 
                 # Get message send ready
                 msg = self.theta.tostring()
                 dtype = self.theta.dtype.str.encode()
                 shape = str(self.theta.shape).encode()
 
-                self.publisher.send_multipart([b"", b"WORK", msg, dtype, shape])
+                if self.delay_change:
+                    self.publisher.send_multipart([b"", b"WORKNODELAY", msg, dtype, shape])
+                else:
+                    self.publisher.send_multipart([b"", b"WORK", msg, dtype, shape])  
+
             elif self.scenario == 1:
                 
                 # Quantize parameters
@@ -258,6 +361,7 @@ class Master(object):
         i = 0
         timeout = 1 # We give 1 seconds to poll worker if state changed since poll event
         running_time = 0
+        n_connected = 0
 
         workers_received = set()
 
@@ -289,7 +393,7 @@ class Master(object):
                                 # Set dead workers state to false and replace their worker idxs with their
                                 # most representative samples
                                 self.ws[w].state = False
-                                self.ws[w].idxs = self.ws[w].most_representative
+                                # self.ws[w].idxs = self.ws[w].most_representative
                             
                             self.state = REMAP
                             break
@@ -301,7 +405,14 @@ class Master(object):
                     worker, d_theta_temp, epoch_loss_temp, mr = msg
                 else:
                     # Receive multipart including command message
-                    cmd, worker, d_theta_temp, epoch_loss_temp, mr = msg
+                    cmd = msg[0]
+                    if cmd == b"WORK":
+                        worker, d_theta_temp, epoch_loss_temp, mr = msg[1:]
+                    elif cmd == b"CONNECT":
+                        self.register_workers(msg[1])
+                        n_connected += 1
+                        i += 1
+                        continue
 
                 # Calculate weighting
                 samples_for_worker = self.ws[worker].n_samples
@@ -314,7 +425,11 @@ class Master(object):
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
-                self.ws[worker].most_representative = np.min(self.ws[worker].idxs) + mr
+                if self.scenario == 2:
+                    self.ws[worker].most_representative = self.ws[worker].lower_bound + mr
+                    self.logger.debug(f"Min mr={np.min(self.ws[worker].most_representative)}, Max mr={np.max(self.ws[worker].most_representative)}")
+                else:
+                    self.ws[worker].most_representative = np.min(self.ws[worker].idxs) + mr
 
                 # Decode loss
                 epoch_loss_temp = float(epoch_loss_temp.decode())
@@ -334,6 +449,7 @@ class Master(object):
         # self.logger.debug(f"Len worker={len(self.workers)}, i-1={i-1}")
         assert i > 0
         assert i > 0
+        i -= n_connected
         d_theta /= i
         epoch_loss /= i
 
@@ -426,6 +542,10 @@ class Master(object):
                                 self.state = DIST_PARAMS
                             self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
+                            if delta < self.switch_delta and self.delay > 1 and not self.delay_change:
+                                self.delay_change = True
+                                self.n_iterations = i + (self.n_iterations - i) * self.delay
+                                self.logger.debug(f"Iterations now = {self.n_iterations}")
                 else:
                     if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
                         # Don't use the results if they've already been counted
@@ -434,7 +554,7 @@ class Master(object):
                         if command == b"CONNECT":
                             self.register_workers()
 
-                if i > self.n_iterations:
+                if i >= self.n_iterations:
                     completed = True
 
             # Tell workers to exit
@@ -500,9 +620,12 @@ class Master(object):
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
-@click.option('--scenario', '-s', default=0, type=int)
+@click.option('--scenario', '-s', default=2, type=int)
 @click.option('--n_most_representative', '-nmr', default=100, type=int)
-def run(n_iterations, learning_rate, verbose, scenario, n_most_representative):
+@click.option('--delay', '-d', default=1, type=int)
+@click.option('--switch_delta', '-sd', default=0.0074, type=float)
+def run(n_iterations, learning_rate, verbose, scenario, n_most_representative, delay, 
+switch_delta):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -516,7 +639,9 @@ def run(n_iterations, learning_rate, verbose, scenario, n_most_representative):
         learning_rate=learning_rate,
         verbose=verbose,
         scenario=scenario,
-        n_most_representative=n_most_representative
+        n_most_representative=n_most_representative,
+        delay=delay,
+        switch_delta=switch_delta
     )
     master.connect()
     time.sleep(1)
