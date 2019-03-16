@@ -104,3 +104,4 @@ ENV/
 # Local
 notebooks/
 logs/
+data/
