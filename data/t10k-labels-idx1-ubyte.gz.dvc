@@ -1,0 +1,7 @@
+md5: c4d6fccf4bca512ce4375d88385521d5
+outs:
+- cache: true
+  md5: ec29112dd5afa0611ce80d1b7f02629c
+  metric: false
+  path: data/t10k-labels-idx1-ubyte.gz
+wdir: ..
