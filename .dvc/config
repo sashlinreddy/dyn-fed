@@ -1,0 +1,4 @@
+['remote "ftmlremote"']
+url = /c/Users/nb304836/Documents/data/ftml
+[core]
+remote = ftmlremote
