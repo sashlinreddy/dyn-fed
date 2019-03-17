@@ -1,16 +1,19 @@
-from fault_tolerant_ml.ml.base import BaseEstimator
-from fault_tolerant_ml.ml.linear_model.base import LinearClassifierMixin
+import numpy as np
+
+# Local
+from ..base import BaseEstimator
+from .base import LinearClassifierMixin
 
 class LogisticRegression(BaseEstimator, LinearClassifierMixin):
 
-    def __init__(self, optimizer, max_iter):
+    def __init__(self, optimizer, max_iter=300):
         self.optimizer = optimizer
         self.max_iter = max_iter
 
     def fit(self, X, y):
         
         n_samples, n_features = X.shape
-        self.classes_ = np.unique(y)
+        self.classes_ = np.unique(y.argmax(axis=1))
         n_classes = len(self.classes_)
 
         # Initialize parameters
@@ -24,6 +27,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             theta_p = self.theta.copy()
             # Get predictions for current theta
             y_pred = self.predict(X)
+            print(f"y_pred.shape={y_pred.shape}")
             # Calculate and apply gradients
             self.theta, epoch_loss = self.optimizer.minimize(X, y, y_pred, self.theta)
             # Calculate change in theta

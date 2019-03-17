@@ -1,4 +1,4 @@
-from .metrics import accuracy_score
+from .metrics_temp import accuracy_score
 
 class BaseEstimator(object):
 

@@ -1,8 +1,8 @@
 import numpy as np
 
 # Local
-from fault_tolerant_ml.ml.base import BaseEstimator, ClassifierMixin
-from fault_tolerant_ml.ml.utils import maths_utils
+from ..base import BaseEstimator, ClassifierMixin
+from ..utils import maths_utils
 
 class LinearModel(BaseEstimator):
     """Base class for Linear Models
@@ -38,5 +38,5 @@ class LinearClassifierMixin(ClassifierMixin):
 
     def predict(self, X):
         scores = self._hypothesis(X)
-        labels = np.argmax(scores, axis=1)
-        return labels
+        # labels = np.argmax(scores, axis=1)
+        return scores
