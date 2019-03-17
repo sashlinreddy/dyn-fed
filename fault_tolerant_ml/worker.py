@@ -63,7 +63,7 @@ class Worker(object):
         # Calculate most representative data points
         # We regard data points that have a high loss to be most representative
         most_representative = np.argsort(-log_loss.flatten())[0:self.n_most_representative]
-        self.logger.debug(f"MR points={most_representative}")
+        # self.logger.debug(f"MR points={most_representative}")
 
         # Calculate processor loss - this is aggregated
         batch_loss = np.mean(log_loss)

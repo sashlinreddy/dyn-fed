@@ -1,5 +1,11 @@
 class WorkerState(object):
-
+    """Short description
+    
+    Long description
+    
+    Attributes:
+        attrib1 (type): Short description of attribute
+    """
     def __init__(self, identity):
         self.identity = identity
         self.state = True
@@ -15,7 +21,13 @@ class WorkerState(object):
         return f"<WorkerState identity={self.identity.decode()}>"
 
 class WorkerStates(object):
-
+    """Short description
+    
+    Long description
+    
+    Attributes:
+        attrib1 (type): Short description of attribute
+    """
     def __init__(self):
         self._states = {}
 
@@ -38,8 +50,20 @@ class WorkerStates(object):
         return rep
 
     def add_worker(self, worker):
+        """Adds new worker to dictonary of workers
+        
+        Long description
+        
+        Args:
+            worker (byte str): Unique identifier for worker
+        """
         if worker not in self._states:
             self._states[worker] = WorkerState(worker)
 
     def n_alive(self):
+        """Returns number of workers that are alive
+        
+        Returns:
+            n_alive (int): No. of alive workers
+        """
         return sum([s.state for s in self._states.values()])

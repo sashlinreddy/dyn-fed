@@ -3,17 +3,14 @@ from . import act_fns as af
 
 # Logistic regression
 def log_hypothesis(X, theta):
-    """
-    Hypothesis for logistic regression
+    """Hypothesis for logistic regression
     """
     s = np.dot(X, theta)
-    # (X[:, :, np.newaxis] == theta).sum(axis=1)
     return af.sigmoid(s)
 
 # Linear regression
 def lin_hypothesis(X, theta):
-    """
-    Hypothesis for linear regression - convex optimization problem
+    """Hypothesis for linear regression - convex optimization problem
     """
     s = np.dot(X, theta)
     return s

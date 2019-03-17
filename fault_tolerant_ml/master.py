@@ -289,7 +289,7 @@ class Master(object):
 
             else:
                 # Stack all indices from current dataset that we will use to remap
-                global_idxs = np.hstack([w.idxs for w in self.ws if not w.mr_idxs_used])
+                global_idxs = np.hstack([w.idxs for w in self.ws if (not w.mr_idxs_used) and (not w.idxs is None)])
                 new_range = np.arange(global_idxs.shape[0])
                 self.logger.debug(f"new data idxs shape={global_idxs.shape}")
 
@@ -540,7 +540,7 @@ class Master(object):
 
                             if self.state != REMAP:
                                 self.state = DIST_PARAMS
-                            self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+                            self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
                             if delta < self.switch_delta and self.delay > 1 and not self.delay_change:
                                 self.delay_change = True
@@ -619,7 +619,7 @@ class Master(object):
 @click.command()
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
-@click.option('--verbose', '-v', default=10, type=int)
+@click.option('--verbose', '-v', default=20, type=int)
 @click.option('--scenario', '-s', default=0, type=int)
 @click.option('--n_most_representative', '-nmr', default=100, type=int)
 @click.option('--delay', '-d', default=1, type=int)
