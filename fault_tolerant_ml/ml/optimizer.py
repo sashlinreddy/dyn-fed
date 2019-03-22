@@ -84,15 +84,17 @@ class SGDOptimizer(Optimizer):
         return theta
 
     def minimize(self, X, y, y_pred, theta):
-        """Short description
-        
-        Long description
+        """Minimizes gradients. Computes loss from actual and predicted, computes gradients and applies gradients
         
         Args:
-            arg1 (type): Short description of attribute
+            X (numpy.ndarray): Feature matrix
+            y (numpy.ndarray): Actual labels
+            y_pred (numpy.ndarray): Predicted labels
+            theta (numpy.ndarray): Parameter matrix
         
         Returns:
-            arg1 (type): Short description of attribute that's returned
+            theta (numpy.ndarray): Updated paramter matrix
+            batch_loss (float): Loss for current predictions and labels
         """
         # Calculate loss
         batch_loss = self.compute_loss(y, y_pred)

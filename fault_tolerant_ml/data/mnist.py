@@ -27,12 +27,20 @@ class MNist(BaseData):
         """Scales data between 0 and 1 and one-hot encodes labels
         """
         # Scale data
-        self.X_train = self.X_train / 255.0
-        self.X_test = self.X_test / 255.0
+        fac = 255  *0.99 + 0.01
+        self.X_train = self.X_train / fac
+        self.X_test = self.X_test / fac
 
         # One hot encode labels
         self.y_train = MNist._one_hot(self.y_train)
         self.y_test = MNist._one_hot(self.y_test)
+        # we don't want zeroes and ones in the labels neither:
+        self.y_train = np.where(self.y_train == 0, 0.01, 0.99)
+        self.y_test = np.where(self.y_test == 0, 0.01, 0.99)
+        # self.y_train[self.y_train==0] = 0.01
+        # self.y_train[self.y_train==1] = 0.99
+        # self.y_test[self.y_test==0] = 0.01
+        # self.y_test[self.y_test==1] = 0.99
 
     def prepare_data(self):
         """Reads in, reshapes, scales and one-hot encodes data

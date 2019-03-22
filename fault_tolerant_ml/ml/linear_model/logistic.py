@@ -27,7 +27,6 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             theta_p = self.theta.copy()
             # Get predictions for current theta
             y_pred = self.predict(X)
-            print(f"y_pred.shape={y_pred.shape}")
             # Calculate and apply gradients
             self.theta, epoch_loss = self.optimizer.minimize(X, y, y_pred, self.theta)
             # Calculate change in theta
