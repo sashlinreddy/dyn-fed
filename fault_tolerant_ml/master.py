@@ -34,7 +34,6 @@ class Master(object):
         self.publisher = None
         self.context   = zmq.Context()
 
-        self.ws = WorkerStates()
         self.watch_dog = WatchDog()
         self.workers = set()
         self.worker_states = {}
@@ -125,7 +124,6 @@ class Master(object):
         """
         # Distribute data/data indices to work on
         self.logger.debug("Distributing data")
-        # batch_size = int(np.ceil(self.data.n_samples / self.ws.n_alive()))
         batch_size = int(np.ceil(self.data.n_samples / self.watch_dog.n_alive))
         batch_gen = self.data.next_batch(self.X_train, self.y_train, batch_size)
 
@@ -140,7 +138,6 @@ class Master(object):
 
         # Iterate through workers and send
         i = 0
-        # for worker in self.ws:
         for worker in self.watch_dog.states:
 
             if worker.state:
@@ -169,7 +166,6 @@ class Master(object):
                 self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay])
                 i += 1
 
-        # self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.ws]}")
         self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.watch_dog.states]}")
 
     def register_workers(self, worker_id=None):
@@ -179,14 +175,6 @@ class Master(object):
             worker_id = self.pull_socket.recv()
 
         self.watch_dog.add_worker(worker_id)
-
-        # if worker_id not in self.ws:
-        #     self.logger.info(f"Worker Registered: {worker_id}")
-        #     self.ws.add_worker(worker_id)
-        # elif not self.ws[worker_id].state:
-        #     self.ws[worker_id].state = True
-        # else:
-        #     self.logger.debug("Worker asking for work again?")
 
     def start_next_task(self):
         """Starts new task depending on the state of the system.
@@ -210,28 +198,14 @@ class Master(object):
                 # Remap only data for workers that went down in previous iteration
                 # Get indices for dead workers
                 if self.mapping:
-                    # dead_worker = [w for w in self.ws if not w.mr_idxs_used and not w.state][0]
                     dead_worker = [w for w in self.watch_dog.states if not w.mr_idxs_used and not w.state][0]
-                    # remap_idxs = np.hstack([[w.mapping.get(i) for i in w.most_representative] for w in self.ws if not w.mr_idxs_used and not w.state])
                     remap_idxs = np.hstack([[w.mapping.get(i) for i in w.most_representative] for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
-                    # worker_ids_down = [w.identity for w in self.ws if not w.mr_idxs_used and not w.state]
                     worker_ids_down = [w.identity for w in self.watch_dog.states if not w.mr_idxs_used and not w.state]
                     self.logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
                     self.logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
-                    # idxs = []
-                    # for w in self.ws:
-                    #     w_idxs = []
-                    #     if not w.mr_idxs_used and not w.state:
-                    #         for i in w.idxs:
-                    #             w_idxs.append(w.mapping.get(i))
-                    #     idxs.append(w_idxs)
-
-                    # test = np.hstack(idxs)
-                    # assert np.all(remap_idxs == test)
                     
                     self.logger.debug(f"Remap idxs={remap_idxs.shape}")
                 else:
-                    # remap_idxs = np.hstack([w.most_representative for w in self.ws if not w.mr_idxs_used and not w.state])
                     remap_idxs = np.hstack([w.most_representative for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
 
                 n_samples = remap_idxs.shape[0]
@@ -245,13 +219,11 @@ class Master(object):
 
                 X_train, y_train = self.data.X_train[remap_idxs], self.data.y_train[remap_idxs]
 
-                # for w in self.ws:
                 for w in self.watch_dog.states:
                     if not w.mr_idxs_used:
                         w.mr_idxs_used = True
 
                 # Calculate batch size
-                # batch_size = int(np.ceil(n_samples / self.ws.n_alive()))
                 batch_size = int(np.ceil(n_samples / self.watch_dog.n_alive))
                 batch_gen = self.data.next_batch(X_train, y_train, batch_size)
 
@@ -265,7 +237,6 @@ class Master(object):
 
                 i = 0
                 # Distribute amongst workers
-                # for worker in self.ws:
                 for worker in self.watch_dog.states:
 
                     if worker.state:
@@ -303,7 +274,6 @@ class Master(object):
 
             else:
                 # Stack all indices from current dataset that we will use to remap
-                # global_idxs = np.hstack([w.idxs for w in self.ws if (not w.mr_idxs_used) and (not w.idxs is None)])
                 global_idxs = np.hstack([w.idxs for w in self.watch_dog.states if (not w.mr_idxs_used) and (not w.idxs is None)])
                 new_range = np.arange(global_idxs.shape[0])
                 self.logger.debug(f"new data idxs shape={global_idxs.shape}")
@@ -322,7 +292,6 @@ class Master(object):
 
                 self.X_train, self.y_train = self.data.update_xy(global_idxs)
 
-                # for w in self.ws:
                 for w in self.watch_dog.states:
                     if not w.mr_idxs_used:
                         w.mr_idxs_used = True
@@ -371,7 +340,6 @@ class Master(object):
         epoch_loss = 0.0
 
         self.logger.debug(f"Receiving gradients")
-        # n_alive_workers = self.ws.n_alive()
         n_alive_workers = self.watch_dog.n_alive
         self.logger.debug(f"Alive workers={n_alive_workers}")
 
@@ -403,16 +371,13 @@ class Master(object):
                         running_time += time.time() - start_i
                         if running_time > timeout:
                             self.logger.debug(f"Running time exceeded timeout={running_time}")
-                            # active_workers = set([w.identity for w in self.ws if w.state])
                             active_workers = set(self.watch_dog.active_workers)
                             # Get workers that we did not receive work from
                             diff = active_workers - workers_received
                             for w in diff:
                                 # Set dead workers state to false
-                                # self.ws[w].state = False
                                 self.watch_dog.states[w].state = False
-                                if self.scenario != 2:
-                                    # self.ws[w].idxs = self.ws[w].most_representative
+                                if self.scenario != 2:                                    
                                     self.watch_dog.states[w].idxs = self.watch_dog.states[w].most_representative
                             
                             self.state = REMAP
@@ -435,7 +400,6 @@ class Master(object):
                         continue
 
                 # Calculate weighting
-                # samples_for_worker = self.ws[worker].n_samples
                 samples_for_worker = self.watch_dog.states[worker].n_samples
                 beta = (samples_for_worker / self.data.n_samples)
 
@@ -447,11 +411,9 @@ class Master(object):
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
                 if self.scenario == 2:
-                    # self.ws[worker].most_representative = self.ws[worker].lower_bound + mr
                     self.watch_dog.states[worker].most_representative = self.watch_dog.states[worker].lower_bound + mr
                     self.logger.debug(f"Min mr={np.min(self.watch_dog.states[worker].most_representative)}, Max mr={np.max(self.watch_dog.states[worker].most_representative)}")
                 else:
-                    # self.ws[worker].most_representative = np.min(self.ws[worker].idxs) + mr
                     self.watch_dog.states[worker].most_representative = np.min(self.watch_dog.states[worker].idxs) + mr
                     
 
@@ -495,7 +457,6 @@ class Master(object):
             else:
                 break
 
-        # self.logger.debug(f"Signed up all workers = {self.ws}")
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
     def main_loop(self):
@@ -534,7 +495,6 @@ class Master(object):
 
                 events = dict(self.poller.poll())
 
-                # if len(self.ws) > 0:
                 if len(self.watch_dog.states) > 0:
                     if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
                         self.start_next_task()
