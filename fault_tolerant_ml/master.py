@@ -645,9 +645,8 @@ switch_delta):
     """
 
     if "LOGDIR" in os.environ:
-        print(os.environ["LOGDIR"])
         from fault_tolerant_ml.lib.io.file_io import flush_dir
-        ignore_dir = os.path.join(os.environ["LOGDIR"], "tf/")
+        ignore_dir = [os.path.join(os.environ["LOGDIR"], "tf/")]
         flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
     master = Master(
