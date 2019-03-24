@@ -1,27 +1,45 @@
+"""Contains all worker logic for fault tolerant ml
+
+All worker devices will contain worker logic
+"""
+
 import zmq.green as zmq
 import time
 import numpy as np
 import uuid
 import logging
 import click
+import os
+# from dotenv import find_dotenv, load_dotenv
 
 # Local
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.ml import hypotheses, loss_fns
+from fault_tolerant_ml.tools import TFLogger
 
 class Worker(object):
-
+    """Worker class for distributed machine learning system
+    
+    Attributes:
+        worker_id (str): Unique identifier for worker
+        subscriber (zmq.Socket): zmq.SUB socket which subscribes to all master published messages
+        connected (bool): Whether or not the worker is connected successfully to the master
+    """
     def __init__(self, verbose):
 
         self.worker_id = str(uuid.uuid4())
         self.subscriber = None
-        self.starter = None
-        # self.logger = logging.getLogger("masters")
-        self.logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self.connected = False
         self.hypothesis = hypotheses.log_hypothesis
         self.gradient = loss_fns.cross_entropy_gradient
+
+        self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
+        self.tf_logger = None
+
+        if "LOGDIR" in os.environ:
+            logdir = os.path.join(os.environ["LOGDIR"], f"tf/{self.worker_id}")
+            self.tf_logger = TFLogger(logdir)
 
     def connect(self):
         # Prepare our context and publisher
@@ -51,7 +69,7 @@ class Worker(object):
 
     def do_work(self, X, y, theta):
 
-        self.logger.info('Doing work')
+        self._logger.info('Doing work')
         # Get predictions
         h = self.hypothesis(X, theta)
         # Calculate error/residuals
@@ -63,7 +81,7 @@ class Worker(object):
         # Calculate most representative data points
         # We regard data points that have a high loss to be most representative
         most_representative = np.argsort(-log_loss.flatten())[0:self.n_most_representative]
-        # self.logger.debug(f"MR points={most_representative}")
+        # self._logger.debug(f"MR points={most_representative}")
 
         # Calculate processor loss - this is aggregated
         batch_loss = np.mean(log_loss)
@@ -95,14 +113,14 @@ class Worker(object):
 
         if self.scenario == 2 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])
-            self.logger.debug(f"New data shape={self.X.shape}")
+            self._logger.debug(f"New data shape={self.X.shape}")
         else:
             self.X, self.y = data[:, :n_features], data[:, -n_classes:]
 
         # Check if we need to add a new axis if the dimension of y is not 2d
         if len(self.y.shape) < 2:
             self.y = self.y[:, np.newaxis]
-        self.logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
+        self._logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
         self.have_work = True
 
         return n_samples, n_features, n_classes
@@ -113,7 +131,7 @@ class Worker(object):
         poller = self.setup_poller()
         # poller.register(self.push_socket, zmq.POLLOUT)
 
-        self.logger.info('Started Worker %s' % self.worker_id)
+        self._logger.info('Started Worker %s' % self.worker_id)
 
         try:
             start = time.time()
@@ -134,28 +152,28 @@ class Worker(object):
 
                     if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
                         command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
-                        self.logger.debug(f"Command={command}")
+                        self._logger.debug(f"Command={command}")
 
                         if command == b"WORK":
                             n_samples, n_features, n_classes = self.receive_data(start=False)
 
                         if command == b"HEARTBEAT":
                             self.ctrl_socket.send(b"PONG")
-                            self.logger.debug("PONG")
+                            self._logger.debug("PONG")
 
                     if (self.subscriber in events) and (events.get(self.subscriber) == zmq.POLLIN):
                         # Read envelope with address
-                        self.logger.debug("Receiving contents")
+                        self._logger.debug("Receiving contents")
                         contents = self.subscriber.recv_multipart()
                         address = contents[0]
                         cmd = contents[1]
                         msg = contents[2:]
                         packet_size = np.sum([len(m) for m in contents])
 
-                        self.logger.debug(f"Packet size={packet_size} bytes")
+                        self._logger.debug(f"Packet size={packet_size} bytes")
 
                         if cmd == b"EXIT":
-                            self.logger.info("Received EXIT command")
+                            self._logger.info("Received EXIT command")
                             break
                         else:
 
@@ -171,7 +189,7 @@ class Worker(object):
                                 buf = memoryview(data)
                                 theta = np.frombuffer(buf, dtype=dtype)
                                 theta = theta.reshape(eval(shape))
-                                self.logger.info(f"theta.shape{theta.shape}")
+                                self._logger.info(f"theta.shape{theta.shape}")
                                 
                                 theta = theta.copy()
                             elif self.scenario == 1:
@@ -199,7 +217,7 @@ class Worker(object):
                             while True:
                             # Each worker does work and we get the resulting gradients
                                 d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
-                                self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
+                                self._logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
 
                                 # Update the global parameters with weighted error
                                 for k in np.arange(n_classes):
@@ -208,6 +226,8 @@ class Worker(object):
                                 # Let global theta influence local theta
                                 for k in np.arange(theta.shape[1]):
                                     theta[:, k] = (self.alpha) * theta[:, k] + (1 - self.alpha) * theta_g[:, k]
+
+                                self.tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
 
                                 i += 1
                                 if count == self.delay:
@@ -223,16 +243,16 @@ class Worker(object):
 
                             # self.push_socket.send(b"WORK")
                             # self.router_socket.send_multipart([b"MASTER", b"WORK"])
-                            # self.logger.debug("Sent work command")
+                            # self._logger.debug("Sent work command")
                             # self.router_socket.send_multipart([b"WORK", msg, loss, mr], zmq.NOBLOCK)
                             self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
 
-                            self.logger.debug("Sent work back to master")
+                            self._logger.debug("Sent work back to master")
                 else:
 
-                    self.logger.info("Connecting to server")
+                    self._logger.info("Connecting to server")
                     self.push_socket.send_multipart([b"CONNECT", self.worker_id.encode()])
-                    self.logger.debug("Connected")
+                    self._logger.debug("Connected")
                     self.connected = True
 
                     command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
@@ -246,11 +266,11 @@ class Worker(object):
 
             end = time.time()
 
-            self.logger.info("Time taken for %d iterations is %7.6fs" % (i-1, end-start))
+            self._logger.info("Time taken for %d iterations is %7.6fs" % (i-1, end-start))
         except KeyboardInterrupt as e:
-            self.logger.info("Keyboard quit")
+            self._logger.info("Keyboard quit")
         except zmq.ZMQError:
-            self.logger.info("ZMQError")
+            self._logger.info("ZMQError")
         finally:
             poller.unregister(self.router_socket)
             poller.unregister(self.subscriber)
@@ -265,11 +285,14 @@ class Worker(object):
 @click.command()
 @click.option('--verbose', '-v', default=10, type=int)
 def run(verbose):
+
+    # load_dotenv(find_dotenv())
+
     worker = Worker(
         verbose=verbose
     )
     worker.connect()
-    time.sleep(1)
+    # time.sleep(1)
     worker.start()
 
 if __name__ == "__main__":

@@ -78,7 +78,7 @@ class WatchDog(object):
         self._worker_states = WorkerStates()
         self._n_alive = 0
 
-        self.logger = logging.getLogger("masters")
+        self.logger = logging.getLogger("ftml")
 
     @property
     def states(self):

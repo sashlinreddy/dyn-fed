@@ -1,1 +1,1 @@
-from .watch_dog import WatchDog
+from .model_logger import TFLogger

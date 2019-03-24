@@ -7,7 +7,6 @@
 import unittest
 from click.testing import CliRunner
 
-from fault_tolerant_ml import fault_tolerant_ml
 from fault_tolerant_ml import cli
 
 

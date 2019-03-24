@@ -74,7 +74,7 @@ def setup_logger(filename='logfile.log', level=10, console_logging=True):
     # for f in os.listdir("logs"):
     #     os.remove(f)
 
-    logger = logging.getLogger('masters')
+    logger = logging.getLogger('ftml')
     # Setting level
     logger.setLevel(level)
 

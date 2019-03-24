@@ -5,7 +5,7 @@
 
 from setuptools import setup, find_packages
 
-with open('README.rst') as readme_file:
+with open('README.md') as readme_file:
     readme = readme_file.read()
 
 with open('HISTORY.rst') as history_file:
@@ -15,7 +15,7 @@ requirements = ['Click>=6.0', ]
 
 setup_requirements = [ ]
 
-test_requirements = [ ]
+test_requirements = ['nose']
 
 setup(
     author="Sashlin Reddy",
@@ -47,7 +47,7 @@ setup(
     name='fault_tolerant_ml',
     packages=find_packages(include=['fault_tolerant_ml']),
     setup_requires=setup_requirements,
-    test_suite='tests',
+    test_suite='nose.collector',
     tests_require=test_requirements,
     url='https://github.com/sashr07/fault_tolerant_ml',
     version='0.1.0',

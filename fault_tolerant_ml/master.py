@@ -1,3 +1,11 @@
+"""Contains all master logic for fault tolerant ml. 
+
+Any master devices should run the master logic.
+"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import time
 import zmq.green as zmq
 import numpy as np
@@ -5,7 +13,7 @@ import logging
 import click
 import gevent
 import signal
-import binascii
+import os
 
 # Local
 from fault_tolerant_ml.utils import zhelpers
@@ -13,8 +21,8 @@ from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData
 from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
-from fault_tolerant_ml.core import WorkerState, WorkerStates
-from fault_tolerant_ml.tools import WatchDog
+from fault_tolerant_ml.distribute import WatchDog
+from fault_tolerant_ml.tools import TFLogger
 
 START       = 0
 MAP         = 1
@@ -54,6 +62,11 @@ class Master(object):
 
         # Setup logger
         self.logger = setup_logger(level=verbose)
+
+        self.tf_logger = None
+        if "LOGDIR" in os.environ:
+            logdir = os.path.join(os.environ["LOGDIR"], "tf/master")
+            self.tf_logger = TFLogger(logdir)
 
     @staticmethod
     def get_quantized_params(theta):
@@ -136,6 +149,8 @@ class Master(object):
         alpha = str(self.alpha).encode()
         delay = str(self.delay).encode()
 
+        labels_per_worker = {}
+
         # Iterate through workers and send
         i = 0
         for worker in self.watch_dog.states:
@@ -146,6 +161,8 @@ class Master(object):
                 X_batch, y_batch = next(batch_gen)
                 self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
                 batch_data = np.hstack((X_batch, y_batch))
+
+                labels_per_worker[worker] = np.unique(y_batch, return_counts=True)
 
                 # Encode data
                 dtype = batch_data.dtype.str.encode()
@@ -167,6 +184,8 @@ class Master(object):
                 i += 1
 
         self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.watch_dog.states]}")
+
+        self.logger.info(f"Labels per worker={labels_per_worker}")
 
     def register_workers(self, worker_id=None):
         """Registers workers in a round robin fashion
@@ -522,6 +541,10 @@ class Master(object):
                             for k in np.arange(self.data.n_classes):
                                 self.theta[:, k] = self.theta[:, k] - self.alpha * d_theta[:, k]
 
+                            if self.tf_logger is not None:
+                                self.tf_logger.histogram("theta-master", self.theta, i, bins=self.n_iterations)
+                                self.tf_logger.scalar("epoch-master", epoch_loss, i)
+
                             delta = np.max(np.abs(theta_p - self.theta))
 
                             if self.state != REMAP:
@@ -620,6 +643,13 @@ switch_delta):
         verbose (int): The logger level as an integer. See more in the logging file for different options
         scenario (int): The scenario we would like to run
     """
+
+    if "LOGDIR" in os.environ:
+        print(os.environ["LOGDIR"])
+        from fault_tolerant_ml.lib.io.file_io import flush_dir
+        ignore_dir = os.path.join(os.environ["LOGDIR"], "tf/")
+        flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
+
     master = Master(
         n_iterations=n_iterations,
         learning_rate=learning_rate,
