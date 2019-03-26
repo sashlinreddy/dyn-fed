@@ -23,6 +23,7 @@ from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.tools import TFLogger
+from fault_tolerant_ml.distribute.distributor import Distributor
 
 START       = 0
 MAP         = 1
@@ -48,11 +49,13 @@ class Master(object):
         self.mapping = {}
         self.state = START
 
+        self.distributor = Distributor(gen_func=OccupancyData.next_batch)
+
         # Model variables
         self.delay = delay
         self.switch_delta = switch_delta
         self.n_iterations = int(np.ceil(n_iterations / self.delay))
-        self.alpha = learning_rate
+        self.learning_rate = learning_rate
         self.hypothesis = hypotheses.log_hypothesis
         self.delay_change = False
 
@@ -138,7 +141,7 @@ class Master(object):
         # Distribute data/data indices to work on
         self.logger.debug("Distributing data")
         batch_size = int(np.ceil(self.data.n_samples / self.watch_dog.n_alive))
-        batch_gen = self.data.next_batch(self.X_train, self.y_train, batch_size)
+        batch_gen = OccupancyData.next_batch(self.X_train, self.y_train, batch_size)
 
         # Encode to bytes
         n_samples = str(self.data.n_samples).encode()
@@ -146,7 +149,7 @@ class Master(object):
         n_classes = str(self.data.n_classes).encode()
         scenario = str(self.scenario).encode()
         n_most_representative = str(self.n_most_representative).encode()
-        alpha = str(self.alpha).encode()
+        learning_rate = str(self.learning_rate).encode()
         delay = str(self.delay).encode()
 
         labels_per_worker = {}
@@ -180,7 +183,7 @@ class Master(object):
                     worker.upper_bound = upper_bound
 
                 self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
-                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay])
+                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, learning_rate, delay])
                 i += 1
 
         self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.watch_dog.states]}")
@@ -206,7 +209,19 @@ class Master(object):
             self.state = MAP
 
         if self.state == MAP:
-            self.distribute_data()
+            # self.distribute_data()
+            data = (self.X_train, self.y_train)
+            params = {}
+            params["n_alive"] = self.watch_dog.n_alive
+            params["n_samples"] = self.data.n_samples
+            params["n_features"] = self.data.n_features
+            params["n_classes"] = self.data.n_classes
+            params["scenario"] = self.scenario
+            params["n_most_representative"] = self.n_most_representative
+            params["learning_rate"] = self.learning_rate
+            params["delay"] = self.delay
+
+            self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
             self.state = DIST_PARAMS
 
         if self.state == REMAP:
@@ -244,14 +259,14 @@ class Master(object):
 
                 # Calculate batch size
                 batch_size = int(np.ceil(n_samples / self.watch_dog.n_alive))
-                batch_gen = self.data.next_batch(X_train, y_train, batch_size)
+                batch_gen = OccupancyData.next_batch(X_train, y_train, batch_size)
 
                 n_samples = str(n_samples).encode()
                 n_features = str(self.data.n_features).encode()
                 n_classes = str(self.data.n_classes).encode()
                 scenario = str(self.scenario).encode()
                 n_most_representative = str(self.n_most_representative).encode()
-                alpha = str(self.alpha).encode()
+                alpha = str(self.learning_rate).encode()
                 delay = str(self.delay).encode()
 
                 i = 0
@@ -539,7 +554,7 @@ class Master(object):
 
                             # Update the global parameters with weighted error
                             for k in np.arange(self.data.n_classes):
-                                self.theta[:, k] = self.theta[:, k] - self.alpha * d_theta[:, k]
+                                self.theta[:, k] = self.theta[:, k] - self.learning_rate * d_theta[:, k]
 
                             if self.tf_logger is not None:
                                 self.tf_logger.histogram("theta-master", self.theta, i, bins=self.n_iterations)
@@ -631,7 +646,7 @@ class Master(object):
 @click.option('--verbose', '-v', default=20, type=int)
 @click.option('--scenario', '-s', default=0, type=int)
 @click.option('--n_most_representative', '-nmr', default=100, type=int)
-@click.option('--delay', '-d', default=1, type=int)
+@click.option('--delay', '-d', default=10, type=int)
 @click.option('--switch_delta', '-sd', default=0.0074, type=float)
 def run(n_iterations, learning_rate, verbose, scenario, n_most_representative, delay, 
 switch_delta):
@@ -647,6 +662,7 @@ switch_delta):
     if "LOGDIR" in os.environ:
         from fault_tolerant_ml.lib.io.file_io import flush_dir
         ignore_dir = [os.path.join(os.environ["LOGDIR"], "tf/")]
+        # ignore_dir = []
         flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
     master = Master(

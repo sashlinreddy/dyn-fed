@@ -227,7 +227,8 @@ class Worker(object):
                                 for k in np.arange(theta.shape[1]):
                                     theta[:, k] = (self.alpha) * theta[:, k] + (1 - self.alpha) * theta_g[:, k]
 
-                                self.tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
+                                if self.tf_logger is not None:
+                                    self.tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
 
                                 i += 1
                                 if count == self.delay:

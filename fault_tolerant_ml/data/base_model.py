@@ -35,7 +35,8 @@ class BaseData(object):
 
         return data
 
-    def next_batch(self, X, y, batch_size):
+    @staticmethod
+    def next_batch(X, y, batch_size):
         """
         Returns a batch of the data of size batch_size. If the
         batch_size=1 then it is normal stochastic gradient descent

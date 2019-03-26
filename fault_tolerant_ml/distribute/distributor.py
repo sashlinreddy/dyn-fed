@@ -1,4 +1,6 @@
 import logging
+import zmq.green as zmq
+import numpy as np
 
 class Distributor(object):
     """Responsible for distributing data
@@ -6,48 +8,49 @@ class Distributor(object):
     Long description
     
     Attributes:
-        attrib1 (type): Short description of attribute
+        gen_func (generator func): A generator function to distribute the data
     """
     
-    def __init__(self):
+    def __init__(self, gen_func):
         
         self._logger = logging.getLogger("ftml")
+        self.gen_func = gen_func
 
-    def distribute(self, data, batch_size, destinations):
+    def distribute(self, socket, data, workers, params):
         """Sends the data to the necessary destination
         
         Long description
         
         Args:
-            arg1 (type): Short description of attribute
-        
-        Returns:
-            arg1 (type): Short description of attribute that's returned
+            data (numpy.ndarray): Data matrix that will be partitioned and distributed to each worker
+            workers (distribute.WorkerStates): worker state objects containing state of worker and other info
+            params (dict): Additional params to send to all workers
         """
         
         # Distribute data/data indices to work on
-        self.logger.debug("Distributing data")
-        batch_size = int(np.ceil(self.data.n_samples / self.watch_dog.n_alive))
-        batch_gen = self.data.next_batch(self.X_train, self.y_train, batch_size)
+        self._logger.debug("Distributing data")
+        X_train, y_train = data
+        batch_size = int(np.ceil(params["n_samples"] / params["n_alive"]))
+        batch_gen = self.gen_func(X_train, y_train, batch_size)
 
         # Encode to bytes
-        n_samples = str(self.data.n_samples).encode()
-        n_features = str(self.data.n_features).encode()
-        n_classes = str(self.data.n_classes).encode()
-        scenario = str(self.scenario).encode()
-        n_most_representative = str(self.n_most_representative).encode()
-        alpha = str(self.alpha).encode()
-        delay = str(self.delay).encode()
+        n_samples = str(params["n_samples"]).encode()
+        n_features = str(params["n_features"]).encode()
+        n_classes = str(params["n_classes"]).encode()
+        scenario = str(params["scenario"]).encode()
+        n_most_representative = str(params["n_most_representative"]).encode()
+        learning_rate = str(params["learning_rate"]).encode()
+        delay = str(params["delay"]).encode()
 
         # Iterate through workers and send
         i = 0
-        for worker in self.watch_dog.states:
+        for worker in workers:
 
             if worker.state:
                 worker.mr_idxs_used = False
                 # Get next batch to send
                 X_batch, y_batch = next(batch_gen)
-                self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
+                self._logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
                 batch_data = np.hstack((X_batch, y_batch))
 
                 # Encode data
@@ -61,10 +64,10 @@ class Distributor(object):
                 upper_bound = lower_bound + X_batch.shape[0]
                 worker.idxs = np.arange(lower_bound, upper_bound)
                 if worker.most_representative is None:
-                    worker.most_representative = np.zeros((self.n_most_representative,))
+                    worker.most_representative = np.zeros((params["n_most_representative"],))
                     worker.lower_bound = lower_bound
                     worker.upper_bound = upper_bound
 
-                self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
-                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay])
+                socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
+                socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, learning_rate, delay])
                 i += 1
