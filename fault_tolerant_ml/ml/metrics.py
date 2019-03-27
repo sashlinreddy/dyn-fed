@@ -1,9 +1,13 @@
 import numpy as np
+import sys
 from . import hypotheses as hyp
 
-def print_confusion_matrix(confusion_matrix):
-    """
-    This function performs formatted printing of the confusion matrix.
+def print_confusion_matrix(confusion_matrix, targets):
+    """This function performs formatted printing of the confusion matrix.
+
+    Args:
+        confusion_matrix (numpy.ndarray): Confusion matrix of learned hypothesis
+        targets (numpy.ndarray): Actual targets
     """
     rows, cols = confusion_matrix.shape
     print("Confusion Matrix:")
@@ -28,13 +32,21 @@ def get_key(key_value, targets):
             return key
 
 def test_hypothesis(X, y, theta):
-    """
+    """Tests the learned hypothesis.
+    
     This function tests the learned hypothesis, and produces
     the confusion matrix as the output. The diagonal elements of the confusion
     matrix refer to the number of correct classifications and non-diagonal elements
     fefer to the number of incorrect classifications.
-    """
 
+    Args:
+        X (numpy.ndarray): Feature matrix
+        y (numpy.ndarray): Label matrix
+        theta (numpy.ndarray): dxc matrix where d is the number of features and c is the        number of classes
+
+    Returns:
+        confusion_matrix (numpy.ndarray): Confusion matrix of learned hypothesis
+    """
     h = hyp.log_hypothesis(X, theta)
 
     binary_classification = False

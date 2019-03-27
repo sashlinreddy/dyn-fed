@@ -39,6 +39,12 @@ class OccupancyData(BaseData):
 
         return X_res, y_res
 
+    def update_xy(self, idxs):
+        X_train = self.X_train[idxs]
+        y_train = self.y_train[idxs]
+        self.n_samples = X_train.shape[0]
+        return X_train, y_train
+
     def transform(self):
 
         # Train test split

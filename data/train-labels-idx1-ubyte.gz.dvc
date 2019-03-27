@@ -1,0 +1,7 @@
+md5: b9edc6f963d4a79edd560fb0e210a3c5
+outs:
+- cache: true
+  md5: d53e105ee54ea40749a09fcbcd1e9432
+  metric: false
+  path: data/train-labels-idx1-ubyte.gz
+wdir: ..

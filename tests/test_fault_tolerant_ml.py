@@ -7,7 +7,6 @@
 import unittest
 from click.testing import CliRunner
 
-from fault_tolerant_ml import fault_tolerant_ml
 from fault_tolerant_ml import cli
 
 
@@ -20,8 +19,18 @@ class TestFault_tolerant_ml(unittest.TestCase):
     def tearDown(self):
         """Tear down test fixtures, if any."""
 
-    def test_000_something(self):
-        """Test something."""
+    def test_pwd_dotenv(self):
+        """Test pwd in dotenv file"""
+        from dotenv import load_dotenv, find_dotenv
+        from pathlib import Path
+        import os
+
+        load_dotenv(find_dotenv())
+        project_dir = Path(__file__).resolve().parents[1]
+        logdir = os.environ["LOGDIR"]
+        print(f"project_dir={project_dir}, logdir={logdir}")
+
+        assert logdir == os.path.join(project_dir, "logs")
 
     def test_command_line_interface(self):
         """Test the CLI."""

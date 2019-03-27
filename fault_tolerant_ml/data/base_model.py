@@ -7,6 +7,20 @@ class BaseData(object):
         self.X = None
         self.y = None
 
+    @staticmethod
+    def _one_hot(labels):
+        """Returns one hot encoded representation of data 
+        
+        Args:
+            labels (numpy.ndarray): nx1 numpy vector of labels to be one-hot encoded where
+                n is the number of samples in the dataset
+        
+        Returns:
+            one_hot (numpy.ndarray): nxd one-hot encoded numpy matrix where d is the number     of unique labels in the 1d numpy vector
+        """
+        unique_labels = np.unique(labels)
+        return (unique_labels == labels[:, np.newaxis]).astype(int)
+
     def prepare_data(self):
         raise NotImplementedError("Child required to implement prepare data method")
 
@@ -21,7 +35,8 @@ class BaseData(object):
 
         return data
 
-    def next_batch(self, X, y, batch_size):
+    @staticmethod
+    def next_batch(X, y, batch_size):
         """
         Returns a batch of the data of size batch_size. If the
         batch_size=1 then it is normal stochastic gradient descent

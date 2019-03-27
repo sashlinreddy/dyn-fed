@@ -1,0 +1,7 @@
+md5: bc5a70026edf48006ff4d95e88084ada
+outs:
+- cache: true
+  md5: f68b3c2dcbeaaa9fbdd348bbdeb94873
+  metric: false
+  path: data/train-images-idx3-ubyte.gz
+wdir: ..

@@ -1,8 +1,20 @@
+"""Contains all master logic for fault tolerant ml. 
+
+Any master devices should run the master logic.
+"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import time
-import zmq
+import zmq.green as zmq
 import numpy as np
 import logging
 import click
+import gevent
+import signal
+import os
+# from dotenv import find_dotenv, load_dotenv
 
 # Local
 from fault_tolerant_ml.utils import zhelpers
@@ -10,40 +22,61 @@ from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData
 from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
-
-START       = 0
-MAP         = 1
-DIST_PARAMS = 2
-REDUCE      = 3 
+from fault_tolerant_ml.distribute import WatchDog
+from fault_tolerant_ml.tools import TFLogger
+from fault_tolerant_ml.distribute.distributor import Distributor
+from fault_tolerant_ml.distribute.states import *
 
 class Master(object):
-
-    def __init__(self, n_iterations, learning_rate, verbose, scenario):
+    """Master class for distributed machine learning system
+    """
+    def __init__(self, n_iterations, learning_rate, verbose, scenario, n_most_representative,
+    delay, switch_delta):
         
         # ZMQ variables
         self.ctrl_socket = None
         self.publisher = None
-        self.receiver = None
+        self.context   = zmq.Context()
 
+        self.watch_dog = WatchDog()
         self.workers = set()
+        self.worker_states = {}
+        self.mapping = {}
         self.state = START
 
-        # Model variables
-        self.n_iterations = n_iterations
-        self.alpha = learning_rate
-        self.hypothesis = hypotheses.log_hypothesis
+        self.distributor = Distributor(gen_func=OccupancyData.next_batch)
 
-        self.samples_per_worker = {}
-        self.worker_idxs = {}
+        # Model variables
+        self.delay = delay
+        self.switch_delta = switch_delta
+        self.n_iterations = int(np.ceil(n_iterations / self.delay))
+        self.learning_rate = learning_rate
+        self.hypothesis = hypotheses.log_hypothesis
+        self.delay_change = False
+
         self.scenario = scenario
+        self.n_most_representative = n_most_representative
         self.times = []
 
         # Setup logger
-        # self.logger = logging.getLogger("masters")
         self.logger = setup_logger(level=verbose)
+
+        self.tf_logger = None
+        if "LOGDIR" in os.environ:
+            logdir = os.path.join(os.environ["LOGDIR"], "tf/master")
+            self.tf_logger = TFLogger(logdir)
 
     @staticmethod
     def get_quantized_params(theta):
+        """Quantizes parameters
+
+        Arguments:
+            theta (np.ndarray): Parameter matrix to be quantized
+
+        Returns:
+            msg (np.ndarray): Structured numpy array that is quantized
+
+        """
         min_theta_val = theta.min() + 1e-8
         max_theta_val = theta.max() + 1e-8
         interval = 8
@@ -60,183 +93,407 @@ class Master(object):
         return msg
 
     def connect(self):
-        
+        """Connects to necessary sockets
+        """
         # Prepare our context and publisher
-        self.context   = zmq.Context()
         self.publisher = self.context.socket(zmq.PUB)
         self.publisher.bind("tcp://*:5563")
 
         self.pull_socket = self.context.socket(zmq.PULL)
         self.pull_socket.bind("tcp://*:5562")
 
-        self.push_socket = self.context.socket(zmq.PUSH)
-        self.push_socket.bind("tcp://*:5564")
+        self.router_socket = self.context.socket(zmq.ROUTER)
+        self.router_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
+        self.router_socket.bind("tcp://*:5564")
 
         self.ctrl_socket = self.context.socket(zmq.ROUTER)
         self.ctrl_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
         self.ctrl_socket.bind("tcp://*:5565")
+    
+    def setup_poller(self):
+        poller = zmq.Poller()
+        poller.register(self.pull_socket, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.router_socket, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.publisher, zmq.POLLOUT | zmq.POLLERR)
+
+        return poller
+
+    def send_heartbeat(self):
+        for worker in self.workers:
+            self.logger.debug('PING')
+            self.worker_states[worker] = False
+            self.ctrl_socket.send_multipart([worker, b'HEARTBEAT'])
+
+    def heartbeat_loop(self):
+        while self.state != COMPLETE:
+            self.send_heartbeat()
+            gevent.sleep(0.5)
+
+    def set_params(self):
+        """Prepares parameters to be sent by the distributor
+        """
+        params = {}
+        params["n_alive"] = self.watch_dog.n_alive
+        params["n_samples"] = self.data.n_samples
+        params["n_features"] = self.data.n_features
+        params["n_classes"] = self.data.n_classes
+        params["scenario"] = self.scenario
+        params["n_most_representative"] = self.n_most_representative
+        params["learning_rate"] = self.learning_rate
+        params["delay"] = self.delay
+        params["state"] = self.state
+        params["mapping"] = self.mapping
+        return params
 
     def distribute_data(self):
+        """Distributes the data to the workers
+        """
         # Distribute data/data indices to work on
-
-        # batch_size = int(np.ceil(data.n_samples / n_workers))
-        # for X_batch, y_batch in data.next_batch(batch_size):
-
-        #     data = X_batch.tostring()
-        #     self.logger.info("Sending data")
-        #     self.push_socket.send(data)
-
         self.logger.debug("Distributing data")
-        batch_size = int(np.ceil(self.data.n_samples / len(self.workers)))
-        batch_gen = self.data.next_batch(self.data.X_train, self.data.y_train, batch_size)
+        batch_size = int(np.ceil(self.data.n_samples / self.watch_dog.n_alive))
+        batch_gen = OccupancyData.next_batch(self.X_train, self.y_train, batch_size)
 
-        ns_enc = str(self.data.n_samples).encode()
-        samp_feat_d = dict(
-            n_samples=self.data.n_samples,
-            n_features=self.data.n_features,
-            n_classes=self.data.n_classes,
-            scenario=self.scenario
-        )
+        # Encode to bytes
+        n_samples = str(self.data.n_samples).encode()
+        n_features = str(self.data.n_features).encode()
+        n_classes = str(self.data.n_classes).encode()
+        scenario = str(self.scenario).encode()
+        n_most_representative = str(self.n_most_representative).encode()
+        learning_rate = str(self.learning_rate).encode()
+        delay = str(self.delay).encode()
 
-        for i, worker in enumerate(self.workers):
+        labels_per_worker = {}
 
-            X_batch, y_batch = next(batch_gen)
-            self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
-            batch_data = np.hstack((X_batch, y_batch))
-            msg = batch_data.tostring()
-            self.samples_per_worker[worker] = X_batch.shape[0]
-            lower_bound = X_batch.shape[0] * i
-            upper_bound = lower_bound + X_batch.shape[0]
-            self.worker_idxs[worker] = np.arange(lower_bound, upper_bound)
-            
-            self.ctrl_socket.send(worker, zmq.SNDMORE)
-            # self.ctrl_socket.send(b"", zmq.SNDMORE)
-            zhelpers.send_array(self.ctrl_socket, batch_data)
-            self.ctrl_socket.send(worker, zmq.SNDMORE)
-            self.ctrl_socket.send_json(samp_feat_d)
-            # self.ctrl_socket.send_multipart([worker, msg])
+        # Iterate through workers and send
+        i = 0
+        for worker in self.watch_dog.states:
 
-        self.logger.debug(f"Worker ranges={[(np.min(idxs), np.max(idxs)) for idxs in self.worker_idxs.values()]}")
+            if worker.state:
+                worker.mr_idxs_used = False
+                # Get next batch to send
+                X_batch, y_batch = next(batch_gen)
+                self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
+                batch_data = np.hstack((X_batch, y_batch))
 
-    def register_workers(self):
-        
-        worker_id = self.pull_socket.recv()
+                labels_per_worker[worker] = np.unique(y_batch, return_counts=True)
 
-        if worker_id not in self.workers:
-            self.logger.info(f"Worker Registered: {worker_id}")
-            self.workers.add(worker_id)
-            # self.ctrl_socket.send_multipart([worker_id, ])
-        else:
-            self.logger.debug("Worker asking for work again?")
+                # Encode data
+                dtype = batch_data.dtype.str.encode()
+                shape = str(batch_data.shape).encode()
+                msg = batch_data.tostring()
+
+                # Keep track of samples per worker
+                worker.n_samples = X_batch.shape[0]
+                lower_bound = X_batch.shape[0] * i
+                upper_bound = lower_bound + X_batch.shape[0]
+                worker.idxs = np.arange(lower_bound, upper_bound)
+                if worker.most_representative is None:
+                    worker.most_representative = np.zeros((self.n_most_representative,))
+                    worker.lower_bound = lower_bound
+                    worker.upper_bound = upper_bound
+
+                self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
+                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, learning_rate, delay])
+                i += 1
+
+        self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.watch_dog.states]}")
+
+        self.logger.info(f"Labels per worker={labels_per_worker}")
+
+    def register_workers(self, worker_id=None):
+        """Registers workers in a round robin fashion
+        """
+        if not worker_id:
+            worker_id = self.pull_socket.recv()
+
+        self.watch_dog.add_worker(worker_id)
 
     def start_next_task(self):
+        """Starts new task depending on the state of the system.
 
+        Possible states range from mapping of data, remapping of data (if worker dies or another worker is added),
+        or distributing parameters.
+        """
         if self.state == START:
 
             self.state = MAP
 
         if self.state == MAP:
-            self.distribute_data()
+            data = (self.X_train, self.y_train)
+            params = self.set_params()
+
+            self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
+            self.state = DIST_PARAMS
+
+        if self.state == REMAP:
+
+            self.logger.debug(f"Redistributing data")
+            if self.scenario == 2:
+                
+                # Remap only data for workers that went down in previous iteration
+                # Get indices for dead workers
+                if self.mapping:
+                    dead_worker = [w for w in self.watch_dog.states if not w.mr_idxs_used and not w.state][0]
+                    remap_idxs = np.hstack([[w.mapping.get(i) for i in w.most_representative] for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
+                    worker_ids_down = [w.identity for w in self.watch_dog.states if not w.mr_idxs_used and not w.state]
+                    self.logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
+                    self.logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
+                    
+                    self.logger.debug(f"Remap idxs={remap_idxs.shape}")
+                else:
+                    remap_idxs = np.hstack([w.most_representative for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
+
+                n_samples = remap_idxs.shape[0]
+                new_range = np.arange(n_samples)
+
+                self.logger.debug(f"N samples = {n_samples}")
+
+                self.mapping = dict(zip(new_range, remap_idxs))
+
+                self.logger.debug(f"Mapping={self.mapping}")
+
+                X_train, y_train = self.data.X_train[remap_idxs], self.data.y_train[remap_idxs]
+
+                for w in self.watch_dog.states:
+                    if not w.mr_idxs_used:
+                        w.mr_idxs_used = True
+
+                data =(X_train, y_train)
+                params = self.set_params()
+                params["n_samples"] = n_samples
+
+                self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
+
+            else:
+                # Stack all indices from current dataset that we will use to remap
+                global_idxs = np.hstack([w.idxs for w in self.watch_dog.states if (not w.mr_idxs_used) and (not w.idxs is None)])
+                new_range = np.arange(global_idxs.shape[0])
+                self.logger.debug(f"new data idxs shape={global_idxs.shape}")
+
+                self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+                
+                # If we have had a failure before we need to just keep track of the global indices
+                if self.mapping:
+                    # The new dataset will be smaller than the original dataset. We still would like to only 
+                    # use indices of the original dataset to simplify things. This recalculates those indices
+                    global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
+
+                self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+                self.logger.debug("Updating mapping")
+                self.mapping = dict(zip(new_range, global_idxs))
+
+                self.X_train, self.y_train = self.data.update_xy(global_idxs)
+
+                for w in self.watch_dog.states:
+                    if not w.mr_idxs_used:
+                        w.mr_idxs_used = True
+
+                data = (self.X_train, self.y_train)
+                params = self.set_params()
+
+                self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
             self.state = DIST_PARAMS
 
         if self.state == DIST_PARAMS:
-            # msg = self.theta.tostring()
-            # self.logger.debug("Distributing parameters")
-            # self.logger.debug(f"Distributing params, theta = {self.theta}")
-            # self.publisher.send_multipart([b"", msg])
+            # self.send_heartbeat()
+            self.logger.debug("Distributing parameters")
             self.times.append(time.time())
-            if self.scenario == 0:
-                zhelpers.send_array(self.publisher, self.theta)
+            if self.scenario == 0 or self.scenario == 2:
+                
+                # Get message send ready
+                msg = self.theta.tostring()
+                dtype = self.theta.dtype.str.encode()
+                shape = str(self.theta.shape).encode()
+
+                if self.delay_change:
+                    self.publisher.send_multipart([b"", b"WORKNODELAY", msg, dtype, shape])
+                else:
+                    self.publisher.send_multipart([b"", b"WORK", msg, dtype, shape])  
+
             elif self.scenario == 1:
                 
-                # theta_q = Master.get_quantized_params(self.theta)
-                # self.logger.debug(f"Quantized theta bytes = {theta_q.nbytes}")
-                flags = 0
-                self.publisher.send_json({"": ""}, flags|zmq.SNDMORE)
-                theta_q = np.array(0)
-                self.publisher.send(theta_q.tostring())
+                # Quantize parameters
+                theta_q = Master.get_quantized_params(self.theta)
+                # Get message send ready
+                msg = theta_q.tostring()
+
+                self.publisher.send_multipart([b"", b"WORK", msg])
 
             self.state = REDUCE
 
-    def get_gradients(self):
+    def get_gradients(self, events):
+        """Receives gradients from workers
 
+        Args:
+            events (dict): Dictionary of events from our poller
+
+        Returns:
+            d_theta (numpy.ndarray): Our gradient matrix that is aggregated with a weighting according to the number    of samples each worker has
+            epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
+        """
         d_theta = np.zeros(self.theta.shape)
         epoch_loss = 0.0
 
-        for i, worker in enumerate(self.workers):
+        self.logger.debug(f"Receiving gradients")
+        n_alive_workers = self.watch_dog.n_alive
+        self.logger.debug(f"Alive workers={n_alive_workers}")
 
-            samples_for_worker = self.samples_per_worker[worker]
-            # beta = (samples_for_worker / self.data.n_samples)
-            beta = 1.0
+        i = 0
+        timeout = 1 # We give 1 seconds to poll worker if state changed since poll event
+        running_time = 0
+        n_connected = 0
 
-            # Since we received the command then we only receive the gradients, and epoch loss
-            # for the first worker that we are receiving information from. 
-            # TODO: Need to correctly weight each worker with the amount of work they have done. 
-            # Cannot use a push pull socket
-            if i == 0:
-                d_theta, epoch_loss = self.pull_socket.recv_multipart()
-                d_theta = np.frombuffer(d_theta, dtype=np.float64)
-                d_theta = d_theta.reshape(self.theta.shape)
-                d_theta = d_theta.copy()
+        workers_received = set()
 
-                epoch_loss = float(epoch_loss.decode())
+        while True:
 
-                d_theta += beta * d_theta               
-                epoch_loss += beta * epoch_loss
-            else:
+            # Stop condition
+            if i >= n_alive_workers:
+                break
 
-                # Receive multipart including command message
-                cmd, d_theta_temp, loss = self.pull_socket.recv_multipart()
+            # Timer to calculate running time for an iteration. We can then calculate the running time for 
+            # an iteration so that if a state changes since a poll event, we can break if the running time 
+            # exceeds the timeout
+            start_i = time.time()
+
+            if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                try:
+                    msg = self.pull_socket.recv_multipart(zmq.NOBLOCK)
+                    self.logger.debug("Got msg in the bag")
+                except zmq.ZMQError as e:
+                    if e.errno == zmq.EAGAIN:
+                        # state changed since poll event
+                        running_time += time.time() - start_i
+                        if running_time > timeout:
+                            self.logger.debug(f"Running time exceeded timeout={running_time}")
+                            active_workers = set(self.watch_dog.active_workers)
+                            # Get workers that we did not receive work from
+                            diff = active_workers - workers_received
+                            for w in diff:
+                                # Set dead workers state to false
+                                self.watch_dog.states[w].state = False
+                                if self.scenario != 2:                                    
+                                    self.watch_dog.states[w].idxs = self.watch_dog.states[w].most_representative
+                            
+                            self.state = REMAP
+                            break
+
+                        continue
+
+                self.logger.debug(f"Alive workers={n_alive_workers}")
+                if i == 0:
+                    worker, d_theta_temp, epoch_loss_temp, mr = msg
+                else:
+                    # Receive multipart including command message
+                    cmd = msg[0]
+                    if cmd == b"WORK":
+                        worker, d_theta_temp, epoch_loss_temp, mr = msg[1:]
+                    elif cmd == b"CONNECT":
+                        self.register_workers(msg[1])
+                        n_connected += 1
+                        i += 1
+                        continue
+
+                # Calculate weighting
+                samples_for_worker = self.watch_dog.states[worker].n_samples
+                beta = (samples_for_worker / self.data.n_samples)
+
+                # Decode gradient matrix
                 d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
                 d_theta_temp = d_theta_temp.reshape(self.theta.shape)
 
-                loss = float(loss.decode())
-                
-                d_theta += beta * d_theta_temp               
-                epoch_loss += beta * loss
+                # Store most representative points
+                mr = np.frombuffer(mr, dtype=np.int)
+                # Determine current index - we will map this back to the global index if worker dies
+                if self.scenario == 2:
+                    self.watch_dog.states[worker].most_representative = self.watch_dog.states[worker].lower_bound + mr
+                    self.logger.debug(f"Min mr={np.min(self.watch_dog.states[worker].most_representative)}, Max mr={np.max(self.watch_dog.states[worker].most_representative)}")
+                else:
+                    self.watch_dog.states[worker].most_representative = np.min(self.watch_dog.states[worker].idxs) + mr
+                    
+
+                # Decode loss
+                epoch_loss_temp = float(epoch_loss_temp.decode())
+
+                # Weight parameters and loss
+                d_theta += beta * d_theta_temp              
+                epoch_loss += beta * epoch_loss_temp
+
+                workers_received.add(worker)
+
+                i += 1
+                running_time = 0
 
         # Average parameters
-        d_theta /= len(self.workers)
-        epoch_loss /= len(self.workers)
+        # d_theta /= len(self.workers)
+        # epoch_loss /= len(self.workers)
+        # self.logger.debug(f"Len worker={len(self.workers)}, i-1={i-1}")
+        assert i > 0
+        assert i > 0
+        i -= n_connected
+        d_theta /= i
+        epoch_loss /= i
+
+        self.logger.debug("Calculated gradients")
         
         return d_theta, epoch_loss
 
-    def start(self):
+    def detect_workers(self):
+        """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
+        """
+        # timeout = 10 # 10 second time out
+        # start = time.time()
 
-        # n_samples = 100
-        # self.data = DummyData(n_samples=n_samples, n_features=10, n_classes=1)
-        # self.data.transform()
+        while True:
+            events = dict(self.poller.poll())
 
+            if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                if command == b"CONNECT":
+                    self.register_workers()
+                    # start = time.time()
+            else:
+                break
+        
+            # end = time.time()
+            # if round(end - start, 2) % 1 == 0:
+            #     self.logger.debug(end-start)
+            # if end-start > timeout:
+            #     break
+
+        self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
+
+    def main_loop(self):
+        """Main loop for training.
+
+        First detects workers who are willing to do work. Then distributes the data accordingly. Then we perform 
+        gradient descent iteratively. We parallelize the gradient calculation and calculate a weighted average
+        gradient matrix. This weighted average is calculated as the number of samples that a worker received as a 
+        fraction of the total number of samples in the entire dataset.
+        """
         # For reproducibility
         np.random.seed(42)
 
         self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
         self.data.transform()
+        self.X_train, self.y_train = self.data.X_train, self.data.y_train
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
-        self.theta = np.random.randn(self.data.n_features, self.data.n_classes)
+        self.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(np.float32)
         self.logger.debug(f"Init theta={self.theta}")
         
-        poller = zmq.Poller()
-
-        poller.register(self.pull_socket, zmq.POLLIN)
-        poller.register(self.push_socket, zmq.POLLOUT)
-        poller.register(self.publisher, zmq.POLLOUT)
+        self.poller = self.setup_poller()
         
         try:
 
             # Detect all workers by polling by whoevers sending their worker ids
-            while True:
-                events = dict(poller.poll())
-
-                if events.get(self.pull_socket) == zmq.POLLIN:
-                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                    if command == b"CONNECT":
-                        self.register_workers()
-                else:
-                    break
+            self.detect_workers()
+            if not self.watch_dog.states:
+                self.logger.info("No workers found")
+                raise KeyboardInterrupt
 
             completed = False
             i = 0
@@ -245,47 +502,63 @@ class Master(object):
 
             while not completed:
 
-                events = dict(poller.poll())
+                events = dict(self.poller.poll())
 
-                if len(self.workers) > 0:
-                    if events.get(self.push_socket) == zmq.POLLOUT:
+                if len(self.watch_dog.states) > 0:
+                    if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
                         self.start_next_task()
 
-                    if events.get(self.pull_socket) == zmq.POLLIN:
+                    # Check heartbeat
+                    if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
+                        address, msg = self.ctrl_socket.recv_multipart()
+                        self.worker_states[address] = True
+                        self.logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
+
+                    if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
                         # Don't use the results if they've already been counted
                         command = self.pull_socket.recv(flags=zmq.SNDMORE)
 
                         if command == b"CONNECT":
                             self.register_workers()
+                            self.state = MAP
 
                         elif command == b"WORK":
-                            
                             theta_p = self.theta.copy()
                             # Receive updated parameters from workers
-                            d_theta, epoch_loss = self.get_gradients()
+                            d_theta, epoch_loss = self.get_gradients(events)
 
                             # Update the global parameters with weighted error
                             for k in np.arange(self.data.n_classes):
-                                self.theta[:, k] = self.theta[:, k] - self.alpha * d_theta[:, k]
+                                self.theta[:, k] = self.theta[:, k] - self.learning_rate * d_theta[:, k]
+
+                            if self.tf_logger is not None:
+                                self.tf_logger.histogram("theta-master", self.theta, i, bins=self.n_iterations)
+                                self.tf_logger.scalar("epoch-master", epoch_loss, i)
 
                             delta = np.max(np.abs(theta_p - self.theta))
 
-                            self.state = DIST_PARAMS
-                            self.logger.debug(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+                            if self.state != REMAP:
+                                self.state = DIST_PARAMS
+                            self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
+                            if delta < self.switch_delta and self.delay > 1 and not self.delay_change:
+                                self.delay_change = True
+                                self.n_iterations = i + (self.n_iterations - i) * self.delay
+                                self.logger.debug(f"Iterations now = {self.n_iterations}")
                 else:
-                    if events.get(self.pull_socket) == zmq.POLLIN:
+                    if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
                         # Don't use the results if they've already been counted
                         command = self.pull_socket.recv(flags=zmq.SNDMORE)
 
                         if command == b"CONNECT":
                             self.register_workers()
 
-                if i > self.n_iterations:
+                if i >= self.n_iterations:
                     completed = True
 
             # Tell workers to exit
             self.done()
+            self.state = COMPLETE
             end = time.time()
             self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
 
@@ -307,34 +580,76 @@ class Master(object):
             self.done()
         finally:
             self.logger.info("Exiting peacefully. Cleaning up...")
-            poller.unregister(self.pull_socket)
-            poller.unregister(self.push_socket)
-            self.kill()
+            # self.kill()
+
+    def start(self):
+        """Starts work of master. First connects to workers and then performs machine learning training
+        """
+        gevent.signal(signal.SIGQUIT, gevent.kill)
+
+        main_loop = gevent.spawn(self.main_loop)
+        # heartbeat_loop = gevent.spawn(self.heartbeat_loop)
+        
+        gevent.joinall([
+            main_loop, 
+            # heartbeat_loop,
+        ])
+
+        self.kill()
 
     def kill(self):
+        """Kills sockets
+        """
+        self.poller.unregister(self.pull_socket)
+        self.poller.unregister(self.router_socket)
+        self.poller.unregister(self.publisher)
+        self.pull_socket.close()
         self.publisher.close()
-        self.push_socket.close()
+        self.router_socket.close()
         self.ctrl_socket.close()
         # self.context.term()
 
     def done(self):
+        """Sends exit signal to workers
+        """
         time.sleep(1)
-        # self.publisher.send_multipart([b"B", b"EXIT"])
-        msg = {"EXIT" : 1}
-        self.publisher.send_json(msg)
-
+        self.publisher.send_multipart([b"", b"EXIT"])
 
 @click.command()
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
-@click.option('--scenario', '-s', default=1, type=int)
-def run(n_iterations, learning_rate, verbose, scenario):
+@click.option('--scenario', '-s', default=0, type=int)
+@click.option('--n_most_representative', '-nmr', default=100, type=int)
+@click.option('--delay', '-d', default=10, type=int)
+@click.option('--switch_delta', '-sd', default=0.0074, type=float)
+def run(n_iterations, learning_rate, verbose, scenario, n_most_representative, delay, 
+switch_delta):
+    """Controller function which creates the master and starts off the training
+
+    Args:
+        n_iterations (int): No. of iterations we perform for training
+        learning_rate (float): The rate at which we want our model to learn
+        verbose (int): The logger level as an integer. See more in the logging file for different options
+        scenario (int): The scenario we would like to run
+    """
+
+    # # load_dotenv(find_dotenv())
+
+    if "LOGDIR" in os.environ:
+        from fault_tolerant_ml.lib.io.file_io import flush_dir
+        ignore_dir = [os.path.join(os.environ["LOGDIR"], "tf/")]
+        # ignore_dir = []
+        flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
+
     master = Master(
         n_iterations=n_iterations,
         learning_rate=learning_rate,
         verbose=verbose,
-        scenario=scenario
+        scenario=scenario,
+        n_most_representative=n_most_representative,
+        delay=delay,
+        switch_delta=switch_delta
     )
     master.connect()
     time.sleep(1)

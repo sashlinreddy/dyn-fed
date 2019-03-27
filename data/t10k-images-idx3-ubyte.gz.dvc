@@ -1,0 +1,7 @@
+md5: fca16c51af240026233617a8a07c5fd3
+outs:
+- cache: true
+  md5: 9fb629c4189551a2d022fa330f9573f3
+  metric: false
+  path: data/t10k-images-idx3-ubyte.gz
+wdir: ..

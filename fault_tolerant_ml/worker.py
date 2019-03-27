@@ -1,27 +1,45 @@
-import zmq
+"""Contains all worker logic for fault tolerant ml
+
+All worker devices will contain worker logic
+"""
+
+import zmq.green as zmq
 import time
 import numpy as np
 import uuid
 import logging
 import click
+import os
+# from dotenv import find_dotenv, load_dotenv
 
 # Local
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.ml import hypotheses, loss_fns
+from fault_tolerant_ml.tools import TFLogger
 
 class Worker(object):
-
+    """Worker class for distributed machine learning system
+    
+    Attributes:
+        worker_id (str): Unique identifier for worker
+        subscriber (zmq.Socket): zmq.SUB socket which subscribes to all master published messages
+        connected (bool): Whether or not the worker is connected successfully to the master
+    """
     def __init__(self, verbose):
 
         self.worker_id = str(uuid.uuid4())
         self.subscriber = None
-        self.starter = None
-        # self.logger = logging.getLogger("masters")
-        self.logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
-        self.have_work = False
+        self.connected = False
         self.hypothesis = hypotheses.log_hypothesis
         self.gradient = loss_fns.cross_entropy_gradient
+
+        self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
+        self.tf_logger = None
+
+        if "LOGDIR" in os.environ:
+            logdir = os.path.join(os.environ["LOGDIR"], f"tf/{self.worker_id}")
+            self.tf_logger = TFLogger(logdir)
 
     def connect(self):
         # Prepare our context and publisher
@@ -33,16 +51,25 @@ class Worker(object):
         self.push_socket = self.context.socket(zmq.PUSH)
         self.push_socket.connect("tcp://localhost:5562")
 
-        self.pull_socket = self.context.socket(zmq.PULL)
-        self.pull_socket.connect("tcp://localhost:5564")
+        self.router_socket = self.context.socket(zmq.DEALER)
+        self.router_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
+        self.router_socket.connect("tcp://localhost:5564")
 
-        self.ctrl_socket = self.context.socket(zmq.ROUTER)
+        self.ctrl_socket = self.context.socket(zmq.DEALER)
         self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
         self.ctrl_socket.connect("tcp://localhost:5565")
 
+    def setup_poller(self):
+        poller = zmq.Poller()
+        poller.register(self.subscriber, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.router_socket, zmq.POLLIN | zmq.POLLERR)
+        poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
+
+        return poller
+
     def do_work(self, X, y, theta):
 
-        self.logger.info('Doing work')
+        self._logger.info('Doing work')
         # Get predictions
         h = self.hypothesis(X, theta)
         # Calculate error/residuals
@@ -51,7 +78,10 @@ class Worker(object):
         # Calculate log loss
         log_loss = -y * np.log(h) - (1 - y) * np.log(1 - h)
 
-        # TODO: Calculate most representative data points
+        # Calculate most representative data points
+        # We regard data points that have a high loss to be most representative
+        most_representative = np.argsort(-log_loss.flatten())[0:self.n_most_representative]
+        # self._logger.debug(f"MR points={most_representative}")
 
         # Calculate processor loss - this is aggregated
         batch_loss = np.mean(log_loss)
@@ -63,16 +93,45 @@ class Worker(object):
         for k in np.arange(n_classes):
             d_theta[:, k] = self.gradient(X, e[:, np.newaxis, k])
 
-        return d_theta, batch_loss
+        return d_theta, batch_loss, most_representative
+
+    def receive_data(self, start=True):
+        data, dtype, shape = self.ctrl_socket.recv_multipart()
+        shape = shape.decode()
+        data = np.frombuffer(data, dtype=dtype)
+        data = data.reshape(eval(shape))
+
+        # Receive shape of X, y so we can reshape
+        _, n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay = self.ctrl_socket.recv_multipart()
+        n_samples = int(n_samples.decode())
+        n_features = int(n_features.decode())
+        n_classes = int(n_classes.decode())
+        self.scenario = int(scenario.decode())
+        self.n_most_representative = int(n_most_representative.decode())
+        self.alpha = float(alpha.decode())
+        self.delay = int(delay.decode())
+
+        if self.scenario == 2 and not start:
+            self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])
+            self._logger.debug(f"New data shape={self.X.shape}")
+        else:
+            self.X, self.y = data[:, :n_features], data[:, -n_classes:]
+
+        # Check if we need to add a new axis if the dimension of y is not 2d
+        if len(self.y.shape) < 2:
+            self.y = self.y[:, np.newaxis]
+        self._logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
+        self.have_work = True
+
+        return n_samples, n_features, n_classes
+                    
 
     def start(self):
 
-        poller = zmq.Poller()
-        poller.register(self.subscriber, zmq.POLLIN)
-        poller.register(self.pull_socket, zmq.POLLIN)
+        poller = self.setup_poller()
         # poller.register(self.push_socket, zmq.POLLOUT)
 
-        self.logger.info('Started Worker %s' % self.worker_id)
+        self._logger.info('Started Worker %s' % self.worker_id)
 
         try:
             start = time.time()
@@ -87,113 +146,154 @@ class Worker(object):
 
             while True:
 
-                if self.have_work:
+                if self.connected:
 
                     events = dict(poller.poll())
 
-                    if events.get(self.subscriber) == zmq.POLLIN:
+                    if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
+                        command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
+                        self._logger.debug(f"Command={command}")
+
+                        if command == b"WORK":
+                            n_samples, n_features, n_classes = self.receive_data(start=False)
+
+                        if command == b"HEARTBEAT":
+                            self.ctrl_socket.send(b"PONG")
+                            self._logger.debug("PONG")
+
+                    if (self.subscriber in events) and (events.get(self.subscriber) == zmq.POLLIN):
                         # Read envelope with address
-                        # [address, contents] = self.subscriber.recv_multipart()
-                        flags = 0
-                        contents = self.subscriber.recv_json(flags=flags)
-                        # finished = contents == b"EXIT"
-                        # print(contents == b"EXIT")
-                        if "EXIT" in contents:
-                            self.logger.info("Received EXIT command")
+                        self._logger.debug("Receiving contents")
+                        contents = self.subscriber.recv_multipart()
+                        address = contents[0]
+                        cmd = contents[1]
+                        msg = contents[2:]
+                        packet_size = np.sum([len(m) for m in contents])
+
+                        self._logger.debug(f"Packet size={packet_size} bytes")
+
+                        if cmd == b"EXIT":
+                            self._logger.info("Received EXIT command")
                             break
                         else:
 
-                            if self.scenario == 0:
-                                msg = self.subscriber.recv(flags=flags, copy=True, track=False)
-                                buf = memoryview(msg)
-                                theta = np.frombuffer(buf, dtype=contents['dtype'])
-                                theta = theta.reshape(contents['shape'])
-                                self.logger.info(f"theta.shape{theta.shape}")
+                            if self.scenario != 1:
+
+                                # Receive parameter matrix on the subscriber socket
+                                if cmd == b"WORKNODELAY":
+                                    self.delay = 1
+                                data, dtype, shape = msg
+                                shape = shape.decode()
+
+                                # Reconstruct numpy array
+                                buf = memoryview(data)
+                                theta = np.frombuffer(buf, dtype=dtype)
+                                theta = theta.reshape(eval(shape))
+                                self._logger.info(f"theta.shape{theta.shape}")
                                 
                                 theta = theta.copy()
                             elif self.scenario == 1:
-                                # struct_field_names = ["min_val", "max_val", "interval", "bins"]
-                                # struct_field_types = [np.float32, np.float32, np.int32, 'b']
-                                # struct_field_shapes = [1, 1, 1, ((n_features, n_classes))]
+
+                                # Receive numpy struct array
                                 # msg = self.subscriber.recv(flags=flags, copy=True, track=False)
-                                # buf = memoryview(msg)
+                                buf = memoryview(msg[0])
 
-                                # dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
-                                
-                                # data = np.frombuffer(msg, dtype=dtype)
-                                # min_theta_val, max_theta_val, interval, theta_bins = data[0]
-                                # bins = np.linspace(min_theta_val, max_theta_val, interval)
-                                # theta = bins[theta_bins].reshape(-1, 1)
-                                msg = self.subscriber.recv(flags=flags, copy=True, track=False)
-                                # buf = memoryview(msg)
-                                # theta = np.frombuffer(buf, dtype=np.float64)
-                                theta = np.random.randn(n_features, n_classes)
-                                
+                                # Reconstruct theta matrix from min, max, no. of intervals and which bins
+                                # each parameter value falls in
+                                struct_field_names = ["min_val", "max_val", "interval", "bins"]
+                                struct_field_types = [np.float32, np.float32, np.int32, 'b']
+                                struct_field_shapes = [1, 1, 1, ((n_features, n_classes))]
+                                dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
+                                                                
+                                data = np.frombuffer(buf, dtype=dtype)
+                                min_theta_val, max_theta_val, interval, theta_bins = data[0]
 
-                            d_theta, batch_loss = self.do_work(self.X, self.y, theta)
-                            self.logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
-                            i += 1
+                                # Generate lineared space vector
+                                bins = np.linspace(min_theta_val, max_theta_val, interval)
+                                theta = bins[theta_bins].reshape(n_features, n_classes)                             
+
+                            theta_g = theta.copy()
+                            count = 1
+                            while True:
+                            # Each worker does work and we get the resulting gradients
+                                d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
+                                self._logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
+
+                                # Update the global parameters with weighted error
+                                for k in np.arange(n_classes):
+                                    theta[:, k] = theta[:, k] - self.alpha * d_theta[:, k]
+
+                                # Let global theta influence local theta
+                                for k in np.arange(theta.shape[1]):
+                                    theta[:, k] = (self.alpha) * theta[:, k] + (1 - self.alpha) * theta_g[:, k]
+
+                                if self.tf_logger is not None:
+                                    self.tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
+
+                                i += 1
+                                if count == self.delay:
+                                    break
+                                count += 1
+
+                            # Get messages ready to send by converting them to bytes format. We do not
+                            # need to send the shape since the gradients have the same shape as theta which
+                            # the master already owns
                             msg = d_theta.tostring()
                             loss = str(batch_loss).encode()
+                            mr = most_representative.tostring()
 
-                            # self.push_socket.send(msg)
-                            self.push_socket.send_multipart([b"WORK", msg, loss])
-                            # self.ctrl_socket.send_multipart([b"MASTER", b"WORK", msg, loss])
-                            # self.logger.info("Sent result back to master")
-                            # self.logger.info("[%s] %s" % (address, contents))
+                            # self.push_socket.send(b"WORK")
+                            # self.router_socket.send_multipart([b"MASTER", b"WORK"])
+                            # self._logger.debug("Sent work command")
+                            # self.router_socket.send_multipart([b"WORK", msg, loss, mr], zmq.NOBLOCK)
+                            self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
+
+                            self._logger.debug("Sent work back to master")
                 else:
 
-                    self.logger.info("Connecting to server")
+                    self._logger.info("Connecting to server")
                     self.push_socket.send_multipart([b"CONNECT", self.worker_id.encode()])
+                    self._logger.debug("Connected")
+                    self.connected = True
+
+                    command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
+
+                    if command == b"WORK":
+                        n_samples, n_features, n_classes = self.receive_data()
 
                     # Receive X, y
-                    # address, worker_id = self.ctrl_socket.recv_multipart()
-                    # print(f"worker-id={worker_id.decode()}")
-                    worker_id = self.ctrl_socket.recv()
-                    data = zhelpers.recv_array(self.ctrl_socket)
-
-                    # Receive shape of X, y so we can reshape
-                    worker_id = self.ctrl_socket.recv()
-                    setup_vars = self.ctrl_socket.recv_json()
-                    n_samples = setup_vars["n_samples"]
-                    n_features = setup_vars["n_features"]
-                    n_classes = setup_vars["n_classes"]
-                    self.scenario = setup_vars["scenario"]
-
-                    self.X, self.y = data[:, :n_features], data[:, -n_classes:]
-
-                    # Check if we need to add a new axis if the dimension of y is not 2d
-                    if len(self.y.shape) < 2:
-                        self.y = self.y[:, np.newaxis]
-                    self.logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
-                    self.have_work = True
+                    # n_samples, n_features, n_classes = self.receive_data()
+                    # poller.register(self.ctrl_socket, zmq.POLLIN)
 
             end = time.time()
 
-            self.logger.info("Time taken for %d iterations is %7.6fs" % (i, end-start))
+            self._logger.info("Time taken for %d iterations is %7.6fs" % (i-1, end-start))
         except KeyboardInterrupt as e:
-            self.logger.info("Keyboard quit")
+            self._logger.info("Keyboard quit")
         except zmq.ZMQError:
-            self.logger.info("ZMQError")
+            self._logger.info("ZMQError")
         finally:
-            poller.unregister(self.pull_socket)
+            poller.unregister(self.router_socket)
             poller.unregister(self.subscriber)
             self.kill()
 
     def kill(self):
         self.subscriber.close()
-        self.pull_socket.close()
+        self.router_socket.close()
         self.ctrl_socket.close()
         # self.context.term()
 
 @click.command()
 @click.option('--verbose', '-v', default=10, type=int)
 def run(verbose):
+
+    # load_dotenv(find_dotenv())
+
     worker = Worker(
         verbose=verbose
     )
     worker.connect()
-    time.sleep(1)
+    # time.sleep(1)
     worker.start()
 
 if __name__ == "__main__":
