@@ -1,4 +1,5 @@
 import numpy as np # Linear Algebra
+import logging
 
 class Optimizer(object):
     """Base class for machine learning optimizers
@@ -10,6 +11,8 @@ class Optimizer(object):
         self.learning_rate = learning_rate
         self.loss = loss
         self.grad = grad
+
+        self._logger = logging.getLogger("ftml")
 
     def compute_loss(self, y, y_pred):
         """Compute loss to be overridden by children
@@ -126,11 +129,16 @@ class ParallelSGDOptimizer(Optimizer):
         learning_rate (float): Rate at which the descent algorithm descends to find the         global minima (default: 0.1)
         n_most_representative (int): No. of most representative data points we wish to track    (default: 100)
     """
-    def __init__(self, loss, grad, role="master", 
+    def __init__(self, loss=None, grad=None, role="master", 
     learning_rate=0.1, n_most_representative=100):
         super().__init__(loss, grad, learning_rate)
         self.n_most_representative = n_most_representative
         self.role = role
+
+        # If role is a worker loss and gradient function should not be none
+        if self.role != "master":
+            assert self.loss is not None
+            assert self.grad is not None
 
     def compute_loss(self, y, y_pred):
         """Computes loss for parallel sgd
@@ -219,6 +227,7 @@ class ParallelSGDOptimizer(Optimizer):
             return theta
         else:
             # Role of the worker
+            self._logger.info("Worker computing loss and gradients")
             batch_loss, most_representative = self.compute_loss(y, y_pred)
-            d_theta = self.compute_gradients(y, y_pred)
+            d_theta = self.compute_gradients(X, y, y_pred, theta)
             return d_theta, batch_loss, most_representative

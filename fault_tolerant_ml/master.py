@@ -20,10 +20,11 @@ import os
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData
+from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer
 from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
-from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.tools import TFLogger
+from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.distributor import Distributor
 from fault_tolerant_ml.distribute.states import *
 
@@ -38,33 +39,34 @@ class Master(object):
         self.publisher = None
         self.context   = zmq.Context()
 
-        self.watch_dog = WatchDog()
-        self.workers = set()
-        self.worker_states = {}
         self.mapping = {}
-        self.state = START
 
+        self.watch_dog = WatchDog()
         self.distributor = Distributor(gen_func=OccupancyData.next_batch)
 
-        # Model variables
+        # Distributed environ variables
+        self.state = START
         self.delay = delay
         self.switch_delta = switch_delta
+        self.delay_change = False
+        self.scenario = scenario
+        self.n_most_representative = n_most_representative
+
+        # Model variables
         self.n_iterations = int(np.ceil(n_iterations / self.delay))
         self.learning_rate = learning_rate
         self.hypothesis = hypotheses.log_hypothesis
-        self.delay_change = False
+        self.optimizer = ParallelSGDOptimizer(learning_rate=self.learning_rate)
 
-        self.scenario = scenario
-        self.n_most_representative = n_most_representative
+        # Tracking variables
         self.times = []
-
-        # Setup logger
-        self.logger = setup_logger(level=verbose)
-
         self.tf_logger = None
         if "LOGDIR" in os.environ:
             logdir = os.path.join(os.environ["LOGDIR"], "tf/master")
             self.tf_logger = TFLogger(logdir)
+
+        # Setup logger
+        self.logger = setup_logger(level=verbose)
 
     @staticmethod
     def get_quantized_params(theta):
@@ -102,10 +104,6 @@ class Master(object):
         self.pull_socket = self.context.socket(zmq.PULL)
         self.pull_socket.bind("tcp://*:5562")
 
-        self.router_socket = self.context.socket(zmq.ROUTER)
-        self.router_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
-        self.router_socket.bind("tcp://*:5564")
-
         self.ctrl_socket = self.context.socket(zmq.ROUTER)
         self.ctrl_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
         self.ctrl_socket.bind("tcp://*:5565")
@@ -114,16 +112,15 @@ class Master(object):
         poller = zmq.Poller()
         poller.register(self.pull_socket, zmq.POLLIN | zmq.POLLERR)
         poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
-        poller.register(self.router_socket, zmq.POLLIN | zmq.POLLERR)
         poller.register(self.publisher, zmq.POLLOUT | zmq.POLLERR)
 
         return poller
 
     def send_heartbeat(self):
-        for worker in self.workers:
+        for worker in self.watch_dog.states:
             self.logger.debug('PING')
-            self.worker_states[worker] = False
-            self.ctrl_socket.send_multipart([worker, b'HEARTBEAT'])
+            worker.state = False
+            self.ctrl_socket.send_multipart([worker.identity, b'HEARTBEAT'])
 
     def heartbeat_loop(self):
         while self.state != COMPLETE:
@@ -294,7 +291,6 @@ class Master(object):
             if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
                 try:
                     msg = self.pull_socket.recv_multipart(zmq.NOBLOCK)
-                    self.logger.debug("Got msg in the bag")
                 except zmq.ZMQError as e:
                     if e.errno == zmq.EAGAIN:
                         # state changed since poll event
@@ -445,7 +441,7 @@ class Master(object):
                     # Check heartbeat
                     if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
                         address, msg = self.ctrl_socket.recv_multipart()
-                        self.worker_states[address] = True
+                        self.watch_dog.states[address].state = True
                         self.logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
 
                     if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
@@ -462,8 +458,7 @@ class Master(object):
                             d_theta, epoch_loss = self.get_gradients(events)
 
                             # Update the global parameters with weighted error
-                            for k in np.arange(self.data.n_classes):
-                                self.theta[:, k] = self.theta[:, k] - self.learning_rate * d_theta[:, k]
+                            self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, d_theta=d_theta)
 
                             if self.tf_logger is not None:
                                 self.tf_logger.histogram("theta-master", self.theta, i, bins=self.n_iterations)
@@ -535,11 +530,9 @@ class Master(object):
         """Kills sockets
         """
         self.poller.unregister(self.pull_socket)
-        self.poller.unregister(self.router_socket)
         self.poller.unregister(self.publisher)
         self.pull_socket.close()
         self.publisher.close()
-        self.router_socket.close()
         self.ctrl_socket.close()
         # self.context.term()
 

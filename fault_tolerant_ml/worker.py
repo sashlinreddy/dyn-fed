@@ -16,6 +16,7 @@ import os
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.ml import hypotheses, loss_fns
+from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer
 from fault_tolerant_ml.tools import TFLogger
 
 class Worker(object):
@@ -31,6 +32,8 @@ class Worker(object):
         self.worker_id = str(uuid.uuid4())
         self.subscriber = None
         self.connected = False
+
+        # Model variables
         self.hypothesis = hypotheses.log_hypothesis
         self.gradient = loss_fns.cross_entropy_gradient
 
@@ -42,7 +45,8 @@ class Worker(object):
             self.tf_logger = TFLogger(logdir)
 
     def connect(self):
-        # Prepare our context and publisher
+        """Prepare our context, push socket and publisher
+        """
         self.context    = zmq.Context()
         self.subscriber = self.context.socket(zmq.SUB)
         self.subscriber.connect("tcp://localhost:5563")
@@ -51,65 +55,69 @@ class Worker(object):
         self.push_socket = self.context.socket(zmq.PUSH)
         self.push_socket.connect("tcp://localhost:5562")
 
-        self.router_socket = self.context.socket(zmq.DEALER)
-        self.router_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
-        self.router_socket.connect("tcp://localhost:5564")
-
         self.ctrl_socket = self.context.socket(zmq.DEALER)
         self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
         self.ctrl_socket.connect("tcp://localhost:5565")
 
     def setup_poller(self):
+        """Register necessary sockets for poller
+        """
         poller = zmq.Poller()
         poller.register(self.subscriber, zmq.POLLIN | zmq.POLLERR)
-        poller.register(self.router_socket, zmq.POLLIN | zmq.POLLERR)
         poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
 
         return poller
 
     def do_work(self, X, y, theta):
+        """Worker doing the heavy lifting of calculating gradients and calculating loss
 
-        self._logger.info('Doing work')
+        Args:
+            X (numpy.ndarray): Feature matrix
+            y (numpy.ndarray): Label vector
+            theta (numpy.ndarray): Parameter matrix
+
+        Returns:
+            d_theta (numpy.ndarray): Gradient matrix for parameters
+            batch_loss (float): Loss for this iteration
+            most_representative (numpy.ndarray): Vector of most representative data samples     for a particular iteration. Most representative is determined by the data         points that have the highest loss.
+        """
+
         # Get predictions
-        h = self.hypothesis(X, theta)
-        # Calculate error/residuals
-        e = (h - y)
+        y_pred = self.hypothesis(X, theta)
 
-        # Calculate log loss
-        log_loss = -y * np.log(h) - (1 - y) * np.log(1 - h)
-
-        # Calculate most representative data points
-        # We regard data points that have a high loss to be most representative
-        most_representative = np.argsort(-log_loss.flatten())[0:self.n_most_representative]
-        # self._logger.debug(f"MR points={most_representative}")
-
-        # Calculate processor loss - this is aggregated
-        batch_loss = np.mean(log_loss)
-
-        n_features, n_classes = theta.shape
-        d_theta = np.zeros((n_features, n_classes))
-
-        # To be moved to optimizer
-        for k in np.arange(n_classes):
-            d_theta[:, k] = self.gradient(X, e[:, np.newaxis, k])
-
+        d_theta, batch_loss, most_representative = self.optimizer.minimize(X, y, y_pred, theta)
+        
         return d_theta, batch_loss, most_representative
 
     def receive_data(self, start=True):
+        """Receives data from worker
+
+        Receives and makes sense of the data received from the master. Also initializes the optimizer since we receive the learning rate from the master at this stage.
+
+        Args:
+            start (bool): Whether or not we received the data at the beginning of the workers   life span. 
+
+        Returns:
+            n_samples (int): No. of samples in the dataset for a worker
+            n_features (int): No. of features in the dataset
+            n_classes (int): No. of classes/labels
+        """
         data, dtype, shape = self.ctrl_socket.recv_multipart()
         shape = shape.decode()
         data = np.frombuffer(data, dtype=dtype)
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay = self.ctrl_socket.recv_multipart()
+        _, n_samples, n_features, n_classes, scenario, n_most_representative, learning_rate, delay = self.ctrl_socket.recv_multipart()
         n_samples = int(n_samples.decode())
         n_features = int(n_features.decode())
         n_classes = int(n_classes.decode())
         self.scenario = int(scenario.decode())
         self.n_most_representative = int(n_most_representative.decode())
-        self.alpha = float(alpha.decode())
+        self.learning_rate = float(learning_rate.decode())
         self.delay = int(delay.decode())
+
+        self.optimizer = ParallelSGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate)
 
         if self.scenario == 2 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])
@@ -127,7 +135,10 @@ class Worker(object):
                     
 
     def start(self):
+        """Training for the worker
 
+        Boots up the worker to start receiving data. Thereafter, the worker does the heavy lifting by computing the gradients of the parameter matrix. This is returned to the master, where the master will aggregate gradients and apply them to the global theta. The parameters will be distributed back to the worker and this occurs iteratively, to find the global minima for the parameter matrix.
+        """
         poller = self.setup_poller()
         # poller.register(self.push_socket, zmq.POLLOUT)
 
@@ -221,11 +232,11 @@ class Worker(object):
 
                                 # Update the global parameters with weighted error
                                 for k in np.arange(n_classes):
-                                    theta[:, k] = theta[:, k] - self.alpha * d_theta[:, k]
+                                    theta[:, k] = theta[:, k] - self.learning_rate * d_theta[:, k]
 
                                 # Let global theta influence local theta
                                 for k in np.arange(theta.shape[1]):
-                                    theta[:, k] = (self.alpha) * theta[:, k] + (1 - self.alpha) * theta_g[:, k]
+                                    theta[:, k] = (self.learning_rate) * theta[:, k] + (1 - self.learning_rate) * theta_g[:, k]
 
                                 if self.tf_logger is not None:
                                     self.tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
@@ -243,9 +254,7 @@ class Worker(object):
                             mr = most_representative.tostring()
 
                             # self.push_socket.send(b"WORK")
-                            # self.router_socket.send_multipart([b"MASTER", b"WORK"])
                             # self._logger.debug("Sent work command")
-                            # self.router_socket.send_multipart([b"WORK", msg, loss, mr], zmq.NOBLOCK)
                             self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
 
                             self._logger.debug("Sent work back to master")
@@ -273,20 +282,24 @@ class Worker(object):
         except zmq.ZMQError:
             self._logger.info("ZMQError")
         finally:
-            poller.unregister(self.router_socket)
             poller.unregister(self.subscriber)
             self.kill()
 
     def kill(self):
+        """Kills sockets
+        """
         self.subscriber.close()
-        self.router_socket.close()
         self.ctrl_socket.close()
         # self.context.term()
 
 @click.command()
 @click.option('--verbose', '-v', default=10, type=int)
 def run(verbose):
+    """Run worker
 
+    Args:
+        verbose (int): The debug level for the logging module
+    """
     # load_dotenv(find_dotenv())
 
     worker = Worker(
