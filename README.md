@@ -9,6 +9,11 @@ Fault tolerant framework for machine learning algorithms
 
 * TODO
 
+## Development
+```bash
+export LOGDIR=${PWD}/logs
+./run.sh
+```
 ## Run tests
 
 ```bash
