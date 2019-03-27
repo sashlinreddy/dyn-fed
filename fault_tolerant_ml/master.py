@@ -134,16 +134,20 @@ class Master(object):
         """Prepares parameters to be sent by the distributor
         """
         params = {}
-        params["n_alive"] = self.watch_dog.n_alive
-        params["n_samples"] = self.data.n_samples
-        params["n_features"] = self.data.n_features
-        params["n_classes"] = self.data.n_classes
-        params["scenario"] = self.scenario
-        params["n_most_representative"] = self.n_most_representative
-        params["learning_rate"] = self.learning_rate
-        params["delay"] = self.delay
         params["state"] = self.state
-        params["mapping"] = self.mapping
+        params["scenario"] = self.scenario
+
+        if self.state == DIST_PARAMS:
+            params["delay_change"] = self.delay_change
+        else:
+            params["n_alive"] = self.watch_dog.n_alive
+            params["n_samples"] = self.data.n_samples
+            params["n_features"] = self.data.n_features
+            params["n_classes"] = self.data.n_classes
+            params["n_most_representative"] = self.n_most_representative
+            params["learning_rate"] = self.learning_rate
+            params["delay"] = self.delay
+            params["mapping"] = self.mapping
         return params
 
     def register_workers(self, worker_id=None):
@@ -246,10 +250,7 @@ class Master(object):
 
             data = self.theta if self.scenario != 1 else Master.get_quantized_params(self.theta)
             workers = None
-            params = {}
-            params["delay_change"] = self.delay_change
-            params["state"] = self.state
-            params["scenario"] = self.scenario
+            params = self.set_params()
 
             self.distributor.distribute(socket=self.publisher, data=data, workers=workers, params=params)
 
