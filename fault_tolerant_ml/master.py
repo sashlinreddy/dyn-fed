@@ -14,6 +14,7 @@ import click
 import gevent
 import signal
 import os
+# from dotenv import find_dotenv, load_dotenv
 
 # Local
 from fault_tolerant_ml.utils import zhelpers
@@ -24,13 +25,7 @@ from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute.distributor import Distributor
-
-START       = 0
-MAP         = 1
-REMAP       = 2
-DIST_PARAMS = 3
-REDUCE      = 4 
-COMPLETE    = 5
+from fault_tolerant_ml.distribute.states import *
 
 class Master(object):
     """Master class for distributed machine learning system
@@ -135,6 +130,22 @@ class Master(object):
             self.send_heartbeat()
             gevent.sleep(0.5)
 
+    def set_params(self):
+        """Prepares parameters to be sent by the distributor
+        """
+        params = {}
+        params["n_alive"] = self.watch_dog.n_alive
+        params["n_samples"] = self.data.n_samples
+        params["n_features"] = self.data.n_features
+        params["n_classes"] = self.data.n_classes
+        params["scenario"] = self.scenario
+        params["n_most_representative"] = self.n_most_representative
+        params["learning_rate"] = self.learning_rate
+        params["delay"] = self.delay
+        params["state"] = self.state
+        params["mapping"] = self.mapping
+        return params
+
     def distribute_data(self):
         """Distributes the data to the workers
         """
@@ -209,17 +220,8 @@ class Master(object):
             self.state = MAP
 
         if self.state == MAP:
-            # self.distribute_data()
             data = (self.X_train, self.y_train)
-            params = {}
-            params["n_alive"] = self.watch_dog.n_alive
-            params["n_samples"] = self.data.n_samples
-            params["n_features"] = self.data.n_features
-            params["n_classes"] = self.data.n_classes
-            params["scenario"] = self.scenario
-            params["n_most_representative"] = self.n_most_representative
-            params["learning_rate"] = self.learning_rate
-            params["delay"] = self.delay
+            params = self.set_params()
 
             self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
             self.state = DIST_PARAMS
@@ -257,54 +259,11 @@ class Master(object):
                     if not w.mr_idxs_used:
                         w.mr_idxs_used = True
 
-                # Calculate batch size
-                batch_size = int(np.ceil(n_samples / self.watch_dog.n_alive))
-                batch_gen = OccupancyData.next_batch(X_train, y_train, batch_size)
+                data =(X_train, y_train)
+                params = self.set_params()
+                params["n_samples"] = n_samples
 
-                n_samples = str(n_samples).encode()
-                n_features = str(self.data.n_features).encode()
-                n_classes = str(self.data.n_classes).encode()
-                scenario = str(self.scenario).encode()
-                n_most_representative = str(self.n_most_representative).encode()
-                alpha = str(self.learning_rate).encode()
-                delay = str(self.delay).encode()
-
-                i = 0
-                # Distribute amongst workers
-                for worker in self.watch_dog.states:
-
-                    if worker.state:
-                        worker.mr_idxs_used = False
-                        X_batch, y_batch = next(batch_gen)
-                        batch_data = np.hstack((X_batch, y_batch))
-
-                        # Encode data
-                        dtype = batch_data.dtype.str.encode()
-                        shape = str(batch_data.shape).encode()
-                        msg = batch_data.tostring()
-
-                        # Keep track of samples per worker
-                        worker.n_samples += X_batch.shape[0]
-                        lower_bound = X_batch.shape[0] * i
-                        upper_bound = lower_bound + X_batch.shape[0]
-                        batch_range = np.arange(lower_bound, upper_bound)
-                        new_range = np.arange(worker.upper_bound, worker.upper_bound + batch_range.shape[0]) 
-                        self.logger.debug(f"New range={new_range}, worker max idx={np.max(worker.idxs)}, upper bound={worker.upper_bound}")
-                        worker.upper_bound = worker.upper_bound + batch_range.shape[0]
-                        if not worker.mapping:
-                            worker.mapping = dict(zip(worker.idxs, worker.idxs))
-                        
-                        self.logger.debug(f"Batch range shape={batch_range}, i={i}")
-                        global_idxs = [self.mapping.get(j) for j in batch_range]
-                        self.logger.debug(f"global idxs={global_idxs}, i={i}")
-                        worker.mapping.update(dict(zip(new_range, global_idxs)))
-                        worker.idxs = np.hstack((worker.idxs, global_idxs))
-                        if worker.most_representative is None:
-                            worker.most_representative = np.zeros((self.n_most_representative,))
-
-                        self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
-                        self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, alpha, delay])
-                        i += 1
+                self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
 
             else:
                 # Stack all indices from current dataset that we will use to remap
@@ -330,7 +289,10 @@ class Master(object):
                     if not w.mr_idxs_used:
                         w.mr_idxs_used = True
 
-                self.distribute_data()
+                data = (self.X_train, self.y_train)
+                params = self.set_params()
+
+                self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
             self.state = DIST_PARAMS
 
         if self.state == DIST_PARAMS:
@@ -480,6 +442,9 @@ class Master(object):
     def detect_workers(self):
         """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
         """
+        # timeout = 10 # 10 second time out
+        # start = time.time()
+
         while True:
             events = dict(self.poller.poll())
 
@@ -488,8 +453,15 @@ class Master(object):
 
                 if command == b"CONNECT":
                     self.register_workers()
+                    # start = time.time()
             else:
                 break
+        
+            # end = time.time()
+            # if round(end - start, 2) % 1 == 0:
+            #     self.logger.debug(end-start)
+            # if end-start > timeout:
+            #     break
 
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
@@ -519,6 +491,9 @@ class Master(object):
 
             # Detect all workers by polling by whoevers sending their worker ids
             self.detect_workers()
+            if not self.watch_dog.states:
+                self.logger.info("No workers found")
+                raise KeyboardInterrupt
 
             completed = False
             i = 0
@@ -643,7 +618,7 @@ class Master(object):
 @click.command()
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
-@click.option('--verbose', '-v', default=20, type=int)
+@click.option('--verbose', '-v', default=10, type=int)
 @click.option('--scenario', '-s', default=0, type=int)
 @click.option('--n_most_representative', '-nmr', default=100, type=int)
 @click.option('--delay', '-d', default=10, type=int)
@@ -658,6 +633,8 @@ switch_delta):
         verbose (int): The logger level as an integer. See more in the logging file for different options
         scenario (int): The scenario we would like to run
     """
+
+    # # load_dotenv(find_dotenv())
 
     if "LOGDIR" in os.environ:
         from fault_tolerant_ml.lib.io.file_io import flush_dir
