@@ -21,8 +21,10 @@ def flush_dir(dir, ignore_dir=[], mins=1, hours=0):
 
             # Get time of last time the file was modified
             file_modified = datetime.datetime.fromtimestamp(os.path.getmtime(curpath))
+            
             # Ignore files that were created less than hours, mins ago
             if datetime.datetime.now() - file_modified > datetime.timedelta(minutes=mins, hours=hours):
                 # Ignore files in a certain directory
-                if not len([dir for dir in ignore_dir if dir in dirpath]):
+                ignore_files_length = len([dir for dir in ignore_dir if dir in dirpath])
+                if (ignore_files_length < 1) or len(ignore_dir) > 0:
                     os.remove(curpath)

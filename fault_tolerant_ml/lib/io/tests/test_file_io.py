@@ -22,3 +22,11 @@ class TestFileIO(unittest.TestCase):
         files = [f for f in files if f not in ["tf"]]
         print(f"Files={files}")
         assert len(files) < 1
+
+    def test_flush_dir_no_ignore(self):
+        """Test flushing a dir without ignoring any directories"""
+        ignore_dir = []
+        flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
+        files = os.listdir(os.environ["LOGDIR"])
+        print(f"Files={files}")
+        assert len(files) < 1
