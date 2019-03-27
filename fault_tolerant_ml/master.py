@@ -146,61 +146,6 @@ class Master(object):
         params["mapping"] = self.mapping
         return params
 
-    def distribute_data(self):
-        """Distributes the data to the workers
-        """
-        # Distribute data/data indices to work on
-        self.logger.debug("Distributing data")
-        batch_size = int(np.ceil(self.data.n_samples / self.watch_dog.n_alive))
-        batch_gen = OccupancyData.next_batch(self.X_train, self.y_train, batch_size)
-
-        # Encode to bytes
-        n_samples = str(self.data.n_samples).encode()
-        n_features = str(self.data.n_features).encode()
-        n_classes = str(self.data.n_classes).encode()
-        scenario = str(self.scenario).encode()
-        n_most_representative = str(self.n_most_representative).encode()
-        learning_rate = str(self.learning_rate).encode()
-        delay = str(self.delay).encode()
-
-        labels_per_worker = {}
-
-        # Iterate through workers and send
-        i = 0
-        for worker in self.watch_dog.states:
-
-            if worker.state:
-                worker.mr_idxs_used = False
-                # Get next batch to send
-                X_batch, y_batch = next(batch_gen)
-                self.logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
-                batch_data = np.hstack((X_batch, y_batch))
-
-                labels_per_worker[worker] = np.unique(y_batch, return_counts=True)
-
-                # Encode data
-                dtype = batch_data.dtype.str.encode()
-                shape = str(batch_data.shape).encode()
-                msg = batch_data.tostring()
-
-                # Keep track of samples per worker
-                worker.n_samples = X_batch.shape[0]
-                lower_bound = X_batch.shape[0] * i
-                upper_bound = lower_bound + X_batch.shape[0]
-                worker.idxs = np.arange(lower_bound, upper_bound)
-                if worker.most_representative is None:
-                    worker.most_representative = np.zeros((self.n_most_representative,))
-                    worker.lower_bound = lower_bound
-                    worker.upper_bound = upper_bound
-
-                self.ctrl_socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
-                self.ctrl_socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, learning_rate, delay])
-                i += 1
-
-        self.logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in self.watch_dog.states]}")
-
-        self.logger.info(f"Labels per worker={labels_per_worker}")
-
     def register_workers(self, worker_id=None):
         """Registers workers in a round robin fashion
         """
@@ -297,28 +242,16 @@ class Master(object):
 
         if self.state == DIST_PARAMS:
             # self.send_heartbeat()
-            self.logger.debug("Distributing parameters")
             self.times.append(time.time())
-            if self.scenario == 0 or self.scenario == 2:
-                
-                # Get message send ready
-                msg = self.theta.tostring()
-                dtype = self.theta.dtype.str.encode()
-                shape = str(self.theta.shape).encode()
 
-                if self.delay_change:
-                    self.publisher.send_multipart([b"", b"WORKNODELAY", msg, dtype, shape])
-                else:
-                    self.publisher.send_multipart([b"", b"WORK", msg, dtype, shape])  
+            data = self.theta if self.scenario != 1 else Master.get_quantized_params(self.theta)
+            workers = None
+            params = {}
+            params["delay_change"] = self.delay_change
+            params["state"] = self.state
+            params["scenario"] = self.scenario
 
-            elif self.scenario == 1:
-                
-                # Quantize parameters
-                theta_q = Master.get_quantized_params(self.theta)
-                # Get message send ready
-                msg = theta_q.tostring()
-
-                self.publisher.send_multipart([b"", b"WORK", msg])
+            self.distributor.distribute(socket=self.publisher, data=data, workers=workers, params=params)
 
             self.state = REDUCE
 
@@ -619,9 +552,9 @@ class Master(object):
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
-@click.option('--scenario', '-s', default=0, type=int)
+@click.option('--scenario', '-s', default=1, type=int)
 @click.option('--n_most_representative', '-nmr', default=100, type=int)
-@click.option('--delay', '-d', default=10, type=int)
+@click.option('--delay', '-d', default=1, type=int)
 @click.option('--switch_delta', '-sd', default=0.0074, type=float)
 def run(n_iterations, learning_rate, verbose, scenario, n_most_representative, delay, 
 switch_delta):
