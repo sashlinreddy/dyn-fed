@@ -5,19 +5,13 @@ import numpy as np
 from .states import *
 class Distributor(object):
     """Responsible for distributing data
-    
-    Long description
-    
-    Attributes:
-        gen_func (generator func): A generator function to distribute the data
     """
     
-    def __init__(self, gen_func):
+    def __init__(self):
         
         self._logger = logging.getLogger("ftml")
-        self.gen_func = gen_func
 
-    def distribute(self, socket, data, workers, params):
+    def distribute(self, socket, data, workers, params, gen_func):
         """Sends the data to the necessary destination
         
         Long description
@@ -26,6 +20,7 @@ class Distributor(object):
             data (numpy.ndarray): Data matrix that will be partitioned and distributed to each worker
             workers (distribute.WorkerStates): worker state objects containing state of worker and other info
             params (dict): Additional params to send to all workers
+            gen_func (generator func): A generator function to distribute the data
         """
         
         state = params["state"]
@@ -57,7 +52,7 @@ class Distributor(object):
             self._logger.debug("Distributor distributing data")
             X_train, y_train = data
             batch_size = int(np.ceil(params["n_samples"] / params["n_alive"]))
-            batch_gen = self.gen_func(X_train, y_train, batch_size)
+            batch_gen = gen_func(X_train, y_train, batch_size)
 
             # Encode to bytes
             n_samples = str(params["n_samples"]).encode()
