@@ -42,7 +42,7 @@ class Master(object):
         self.mapping = {}
 
         self.watch_dog = WatchDog()
-        self.distributor = Distributor(gen_func=OccupancyData.next_batch)
+        self.distributor = Distributor()
 
         # Distributed environ variables
         self.state = START
@@ -169,7 +169,13 @@ class Master(object):
             data = (self.X_train, self.y_train)
             params = self.set_params()
 
-            self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
+            self.distributor.distribute(
+                socket=self.ctrl_socket, 
+                data=data, 
+                workers=self.watch_dog.states, 
+                params=params, 
+                gen_func=OccupancyData.next_batch
+            )
             self.state = DIST_PARAMS
 
         if self.state == REMAP:
@@ -209,7 +215,13 @@ class Master(object):
                 params = self.set_params()
                 params["n_samples"] = n_samples
 
-                self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
+                self.distributor.distribute(
+                    socket=self.ctrl_socket, 
+                    data=data, 
+                    workers=self.watch_dog.states, 
+                    params=params, 
+                    gen_func=OccupancyData.next_batch
+                )
 
             else:
                 # Stack all indices from current dataset that we will use to remap
@@ -238,7 +250,13 @@ class Master(object):
                 data = (self.X_train, self.y_train)
                 params = self.set_params()
 
-                self.distributor.distribute(socket=self.ctrl_socket, data=data, workers=self.watch_dog.states, params=params)
+                self.distributor.distribute(
+                    socket=self.ctrl_socket, 
+                    data=data, 
+                    workers=self.watch_dog.states, 
+                    params=params, 
+                    gen_func=OccupancyData.next_batch
+                )
             self.state = DIST_PARAMS
 
         if self.state == DIST_PARAMS:
@@ -249,7 +267,13 @@ class Master(object):
             workers = None
             params = self.set_params()
 
-            self.distributor.distribute(socket=self.publisher, data=data, workers=workers, params=params)
+            self.distributor.distribute(
+                socket=self.publisher, 
+                data=data, 
+                workers=workers, 
+                params=params,
+                gen_func=OccupancyData.next_batch
+            )
 
             self.state = REDUCE
 
