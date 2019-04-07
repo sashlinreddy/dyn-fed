@@ -31,8 +31,7 @@ from fault_tolerant_ml.distribute.states import *
 class Master(object):
     """Master class for distributed machine learning system
     """
-    def __init__(self, n_iterations, learning_rate, verbose, scenario, n_most_rep,
-    comm_period, delta_switch):
+    def __init__(self, dist_strategy, verbose):
         
         # ZMQ variables
         self.ctrl_socket = None
@@ -46,15 +45,16 @@ class Master(object):
 
         # Distributed environ variables
         self.state = START
-        self.comm_period = comm_period
-        self.delta_switch = delta_switch
+        self.dist_strategy = dist_strategy
+        self.comm_period = self.dist_strategy.comm_period
+        self.delta_switch = self.dist_strategy.delta_switch
         self.delay_change = False
-        self.scenario = scenario
-        self.n_most_rep = n_most_rep
+        self.scenario = self.dist_strategy.scenario
+        self.n_most_rep = self.dist_strategy.n_most_rep
 
         # Model variables
-        self.n_iterations = int(np.ceil(n_iterations / self.comm_period))
-        self.learning_rate = learning_rate
+        self.n_iterations = int(np.ceil(self.dist_strategy.model.max_iter / self.comm_period))
+        self.learning_rate = self.dist_strategy.model.optimizer.learning_rate
         self.hypothesis = hypotheses.log_hypothesis
         self.optimizer = ParallelSGDOptimizer(learning_rate=self.learning_rate)
 

@@ -92,7 +92,7 @@ delta_switch):
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
 @click.option('--strategy', '-st', default="mw", type=str)
-@click.option('--scenario', '-s', default=1, type=int)
+@click.option('--scenario', '-s', default=0, type=int)
 @click.option('--n_most_rep', '-nmr', default=100, type=int)
 @click.option('--comm_period', '-cp', default=1, type=int)
 @click.option('--delta_switch', '-ds', default=0.0074, type=float)
@@ -132,13 +132,8 @@ delta_switch):
     )
 
     master = Master(
-        n_iterations=n_iterations,
-        learning_rate=learning_rate,
+        dist_strategy=dist_strategy,
         verbose=verbose,
-        scenario=scenario,
-        n_most_rep=n_most_rep,
-        comm_period=comm_period,
-        delta_switch=delta_switch
     )
     master.connect()
     time.sleep(1)
