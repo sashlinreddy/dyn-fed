@@ -26,46 +26,12 @@ from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.distributor import Distributor
+from fault_tolerant_ml.distribute.wrappers import ftml_train
 from fault_tolerant_ml.distribute.states import *
 
 class Master(object):
     """Master class for distributed machine learning system
     """
-
-    class training_loop_wrapper(object):
-
-        def __init__(self, decorated):
-            self.decorated = decorated
-
-        def __get__(self, instance, owner):
-            self.cls = owner
-            self.obj = instance
-
-            return self.__call__
-
-        def __call__(self, *args, **kwargs):
-
-            # master = args[0]
-            print(self.obj, self.cls)
-            try:
-                # Detect all workers by polling by whoevers sending their worker ids
-                self.obj.detect_workers()
-                if not self.obj.watch_dog.states:
-                    self.obj.logger.info("No workers found")
-                    raise KeyboardInterrupt
-
-                self.decorated(self.obj)
-        
-            except KeyboardInterrupt as e:
-                pass
-            except zmq.ZMQError as zmq_err:
-                self.obj.logger.error(zmq_err)
-                self.obj.done()
-            except Exception as e:
-                self.obj.logger.exception(e)
-            finally:
-                self.obj.logger.info("Exiting peacefully. Cleaning up...")
-
     def __init__(self, dist_strategy, verbose):
         
         # ZMQ variables
@@ -450,14 +416,14 @@ class Master(object):
 
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
-    @training_loop_wrapper
+    @ftml_train
     def training_loop(self):
         completed = False
         i = 0
         delta = 1.0
         start = time.time()
 
-        while not completed:
+        while i < self.n_iterations:
 
             events = dict(self.poller.poll())
 
@@ -508,9 +474,6 @@ class Master(object):
 
                     if command == b"CONNECT":
                         self.register_workers()
-
-            if i >= self.n_iterations:
-                completed = True
 
         # Tell workers to exit
         self.done()
