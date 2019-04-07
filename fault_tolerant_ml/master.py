@@ -46,14 +46,14 @@ class Master(object):
 
         # Distributed environ variables
         self.state = START
-        self.delay = delay
+        self.comm_period = delay
         self.switch_delta = switch_delta
         self.delay_change = False
         self.scenario = scenario
         self.n_most_representative = n_most_representative
 
         # Model variables
-        self.n_iterations = int(np.ceil(n_iterations / self.delay))
+        self.n_iterations = int(np.ceil(n_iterations / self.comm_period))
         self.learning_rate = learning_rate
         self.hypothesis = hypotheses.log_hypothesis
         self.optimizer = ParallelSGDOptimizer(learning_rate=self.learning_rate)
@@ -143,7 +143,7 @@ class Master(object):
             params["n_classes"] = self.data.n_classes
             params["n_most_representative"] = self.n_most_representative
             params["learning_rate"] = self.learning_rate
-            params["delay"] = self.delay
+            params["comm_period"] = self.comm_period
             params["mapping"] = self.mapping
         return params
 
@@ -494,9 +494,9 @@ class Master(object):
                                 self.state = DIST_PARAMS
                             self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
-                            if delta < self.switch_delta and self.delay > 1 and not self.delay_change:
+                            if delta < self.switch_delta and self.comm_period > 1 and not self.delay_change:
                                 self.delay_change = True
-                                self.n_iterations = i + (self.n_iterations - i) * self.delay
+                                self.n_iterations = i + (self.n_iterations - i) * self.comm_period
                                 self.logger.debug(f"Iterations now = {self.n_iterations}")
                 else:
                     if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):

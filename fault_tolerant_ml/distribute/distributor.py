@@ -11,7 +11,7 @@ class Distributor(object):
         
         self._logger = logging.getLogger("ftml")
 
-    def distribute(self, socket, data, workers, params, gen_func):
+    def distribute(self, socket, data, workers, params, gen_func=None):
         """Sends the data to the necessary destination
         
         Long description
@@ -61,7 +61,7 @@ class Distributor(object):
             scenario = str(params["scenario"]).encode()
             n_most_representative = str(params["n_most_representative"]).encode()
             learning_rate = str(params["learning_rate"]).encode()
-            delay = str(params["delay"]).encode()
+            delay = str(params["comm_period"]).encode()
 
             state = params["state"]
 
