@@ -31,7 +31,8 @@ from fault_tolerant_ml.distribute.states import *
 class Master(object):
     """Master class for distributed machine learning system
     """
-    def __init__(self, model, dist_strategy, verbose):
+    def __init__(self, n_iterations, learning_rate, verbose, scenario, n_most_representative,
+    delay, switch_delta):
         
         # ZMQ variables
         self.ctrl_socket = None
@@ -45,14 +46,14 @@ class Master(object):
 
         # Distributed environ variables
         self.state = START
-        self.delay = dist_strategy.delay
-        self.switch_delta = dist_strategy.switch_delta
-        self.scenario = dist_strategy.type
-        self.n_most_representative = dist_strategy.n_most_representative
+        self.comm_period = delay
+        self.switch_delta = switch_delta
         self.delay_change = False
+        self.scenario = scenario
+        self.n_most_representative = n_most_representative
 
         # Model variables
-        self.n_iterations = int(np.ceil(n_iterations / self.delay))
+        self.n_iterations = int(np.ceil(n_iterations / self.comm_period))
         self.learning_rate = learning_rate
         self.hypothesis = hypotheses.log_hypothesis
         self.optimizer = ParallelSGDOptimizer(learning_rate=self.learning_rate)
@@ -92,10 +93,6 @@ class Master(object):
         msg[0] = (min_theta_val, max_theta_val, interval, theta_bins)
 
         return msg
-
-    @property
-    def name(self):
-        return "master"
 
     def connect(self):
         """Connects to necessary sockets
@@ -146,7 +143,7 @@ class Master(object):
             params["n_classes"] = self.data.n_classes
             params["n_most_representative"] = self.n_most_representative
             params["learning_rate"] = self.learning_rate
-            params["delay"] = self.delay
+            params["comm_period"] = self.comm_period
             params["mapping"] = self.mapping
         return params
 
@@ -422,37 +419,6 @@ class Master(object):
 
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
-    def run(self):
-        """Run strategy
-        """
-
-        while not self.model.completed:
-
-            events = dict(self.poller.poll())
-            if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
-                # Don't use the results if they've already been counted
-                command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                if command == b"CONNECT":
-                    self.register_workers()
-                    self.state = MAP
-
-                elif command == b"WORK":
-                    theta_p = self.model.theta.copy()
-
-                    # Distribute params
-                    self.start_next_task()
-                    # Worker computes loss and gradients
-                    # Master collects gradients
-                    d_theta, epoch_loss = self.get_gradients(events)
-                    # Master applies gradients
-                    self.model.iterate(role=self.name)
-                    delta = np.max(np.abs(theta_p - self.model.theta))
-
-                    if self.state != REMAP:
-                        self.state = DIST_PARAMS
-                    self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-
     def main_loop(self):
         """Main loop for training.
 
@@ -528,9 +494,9 @@ class Master(object):
                                 self.state = DIST_PARAMS
                             self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
-                            if delta < self.switch_delta and self.delay > 1 and not self.delay_change:
+                            if delta < self.switch_delta and self.comm_period > 1 and not self.delay_change:
                                 self.delay_change = True
-                                self.n_iterations = i + (self.n_iterations - i) * self.delay
+                                self.n_iterations = i + (self.n_iterations - i) * self.comm_period
                                 self.logger.debug(f"Iterations now = {self.n_iterations}")
                 else:
                     if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
@@ -599,3 +565,46 @@ class Master(object):
         """
         time.sleep(1)
         self.publisher.send_multipart([b"", b"EXIT"])
+
+@click.command()
+@click.option('--n_iterations', '-i', default=400, type=int)
+@click.option('--learning_rate', '-lr', default=0.1, type=float)
+@click.option('--verbose', '-v', default=10, type=int)
+@click.option('--scenario', '-s', default=1, type=int)
+@click.option('--n_most_representative', '-nmr', default=100, type=int)
+@click.option('--delay', '-d', default=1, type=int)
+@click.option('--switch_delta', '-sd', default=0.0074, type=float)
+def run(n_iterations, learning_rate, verbose, scenario, n_most_representative, delay, 
+switch_delta):
+    """Controller function which creates the master and starts off the training
+
+    Args:
+        n_iterations (int): No. of iterations we perform for training
+        learning_rate (float): The rate at which we want our model to learn
+        verbose (int): The logger level as an integer. See more in the logging file for different options
+        scenario (int): The scenario we would like to run
+    """
+
+    # # load_dotenv(find_dotenv())
+
+    if "LOGDIR" in os.environ:
+        from fault_tolerant_ml.lib.io.file_io import flush_dir
+        ignore_dir = [os.path.join(os.environ["LOGDIR"], "tf/")]
+        # ignore_dir = []
+        flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
+
+    master = Master(
+        n_iterations=n_iterations,
+        learning_rate=learning_rate,
+        verbose=verbose,
+        scenario=scenario,
+        n_most_representative=n_most_representative,
+        delay=delay,
+        switch_delta=switch_delta
+    )
+    master.connect()
+    time.sleep(1)
+    master.start()
+
+if __name__ == "__main__":
+    run()

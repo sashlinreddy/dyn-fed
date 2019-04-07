@@ -3,9 +3,9 @@ import gzip
 import numpy as np
 
 # Local
-from .base_model import BaseData
+from .base_model import Dataset
 
-class MNist(BaseData):
+class MNist(Dataset):
 
     def __init__(self, filepath):
         super().__init__(filepath)
@@ -32,8 +32,8 @@ class MNist(BaseData):
         self.X_test = self.X_test / fac
 
         # One hot encode labels
-        self.y_train = MNist._one_hot(self.y_train)
-        self.y_test = MNist._one_hot(self.y_test)
+        self.y_train = MNist.one_hot(self.y_train)
+        self.y_test = MNist.one_hot(self.y_test)
         # we don't want zeroes and ones in the labels neither:
         self.y_train = np.where(self.y_train == 0, 0.01, 0.99)
         self.y_test = np.where(self.y_test == 0, 0.01, 0.99)

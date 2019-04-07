@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.model_selection import train_test_split
-class BaseData(object):
+class Dataset(object):
 
     def __init__(self, filepath):
         self.filepath = filepath
@@ -8,7 +8,7 @@ class BaseData(object):
         self.y = None
 
     @staticmethod
-    def _one_hot(labels):
+    def one_hot(labels):
         """Returns one hot encoded representation of data 
         
         Args:
@@ -20,20 +20,6 @@ class BaseData(object):
         """
         unique_labels = np.unique(labels)
         return (unique_labels == labels[:, np.newaxis]).astype(int)
-
-    def prepare_data(self):
-        raise NotImplementedError("Child required to implement prepare data method")
-
-    def do_split(self, X, y, test_size=0.3):
-        """
-        Returns a dictionary of the train test split numpy arrays
-        """
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
-        data = {'training' : {'features' : X_train, 'labels' : y_train},
-                'testing' : {'features' : X_test, 'labels' : y_test}}
-
-        return data
 
     @staticmethod
     def next_batch(X, y, batch_size):
@@ -54,3 +40,17 @@ class BaseData(object):
         for i in np.arange(0, X.shape[0], batch_size):
             # yield a tuple of the current batched data and labels
             yield (X[i:i + batch_size], y[i:i + batch_size])
+
+    def prepare_data(self):
+        raise NotImplementedError("Child required to implement prepare data method")
+
+    def do_split(self, X, y, test_size=0.3):
+        """
+        Returns a dictionary of the train test split numpy arrays
+        """
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
+        data = {'training' : {'features' : X_train, 'labels' : y_train},
+                'testing' : {'features' : X_test, 'labels' : y_test}}
+
+        return data

@@ -1,11 +1,11 @@
-from .base_model import BaseData
+from .base_model import Dataset
 import pandas as pd
 import numpy as np
 from imblearn.over_sampling import SMOTE
 from sklearn import datasets
 
 from fault_tolerant_ml.ml import preprocessor as pre
-class OccupancyData(BaseData):
+class OccupancyData(Dataset):
 
     def __init__(self, filepath, n_stacks=1):
         super().__init__(filepath)

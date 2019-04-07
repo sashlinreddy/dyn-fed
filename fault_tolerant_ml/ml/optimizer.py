@@ -39,12 +39,34 @@ class Optimizer(object):
 class SGDOptimizer(Optimizer):
     """Stochastic gradient descent optimizer
     """
-    def __init__(self, loss, grad, learning_rate=0.1):
+    def __init__(self, loss, grad, learning_rate=0.1, **kwargs):
         super().__init__(loss, grad, learning_rate)
+        self._role = None
+        self._most_rep = None
+        self._n_most_rep = 0
+        if "n_most_rep" in kwargs:
+            self._n_most_rep = kwargs["n_most_rep"]
+        if "role" in kwargs:
+            self._role = kwargs["role"]
+
+    @property
+    def most_rep(self):
+        return self._most_rep
+
+    @property
+    def role(self):
+        return self._role
 
     def compute_loss(self, y, y_pred):
         # Calculate loss between predicted and actual using selected loss function
         batch_loss = self.loss(y_pred, y)
+
+        if self._role is not None:
+            # Calculate most representative data points. We regard data points that have a 
+            # high loss to be most representative
+            self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
+            # Calculate worker loss - this is aggregated
+            batch_loss = np.mean(batch_loss)
 
         return batch_loss
 
@@ -86,7 +108,7 @@ class SGDOptimizer(Optimizer):
 
         return theta
 
-    def minimize(self, X, y, y_pred, theta):
+    def minimize(self, X, y, y_pred, theta, precomputed_gradients=None):
         """Minimizes gradients. Computes loss from actual and predicted, computes gradients and applies gradients
         
         Args:
@@ -99,13 +121,21 @@ class SGDOptimizer(Optimizer):
             theta (numpy.ndarray): Updated paramter matrix
             batch_loss (float): Loss for current predictions and labels
         """
-        # Calculate loss
-        batch_loss = self.compute_loss(y, y_pred)
-        # Get gradients
-        d_theta = self.compute_gradients(X, y, y_pred, theta)
-        # Apply them
-        theta = self.apply_gradients(d_theta, theta)
-        return theta, batch_loss
+
+        if precomputed_gradients is None:
+            # Calculate loss
+            batch_loss = self.compute_loss(y, y_pred)
+
+            # Get gradients
+            d_theta = self.compute_gradients(X, y, y_pred, theta)
+            # Apply them
+            theta = self.apply_gradients(d_theta, theta)
+            return theta, batch_loss
+        else:
+            d_theta = precomputed_gradients
+            # Apply them
+            theta = self.apply_gradients(d_theta, theta)
+            return theta
 
 class AdamOptimizer(Optimizer):
     """Adam gradient descent optimizer

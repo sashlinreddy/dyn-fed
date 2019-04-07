@@ -1,7 +1,7 @@
-from .base_model import BaseData
+from .base_model import Dataset
 import numpy as np
 
-class DummyData(BaseData):
+class DummyData(Dataset):
 
     def __init__(self, filepath="", n_samples=100, n_features=10, n_classes=1, lower_bound=None, upper_bound=None):
         super().__init__(filepath)
