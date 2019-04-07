@@ -31,6 +31,41 @@ from fault_tolerant_ml.distribute.states import *
 class Master(object):
     """Master class for distributed machine learning system
     """
+
+    class training_loop_wrapper(object):
+
+        def __init__(self, decorated):
+            self.decorated = decorated
+
+        def __get__(self, instance, owner):
+            self.cls = owner
+            self.obj = instance
+
+            return self.__call__
+
+        def __call__(self, *args, **kwargs):
+
+            # master = args[0]
+            print(self.obj, self.cls)
+            try:
+                # Detect all workers by polling by whoevers sending their worker ids
+                self.obj.detect_workers()
+                if not self.obj.watch_dog.states:
+                    self.obj.logger.info("No workers found")
+                    raise KeyboardInterrupt
+
+                self.decorated(self.obj)
+        
+            except KeyboardInterrupt as e:
+                pass
+            except zmq.ZMQError as zmq_err:
+                self.obj.logger.error(zmq_err)
+                self.obj.done()
+            except Exception as e:
+                self.obj.logger.exception(e)
+            finally:
+                self.obj.logger.info("Exiting peacefully. Cleaning up...")
+
     def __init__(self, dist_strategy, verbose):
         
         # ZMQ variables
@@ -415,6 +450,85 @@ class Master(object):
 
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
+    @training_loop_wrapper
+    def training_loop(self):
+        completed = False
+        i = 0
+        delta = 1.0
+        start = time.time()
+
+        while not completed:
+
+            events = dict(self.poller.poll())
+
+            if len(self.watch_dog.states) > 0:
+                if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
+                    self.start_next_task()
+
+                # Check heartbeat
+                if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
+                    address, msg = self.ctrl_socket.recv_multipart()
+                    self.watch_dog.states[address].state = True
+                    self.logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
+
+                if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                    # Don't use the results if they've already been counted
+                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                    if command == b"CONNECT":
+                        self.register_workers()
+                        self.state = MAP
+
+                    elif command == b"WORK":
+                        theta_p = self.theta.copy()
+                        # Receive updated parameters from workers
+                        d_theta, epoch_loss = self.get_gradients(events)
+
+                        # Update the global parameters with weighted error
+                        self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, precomputed_gradients=d_theta)
+
+                        if self.tf_logger is not None:
+                            self.tf_logger.histogram("theta-master", self.theta, i, bins=self.n_iterations)
+                            self.tf_logger.scalar("epoch-master", epoch_loss, i)
+
+                        delta = np.max(np.abs(theta_p - self.theta))
+
+                        if self.state != REMAP:
+                            self.state = DIST_PARAMS
+                        self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+                        i += 1
+                        if delta < self.dist_strategy.delta_switch and self.dist_strategy.comm_period > 1 and not self.delay_change:
+                            self.delay_change = True
+                            self.n_iterations = i + (self.n_iterations - i) * self.dist_strategy.comm_period
+                            self.logger.debug(f"Iterations now = {self.n_iterations}")
+            else:
+                if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                    # Don't use the results if they've already been counted
+                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                    if command == b"CONNECT":
+                        self.register_workers()
+
+            if i >= self.n_iterations:
+                completed = True
+
+        # Tell workers to exit
+        self.done()
+        self.state = COMPLETE
+        end = time.time()
+        self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
+
+        diff = np.diff(self.times)
+        self.logger.debug(f"Times={diff.mean():7.6f}s")
+
+        # Print confusion matrix
+        confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.theta)
+        self.logger.info(f"Confusion matrix=\n{confusion_matrix}")
+
+        # Accuracy
+        acc = accuracy(self.data.X_test, self.data.y_test, self.theta, self.hypothesis)
+        self.logger.info(f"Accuracy={acc * 100:7.4f}%")
+
     def main_loop(self):
         """Main loop for training.
 
@@ -436,103 +550,9 @@ class Master(object):
         self.logger.debug(f"Init theta={self.theta}")
         
         self.poller = self.setup_poller()
+
+        self.training_loop()
         
-        try:
-
-            # Detect all workers by polling by whoevers sending their worker ids
-            self.detect_workers()
-            if not self.watch_dog.states:
-                self.logger.info("No workers found")
-                raise KeyboardInterrupt
-
-            completed = False
-            i = 0
-            delta = 1.0
-            start = time.time()
-
-            while not completed:
-
-                events = dict(self.poller.poll())
-
-                if len(self.watch_dog.states) > 0:
-                    if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
-                        self.start_next_task()
-
-                    # Check heartbeat
-                    if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
-                        address, msg = self.ctrl_socket.recv_multipart()
-                        self.watch_dog.states[address].state = True
-                        self.logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
-
-                    if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
-                        # Don't use the results if they've already been counted
-                        command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                        if command == b"CONNECT":
-                            self.register_workers()
-                            self.state = MAP
-
-                        elif command == b"WORK":
-                            theta_p = self.theta.copy()
-                            # Receive updated parameters from workers
-                            d_theta, epoch_loss = self.get_gradients(events)
-
-                            # Update the global parameters with weighted error
-                            self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, precomputed_gradients=d_theta)
-
-                            if self.tf_logger is not None:
-                                self.tf_logger.histogram("theta-master", self.theta, i, bins=self.n_iterations)
-                                self.tf_logger.scalar("epoch-master", epoch_loss, i)
-
-                            delta = np.max(np.abs(theta_p - self.theta))
-
-                            if self.state != REMAP:
-                                self.state = DIST_PARAMS
-                            self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-                            i += 1
-                            if delta < self.dist_strategy.delta_switch and self.dist_strategy.comm_period > 1 and not self.delay_change:
-                                self.delay_change = True
-                                self.n_iterations = i + (self.n_iterations - i) * self.dist_strategy.comm_period
-                                self.logger.debug(f"Iterations now = {self.n_iterations}")
-                else:
-                    if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
-                        # Don't use the results if they've already been counted
-                        command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                        if command == b"CONNECT":
-                            self.register_workers()
-
-                if i >= self.n_iterations:
-                    completed = True
-
-            # Tell workers to exit
-            self.done()
-            self.state = COMPLETE
-            end = time.time()
-            self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
-
-            diff = np.diff(self.times)
-            self.logger.debug(f"Times={diff.mean():7.6f}s")
-
-            # Print confusion matrix
-            confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.theta)
-            self.logger.info(f"Confusion matrix=\n{confusion_matrix}")
-
-            # Accuracy
-            acc = accuracy(self.data.X_test, self.data.y_test, self.theta, self.hypothesis)
-            self.logger.info(f"Accuracy={acc * 100:7.4f}%")
-            
-        except KeyboardInterrupt as e:
-            pass
-        except zmq.ZMQError as zmq_err:
-            self.logger.error(zmq_err)
-            self.done()
-        except Exception as e:
-            self.logger.exception(e)
-        finally:
-            self.logger.info("Exiting peacefully. Cleaning up...")
-            # self.kill()
-
     def start(self):
         """Starts work of master. First connects to workers and then performs machine learning training
         """
