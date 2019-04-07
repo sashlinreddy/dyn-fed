@@ -166,7 +166,7 @@ class Master(object):
             data = (self.X_train, self.y_train)
             params = self.set_params()
 
-            self.distributor.distribute(
+            self.distributor.map(
                 socket=self.ctrl_socket, 
                 data=data, 
                 workers=self.watch_dog.states, 
@@ -212,7 +212,7 @@ class Master(object):
                 params = self.set_params()
                 params["n_samples"] = n_samples
 
-                self.distributor.distribute(
+                self.distributor.map(
                     socket=self.ctrl_socket, 
                     data=data, 
                     workers=self.watch_dog.states, 
@@ -247,7 +247,7 @@ class Master(object):
                 data = (self.X_train, self.y_train)
                 params = self.set_params()
 
-                self.distributor.distribute(
+                self.distributor.map(
                     socket=self.ctrl_socket, 
                     data=data, 
                     workers=self.watch_dog.states, 
@@ -264,7 +264,7 @@ class Master(object):
             workers = None
             params = self.set_params()
 
-            self.distributor.distribute(
+            self.distributor.map(
                 socket=self.publisher, 
                 data=data, 
                 workers=workers, 
@@ -274,7 +274,7 @@ class Master(object):
 
             self.state = REDUCE
 
-    def get_gradients(self, events):
+    def gather(self, events):
         """Receives gradients from workers
 
         Args:
@@ -298,11 +298,7 @@ class Master(object):
 
         workers_received = set()
 
-        while True:
-
-            # Stop condition
-            if i >= n_alive_workers:
-                break
+        while i < n_alive_workers:
 
             # Timer to calculate running time for an iteration. We can then calculate the running time for 
             # an iteration so that if a state changes since a poll event, we can break if the running time 
@@ -332,7 +328,7 @@ class Master(object):
 
                         continue
 
-                self.logger.debug(f"Alive workers={n_alive_workers}")
+                # self.logger.debug(f"Alive workers={n_alive_workers}")
                 if i == 0:
                     worker, d_theta_temp, epoch_loss_temp, mr = msg
                 else:
@@ -448,7 +444,7 @@ class Master(object):
                     elif command == b"WORK":
                         theta_p = self.theta.copy()
                         # Receive updated parameters from workers
-                        d_theta, epoch_loss = self.get_gradients(events)
+                        d_theta, epoch_loss = self.gather(events)
 
                         # Update the global parameters with weighted error
                         self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, precomputed_gradients=d_theta)

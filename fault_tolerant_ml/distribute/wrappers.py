@@ -38,10 +38,11 @@ class ftml_train(ftml_wrapper):
             finally:
                 self.obj.logger.info("Exiting peacefully. Cleaning up...")
 
-class ftml_trainv2(object):
+class ftml_trainv2(ftml_wrapper):
 
     def __init__(self):
         pass
 
     def funcname(self, parameterlist):
         pass
+                

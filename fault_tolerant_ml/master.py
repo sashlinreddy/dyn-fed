@@ -169,7 +169,7 @@ class Master(object):
             data = (self.X_train, self.y_train)
             params = self.set_params()
 
-            self.distributor.distribute(
+            self.distributor.map(
                 socket=self.ctrl_socket, 
                 data=data, 
                 workers=self.watch_dog.states, 
@@ -215,7 +215,7 @@ class Master(object):
                 params = self.set_params()
                 params["n_samples"] = n_samples
 
-                self.distributor.distribute(
+                self.distributor.map(
                     socket=self.ctrl_socket, 
                     data=data, 
                     workers=self.watch_dog.states, 
@@ -250,7 +250,7 @@ class Master(object):
                 data = (self.X_train, self.y_train)
                 params = self.set_params()
 
-                self.distributor.distribute(
+                self.distributor.map(
                     socket=self.ctrl_socket, 
                     data=data, 
                     workers=self.watch_dog.states, 
@@ -267,7 +267,7 @@ class Master(object):
             workers = None
             params = self.set_params()
 
-            self.distributor.distribute(
+            self.distributor.map(
                 socket=self.publisher, 
                 data=data, 
                 workers=workers, 
