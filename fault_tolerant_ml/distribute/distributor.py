@@ -59,7 +59,7 @@ class Distributor(object):
             n_features = str(params["n_features"]).encode()
             n_classes = str(params["n_classes"]).encode()
             scenario = str(params["scenario"]).encode()
-            n_most_representative = str(params["n_most_representative"]).encode()
+            n_most_rep = str(params["n_most_rep"]).encode()
             learning_rate = str(params["learning_rate"]).encode()
             delay = str(params["comm_period"]).encode()
 
@@ -98,7 +98,7 @@ class Distributor(object):
                         upper_bound = lower_bound + X_batch.shape[0]
                         worker.idxs = np.arange(lower_bound, upper_bound)
                         if worker.most_representative is None:
-                            worker.most_representative = np.zeros((params["n_most_representative"],))
+                            worker.most_representative = np.zeros((params["n_most_rep"],))
                             worker.lower_bound = lower_bound
                             worker.upper_bound = upper_bound
                     # Redistribute only most representative data points for dead workers
@@ -119,10 +119,10 @@ class Distributor(object):
                         worker.mapping.update(dict(zip(new_range, global_idxs)))
                         worker.idxs = np.hstack((worker.idxs, global_idxs))
                         if worker.most_representative is None:
-                            worker.most_representative = np.zeros((params["n_most_representative"],))
+                            worker.most_representative = np.zeros((params["n_most_rep"],))
 
                     socket.send_multipart([worker.identity, b"WORK", batch_data, dtype, shape])
-                    socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_representative, learning_rate, delay])
+                    socket.send_multipart([worker.identity, b"WORK", n_samples, n_features, n_classes, scenario, n_most_rep, learning_rate, delay])
                     i += 1
 
             self._logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}")

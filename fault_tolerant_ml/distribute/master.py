@@ -31,8 +31,8 @@ from fault_tolerant_ml.distribute.states import *
 class Master(object):
     """Master class for distributed machine learning system
     """
-    def __init__(self, n_iterations, learning_rate, verbose, scenario, n_most_representative,
-    delay, switch_delta):
+    def __init__(self, n_iterations, learning_rate, verbose, scenario, n_most_rep,
+    comm_period, delta_switch):
         
         # ZMQ variables
         self.ctrl_socket = None
@@ -46,11 +46,11 @@ class Master(object):
 
         # Distributed environ variables
         self.state = START
-        self.comm_period = delay
-        self.switch_delta = switch_delta
+        self.comm_period = comm_period
+        self.switch_delta = delta_switch
         self.delay_change = False
         self.scenario = scenario
-        self.n_most_representative = n_most_representative
+        self.n_most_rep = n_most_rep
 
         # Model variables
         self.n_iterations = int(np.ceil(n_iterations / self.comm_period))
@@ -141,7 +141,7 @@ class Master(object):
             params["n_samples"] = self.data.n_samples
             params["n_features"] = self.data.n_features
             params["n_classes"] = self.data.n_classes
-            params["n_most_representative"] = self.n_most_representative
+            params["n_most_rep"] = self.n_most_rep
             params["learning_rate"] = self.learning_rate
             params["comm_period"] = self.comm_period
             params["mapping"] = self.mapping

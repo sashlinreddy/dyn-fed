@@ -91,12 +91,13 @@ delta_switch):
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.1, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
+@click.option('--strategy', '-st', default="mw", type=str)
 @click.option('--scenario', '-s', default=1, type=int)
-@click.option('--n_most_representative', '-nmr', default=100, type=int)
-@click.option('--delay', '-d', default=1, type=int)
-@click.option('--switch_delta', '-sd', default=0.0074, type=float)
-def run_old(n_iterations, learning_rate, verbose, scenario, n_most_representative, delay, 
-switch_delta):
+@click.option('--n_most_rep', '-nmr', default=100, type=int)
+@click.option('--comm_period', '-cp', default=1, type=int)
+@click.option('--delta_switch', '-ds', default=0.0074, type=float)
+def run_old(n_iterations, learning_rate, verbose, strategy, scenario, n_most_rep, comm_period, 
+delta_switch):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -114,14 +115,30 @@ switch_delta):
         # ignore_dir = []
         flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
+    loss = cross_entropy_loss
+    grad = cross_entropy_gradient
+    optimizer = SGDOptimizer(loss=loss, grad=grad, learning_rate=learning_rate, role="master", n_most_rep=n_most_rep)
+    model = LogisticRegression(optimizer, max_iter=n_iterations)
+    data_path = "/c/Users/nb304836/Documents/git-repos/fault_tolerant_ml/data"
+
+    dist_strategy = MasterStrategy(
+        strategy=strategy,
+        scenario=scenario,
+        n_most_rep=n_most_rep, 
+        comm_period=comm_period,
+        delta_switch=delta_switch,
+        model=model,
+        data_path=data_path
+    )
+
     master = Master(
         n_iterations=n_iterations,
         learning_rate=learning_rate,
         verbose=verbose,
         scenario=scenario,
-        n_most_representative=n_most_representative,
-        delay=delay,
-        switch_delta=switch_delta
+        n_most_rep=n_most_rep,
+        comm_period=comm_period,
+        delta_switch=delta_switch
     )
     master.connect()
     time.sleep(1)
