@@ -46,14 +46,10 @@ class Master(object):
         # Distributed environ variables
         self.state = START
         self.dist_strategy = dist_strategy
-        self.comm_period = self.dist_strategy.comm_period
-        self.delta_switch = self.dist_strategy.delta_switch
-        self.scenario = self.dist_strategy.scenario
-        self.n_most_rep = self.dist_strategy.n_most_rep
         self.delay_change = False
 
         # Model variables
-        self.n_iterations = int(np.ceil(self.dist_strategy.model.max_iter / self.comm_period))
+        self.n_iterations = int(np.ceil(self.dist_strategy.model.max_iter / self.dist_strategy.comm_period))
         self.learning_rate = self.dist_strategy.model.optimizer.learning_rate
         self.hypothesis = hypotheses.log_hypothesis
         self.optimizer = self.dist_strategy.model.optimizer
@@ -132,7 +128,7 @@ class Master(object):
         """
         params = {}
         params["state"] = self.state
-        params["scenario"] = self.scenario
+        params["scenario"] = self.dist_strategy.scenario
 
         if self.state == DIST_PARAMS:
             params["delay_change"] = self.delay_change
@@ -141,9 +137,9 @@ class Master(object):
             params["n_samples"] = self.data.n_samples
             params["n_features"] = self.data.n_features
             params["n_classes"] = self.data.n_classes
-            params["n_most_rep"] = self.n_most_rep
+            params["n_most_rep"] = self.dist_strategy.n_most_rep
             params["learning_rate"] = self.learning_rate
-            params["comm_period"] = self.comm_period
+            params["comm_period"] = self.dist_strategy.comm_period
             params["mapping"] = self.mapping
         return params
 
@@ -181,7 +177,7 @@ class Master(object):
         if self.state == REMAP:
 
             self.logger.debug(f"Redistributing data")
-            if self.scenario == 2:
+            if self.dist_strategy.scenario == 2:
                 
                 # Remap only data for workers that went down in previous iteration
                 # Get indices for dead workers
@@ -263,7 +259,7 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.theta if self.scenario != 1 else Master.get_quantized_params(self.theta)
+            data = self.theta if self.dist_strategy.scenario != 1 else Master.get_quantized_params(self.theta)
             workers = None
             params = self.set_params()
 
@@ -327,7 +323,7 @@ class Master(object):
                             for w in diff:
                                 # Set dead workers state to false
                                 self.watch_dog.states[w].state = False
-                                if self.scenario != 2:                                    
+                                if self.dist_strategy.scenario != 2:                                    
                                     self.watch_dog.states[w].idxs = self.watch_dog.states[w].most_representative
                             
                             self.state = REMAP
@@ -360,7 +356,7 @@ class Master(object):
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
-                if self.scenario == 2:
+                if self.dist_strategy.scenario == 2:
                     self.watch_dog.states[worker].most_representative = self.watch_dog.states[worker].lower_bound + mr
                     self.logger.debug(f"Min mr={np.min(self.watch_dog.states[worker].most_representative)}, Max mr={np.max(self.watch_dog.states[worker].most_representative)}")
                 else:
@@ -494,9 +490,9 @@ class Master(object):
                                 self.state = DIST_PARAMS
                             self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
-                            if delta < self.delta_switch and self.comm_period > 1 and not self.delay_change:
+                            if delta < self.dist_strategy.delta_switch and self.dist_strategy.comm_period > 1 and not self.delay_change:
                                 self.delay_change = True
-                                self.n_iterations = i + (self.n_iterations - i) * self.comm_period
+                                self.n_iterations = i + (self.n_iterations - i) * self.dist_strategy.comm_period
                                 self.logger.debug(f"Iterations now = {self.n_iterations}")
                 else:
                     if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
