@@ -16,7 +16,7 @@ import os
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.ml import hypotheses, loss_fns
-from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer
+from fault_tolerant_ml.ml.optimizer import SGDOptimizer
 from fault_tolerant_ml.tools import TFLogger
 
 class Worker(object):
@@ -85,7 +85,8 @@ class Worker(object):
         # Get predictions
         y_pred = self.hypothesis(X, theta)
 
-        d_theta, batch_loss, most_representative = self.optimizer.minimize(X, y, y_pred, theta)
+        d_theta, batch_loss = self.optimizer.minimize(X, y, y_pred, theta)
+        most_representative = self.optimizer.most_rep
         
         return d_theta, batch_loss, most_representative
 
@@ -117,7 +118,7 @@ class Worker(object):
         self.learning_rate = float(learning_rate.decode())
         self.delay = int(delay.decode())
 
-        self.optimizer = ParallelSGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate)
+        self.optimizer = SGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate, n_most_rep=self.n_most_representative)
 
         if self.scenario == 2 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])

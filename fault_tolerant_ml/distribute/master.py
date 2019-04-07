@@ -48,15 +48,15 @@ class Master(object):
         self.dist_strategy = dist_strategy
         self.comm_period = self.dist_strategy.comm_period
         self.delta_switch = self.dist_strategy.delta_switch
-        self.delay_change = False
         self.scenario = self.dist_strategy.scenario
         self.n_most_rep = self.dist_strategy.n_most_rep
+        self.delay_change = False
 
         # Model variables
         self.n_iterations = int(np.ceil(self.dist_strategy.model.max_iter / self.comm_period))
         self.learning_rate = self.dist_strategy.model.optimizer.learning_rate
         self.hypothesis = hypotheses.log_hypothesis
-        self.optimizer = ParallelSGDOptimizer(learning_rate=self.learning_rate)
+        self.optimizer = self.dist_strategy.model.optimizer
 
         # Tracking variables
         self.times = []
@@ -482,7 +482,7 @@ class Master(object):
                             d_theta, epoch_loss = self.get_gradients(events)
 
                             # Update the global parameters with weighted error
-                            self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, d_theta=d_theta)
+                            self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, precomputed_gradients=d_theta)
 
                             if self.tf_logger is not None:
                                 self.tf_logger.histogram("theta-master", self.theta, i, bins=self.n_iterations)
