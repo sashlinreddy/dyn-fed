@@ -531,6 +531,8 @@ class Master(object):
         except zmq.ZMQError as zmq_err:
             self.logger.error(zmq_err)
             self.done()
+        except Exception as e:
+            self.logger.exception(e)
         finally:
             self.logger.info("Exiting peacefully. Cleaning up...")
             # self.kill()
