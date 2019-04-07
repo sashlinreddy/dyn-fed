@@ -47,7 +47,7 @@ class Master(object):
         # Distributed environ variables
         self.state = START
         self.comm_period = comm_period
-        self.switch_delta = delta_switch
+        self.delta_switch = delta_switch
         self.delay_change = False
         self.scenario = scenario
         self.n_most_rep = n_most_rep
@@ -494,7 +494,7 @@ class Master(object):
                                 self.state = DIST_PARAMS
                             self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
                             i += 1
-                            if delta < self.switch_delta and self.comm_period > 1 and not self.delay_change:
+                            if delta < self.delta_switch and self.comm_period > 1 and not self.delay_change:
                                 self.delay_change = True
                                 self.n_iterations = i + (self.n_iterations - i) * self.comm_period
                                 self.logger.debug(f"Iterations now = {self.n_iterations}")
