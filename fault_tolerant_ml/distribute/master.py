@@ -518,6 +518,9 @@ class Master(object):
         end = time.time()
         self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
 
+    def print_metrics(self):
+        
+        # Print avg loop iteration time
         diff = np.diff(self.times)
         self.logger.debug(f"Times={diff.mean():7.6f}s")
 
@@ -552,6 +555,8 @@ class Master(object):
         self.poller = self.setup_poller()
 
         self.training_loop()
+
+        self.print_metrics()
         
     def start(self):
         """Starts work of master. First connects to workers and then performs machine learning training
