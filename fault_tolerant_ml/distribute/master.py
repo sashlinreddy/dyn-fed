@@ -26,7 +26,7 @@ from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.distributor import Distributor
-from fault_tolerant_ml.distribute.wrappers import ftml_train, ftml_train_collect
+from fault_tolerant_ml.distribute.wrappers import ftml_train, ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.distribute.states import *
 
 class Master(object):
@@ -431,6 +431,15 @@ class Master(object):
 
         return d_theta, epoch_loss, delta
 
+    
+    @ftml_trainv2
+    def train(self, events):
+
+        # Map tasks
+        self.start_next_task()
+
+        # Gather and apply gradients
+        self.train_iteration(events)
 
     @ftml_train
     def training_loop(self):
@@ -502,7 +511,8 @@ class Master(object):
         
         self.poller = self.setup_poller()
 
-        self.training_loop()
+        # self.training_loop()
+        self.train()
 
         self.print_metrics()
         

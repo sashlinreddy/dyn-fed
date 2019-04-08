@@ -1,6 +1,6 @@
+import time
 import zmq.green as zmq
 from fault_tolerant_ml.distribute.states import *
-
 class ftml_wrapper(object):
 
     def __init__(self, decorated):
@@ -42,22 +42,31 @@ class ftml_train(ftml_wrapper):
 class ftml_trainv2(ftml_wrapper):
 
     def __call__(self, *args, **kwargs):
-        # Check heartbeat
-        if (self.obj.ctrl_socket in events) and (events.get(self.obj.ctrl_socket) == zmq.POLLIN):
-            address, msg = self.obj.ctrl_socket.recv_multipart()
-            self.obj.watch_dog.states[address].state = True
-            self.obj.logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
+        self.obj.dist_strategy.model.iter = 0
+        # i = 0
+        delta = 1.0
+        start = time.time()
 
-        if (self.obj.pull_socket in events) and (events.get(self.obj.pull_socket) == zmq.POLLIN):
-            # Don't use the results if they've already been counted
-            command = self.obj.pull_socket.recv(flags=zmq.SNDMORE)
+        # while i < self.n_iterations:
+        while self.obj.dist_strategy.model.iter < self.obj.n_iterations:
 
-            if command == b"CONNECT":
-                self.obj.register_workers()
-                self.obj.state = MAP
+            events = dict(self.obj.poller.poll())
 
-            elif command == b"WORK":
-                self.decorated(self.obj)
+            if len(self.obj.watch_dog.states) > 0:
+                self.decorated(self.obj, events)
+            else:
+                if (self.obj.pull_socket in events) and (events.get(self.obj.pull_socket) == zmq.POLLIN):
+                    # Don't use the results if they've already been counted
+                    command = self.obj.pull_socket.recv(flags=zmq.SNDMORE)
+
+                    if command == b"CONNECT":
+                        self.obj.register_workers()
+
+        # Tell workers to exit
+        self.obj.done()
+        self.obj.state = COMPLETE
+        end = time.time()
+        self.obj.logger.info("Time taken for %d iterations is %7.6fs" % (self.obj.n_iterations, end-start))
 
 class ftml_train_collect(ftml_wrapper):
 
