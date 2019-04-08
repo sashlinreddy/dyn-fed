@@ -26,7 +26,7 @@ from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.distributor import Distributor
-from fault_tolerant_ml.distribute.wrappers import ftml_train
+from fault_tolerant_ml.distribute.wrappers import ftml_train, ftml_train_collect
 from fault_tolerant_ml.distribute.states import *
 
 class Master(object):
@@ -412,57 +412,46 @@ class Master(object):
 
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
+    @ftml_train_collect
+    def train_iteration(self, events):
+        theta_p = self.theta.copy()
+        # Receive updated parameters from workers
+        d_theta, epoch_loss = self.gather(events)
+
+        # Update the global parameters with weighted error
+        self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, precomputed_gradients=d_theta)
+
+        if self.tf_logger is not None:
+            self.tf_logger.histogram("theta-master", self.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
+            self.tf_logger.scalar("epoch-master", epoch_loss, self.dist_strategy.model.iter)
+
+        delta = np.max(np.abs(theta_p - self.theta))
+
+        # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+
+        return d_theta, epoch_loss, delta
+
+
     @ftml_train
     def training_loop(self):
         completed = False
-        i = 0
+        self.dist_strategy.model.iter = 0
+        # i = 0
         delta = 1.0
         start = time.time()
 
-        while i < self.n_iterations:
+        # while i < self.n_iterations:
+        while self.dist_strategy.model.iter < self.n_iterations:
 
             events = dict(self.poller.poll())
 
             if len(self.watch_dog.states) > 0:
-                if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
-                    self.start_next_task()
+                self.start_next_task()
+                # if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
+                #     self.start_next_task()
 
-                # Check heartbeat
-                if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
-                    address, msg = self.ctrl_socket.recv_multipart()
-                    self.watch_dog.states[address].state = True
-                    self.logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
+                self.train_iteration(events)
 
-                if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
-                    # Don't use the results if they've already been counted
-                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                    if command == b"CONNECT":
-                        self.register_workers()
-                        self.state = MAP
-
-                    elif command == b"WORK":
-                        theta_p = self.theta.copy()
-                        # Receive updated parameters from workers
-                        d_theta, epoch_loss = self.gather(events)
-
-                        # Update the global parameters with weighted error
-                        self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, precomputed_gradients=d_theta)
-
-                        if self.tf_logger is not None:
-                            self.tf_logger.histogram("theta-master", self.theta, i, bins=self.n_iterations)
-                            self.tf_logger.scalar("epoch-master", epoch_loss, i)
-
-                        delta = np.max(np.abs(theta_p - self.theta))
-
-                        if self.state != REMAP:
-                            self.state = DIST_PARAMS
-                        self.logger.info(f"iteration = {i}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-                        i += 1
-                        if delta < self.dist_strategy.delta_switch and self.dist_strategy.comm_period > 1 and not self.delay_change:
-                            self.delay_change = True
-                            self.n_iterations = i + (self.n_iterations - i) * self.dist_strategy.comm_period
-                            self.logger.debug(f"Iterations now = {self.n_iterations}")
             else:
                 if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
                     # Don't use the results if they've already been counted
