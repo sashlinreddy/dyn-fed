@@ -42,31 +42,48 @@ class ftml_train(ftml_wrapper):
 class ftml_trainv2(ftml_wrapper):
 
     def __call__(self, *args, **kwargs):
-        self.obj.dist_strategy.model.iter = 0
-        # i = 0
-        delta = 1.0
-        start = time.time()
 
-        # while i < self.n_iterations:
-        while self.obj.dist_strategy.model.iter < self.obj.n_iterations:
+        try:
+            # Detect all workers by polling by whoevers sending their worker ids
+            self.obj.detect_workers()
+            if not self.obj.watch_dog.states:
+                self.obj.logger.info("No workers found")
+                raise KeyboardInterrupt
+            self.obj.dist_strategy.model.iter = 0
+            # i = 0
+            delta = 1.0
+            start = time.time()
 
-            events = dict(self.obj.poller.poll())
+            # while i < self.n_iterations:
+            while self.obj.dist_strategy.model.iter < self.obj.n_iterations:
 
-            if len(self.obj.watch_dog.states) > 0:
-                self.decorated(self.obj, events)
-            else:
-                if (self.obj.pull_socket in events) and (events.get(self.obj.pull_socket) == zmq.POLLIN):
-                    # Don't use the results if they've already been counted
-                    command = self.obj.pull_socket.recv(flags=zmq.SNDMORE)
+                events = dict(self.obj.poller.poll())
 
-                    if command == b"CONNECT":
-                        self.obj.register_workers()
+                if len(self.obj.watch_dog.states) > 0:
+                    self.decorated(self.obj, events)
+                else:
+                    if (self.obj.pull_socket in events) and (events.get(self.obj.pull_socket) == zmq.POLLIN):
+                        # Don't use the results if they've already been counted
+                        command = self.obj.pull_socket.recv(flags=zmq.SNDMORE)
 
-        # Tell workers to exit
-        self.obj.done()
-        self.obj.state = COMPLETE
-        end = time.time()
-        self.obj.logger.info("Time taken for %d iterations is %7.6fs" % (self.obj.n_iterations, end-start))
+                        if command == b"CONNECT":
+                            self.obj.register_workers()
+
+            # Tell workers to exit
+            self.obj.done()
+            self.obj.state = COMPLETE
+            end = time.time()
+            self.obj.logger.info("Time taken for %d iterations is %7.6fs" % (self.obj.n_iterations, end-start))
+
+        except KeyboardInterrupt as e:
+            pass
+        except zmq.ZMQError as zmq_err:
+            self.obj.logger.error(zmq_err)
+            self.obj.done()
+        except Exception as e:
+            self.obj.logger.exception(e)
+        finally:
+            self.obj.logger.info("Exiting peacefully. Cleaning up...")
 
 class ftml_train_collect(ftml_wrapper):
 

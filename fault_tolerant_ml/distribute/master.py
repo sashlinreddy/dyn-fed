@@ -430,8 +430,7 @@ class Master(object):
         # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
 
         return d_theta, epoch_loss, delta
-
-    
+        
     @ftml_trainv2
     def train(self, events):
 
