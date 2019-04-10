@@ -14,7 +14,10 @@ class MNist(Dataset):
             "Zero", "One", "Two", "Three", "Four", "Five",
             "Six", "Seven", "Eight", "Nine"
         ]
+
         self.prepare_data()
+        self.n_samples, self.n_features = self.X_train.shape
+        self.n_classes = len(self.class_names)
 
     def read_data(self, filepath):
 

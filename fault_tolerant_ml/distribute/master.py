@@ -19,10 +19,11 @@ import os
 # Local
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.utils import setup_logger
-from fault_tolerant_ml.data import DummyData, OccupancyData
+from fault_tolerant_ml.data import DummyData, OccupancyData, MNist
 from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer
 from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
+from fault_tolerant_ml.ml.metrics_temp import accuracy_scorev2
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.distributor import Distributor
@@ -124,6 +125,40 @@ class Master(object):
             self.send_heartbeat()
             gevent.sleep(0.5)
 
+    def register_workers(self, worker_id=None):
+        """Registers workers in a round robin fashion
+        """
+        if not worker_id:
+            worker_id = self.pull_socket.recv()
+
+        self.watch_dog.add_worker(worker_id)
+
+    def detect_workers(self):
+        """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
+        """
+        # timeout = 10 # 10 second time out
+        # start = time.time()
+
+        while True:
+            events = dict(self.poller.poll())
+
+            if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                if command == b"CONNECT":
+                    self.register_workers()
+                    # start = time.time()
+            else:
+                break
+        
+            # end = time.time()
+            # if round(end - start, 2) % 1 == 0:
+            #     self.logger.debug(end-start)
+            # if end-start > timeout:
+            #     break
+
+        self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
+
     def set_params(self):
         """Prepares parameters to be sent by the distributor
         """
@@ -144,15 +179,7 @@ class Master(object):
             params["mapping"] = self.mapping
         return params
 
-    def register_workers(self, worker_id=None):
-        """Registers workers in a round robin fashion
-        """
-        if not worker_id:
-            worker_id = self.pull_socket.recv()
-
-        self.watch_dog.add_worker(worker_id)
-
-    def start_next_task(self):
+    def map(self):
         """Starts new task depending on the state of the system.
 
         Possible states range from mapping of data, remapping of data (if worker dies or another worker is added),
@@ -260,7 +287,7 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.theta if self.dist_strategy.scenario != 1 else Master.get_quantized_params(self.theta)
+            data = self.dist_strategy.model.theta if self.dist_strategy.scenario != 1 else Master.get_quantized_params(self.dist_strategy.model.theta)
             workers = None
             params = self.set_params()
 
@@ -284,7 +311,7 @@ class Master(object):
             d_theta (numpy.ndarray): Our gradient matrix that is aggregated with a weighting according to the number    of samples each worker has
             epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
         """
-        d_theta = np.zeros(self.theta.shape)
+        d_theta = np.zeros(self.dist_strategy.model.theta.shape)
         epoch_loss = 0.0
 
         self.logger.debug(f"Receiving gradients")
@@ -348,7 +375,7 @@ class Master(object):
 
                 # Decode gradient matrix
                 d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
-                d_theta_temp = d_theta_temp.reshape(self.theta.shape)
+                d_theta_temp = d_theta_temp.reshape(self.dist_strategy.model.theta.shape)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
@@ -386,79 +413,53 @@ class Master(object):
         
         return d_theta, epoch_loss
 
-    def detect_workers(self):
-        """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
-        """
-        # timeout = 10 # 10 second time out
-        # start = time.time()
-
-        while True:
-            events = dict(self.poller.poll())
-
-            if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
-                command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                if command == b"CONNECT":
-                    self.register_workers()
-                    # start = time.time()
-            else:
-                break
-        
-            # end = time.time()
-            # if round(end - start, 2) % 1 == 0:
-            #     self.logger.debug(end-start)
-            # if end-start > timeout:
-            #     break
-
-        self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
-
     @ftml_train_collect
-    def train_iteration(self, events):
-        theta_p = self.theta.copy()
+    def _train_iteration(self, events):
+        theta_p = self.dist_strategy.model.theta.copy()
         # Receive updated parameters from workers
         d_theta, epoch_loss = self.gather(events)
 
         # Update the global parameters with weighted error
-        self.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.theta, precomputed_gradients=d_theta)
+        self.dist_strategy.model.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)
 
         if self.tf_logger is not None:
-            self.tf_logger.histogram("theta-master", self.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
+            self.tf_logger.histogram("theta-master", self.dist_strategy.model.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
             self.tf_logger.scalar("epoch-master", epoch_loss, self.dist_strategy.model.iter)
 
-        delta = np.max(np.abs(theta_p - self.theta))
+        delta = np.max(np.abs(theta_p - self.dist_strategy.model.theta))
 
         # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
 
         return d_theta, epoch_loss, delta
         
     @ftml_trainv2
-    def train(self, events):
+    def _train(self, events):
 
         # Map tasks
-        self.start_next_task()
+        self.map()
 
         # Gather and apply gradients
-        self.train_iteration(events)
+        self._train_iteration(events)
 
     @ftml_train
-    def training_loop(self):
+    def _training_loop(self):
         completed = False
         self.dist_strategy.model.iter = 0
-        # i = 0
         delta = 1.0
         start = time.time()
 
-        # while i < self.n_iterations:
         while self.dist_strategy.model.iter < self.n_iterations:
 
+            # Poll events
             events = dict(self.poller.poll())
 
+            # If we have more than 1 worker
             if len(self.watch_dog.states) > 0:
-                self.start_next_task()
-                # if (self.publisher in events) and (events.get(self.publisher) == zmq.POLLOUT):
-                #     self.start_next_task()
+                # Map tasks
+                self.map()
 
-                self.train_iteration(events)
+                # Gather and apply gradients
+                self._train_iteration(events)
 
             else:
                 if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
@@ -481,11 +482,13 @@ class Master(object):
         self.logger.debug(f"Times={diff.mean():7.6f}s")
 
         # Print confusion matrix
-        confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.theta)
+        confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.dist_strategy.model.theta)
         self.logger.info(f"Confusion matrix=\n{confusion_matrix}")
 
         # Accuracy
-        acc = accuracy(self.data.X_test, self.data.y_test, self.theta, self.hypothesis)
+        y_pred = self.dist_strategy.model.predict(self.data.X_test)
+        acc = accuracy_scorev2(self.data.y_test, y_pred)
+        # acc = accuracy(self.data.X_test, self.data.y_test, self.dist_strategy.model.theta, self.hypothesis)
         self.logger.info(f"Accuracy={acc * 100:7.4f}%")
 
     def main_loop(self):
@@ -499,25 +502,28 @@ class Master(object):
         # For reproducibility
         np.random.seed(42)
 
-        self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
-        self.data.transform()
-        self.X_train, self.y_train = self.data.X_train, self.data.y_train
+        # self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
+        # self.data.transform()
+        # self.X_train, self.y_train = self.data.X_train, self.data.y_train
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
-        self.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(np.float32)
-        self.logger.debug(f"Init theta={self.theta}")
+        self.dist_strategy.model.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(np.float32)
+        self.logger.debug(f"Init theta={self.dist_strategy.model.theta}")
         
         self.poller = self.setup_poller()
 
         # self.training_loop()
-        self.train()
+        self._train()
+        # self.train_iter()
 
         self.print_metrics()
         
-    def start(self):
+    def train(self, data):
         """Starts work of master. First connects to workers and then performs machine learning training
         """
+        self.data = data
+        self.X_train, self.y_train = self.data.X_train, self.data.y_train
         gevent.signal(signal.SIGQUIT, gevent.kill)
 
         main_loop = gevent.spawn(self.main_loop)

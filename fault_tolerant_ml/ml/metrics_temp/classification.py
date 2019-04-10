@@ -41,3 +41,8 @@ def accuracy_score(y, y_pred):
     y_pred[y_pred>0.5] = 1
     y_pred[y_pred<=0.5] = 0
     return np.sum(y_pred==y) / y.shape[0]
+
+def accuracy_scorev2(y, y_pred):
+    y_pred_ = y_pred.argmax(axis=1)
+    y_ = y.argmax(axis=1)
+    return np.sum(y_pred_==y_) / y_.shape[0]
