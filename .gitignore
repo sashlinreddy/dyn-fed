@@ -102,5 +102,5 @@ ENV/
 .mypy_cache/
 
 # Local
-notebooks/
+# notebooks/
 logs/
