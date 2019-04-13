@@ -201,6 +201,23 @@ class Master(object):
             )
             self.state = DIST_PARAMS
 
+            # Plot class balances
+            if "FIGDIR" in os.environ:
+
+                import pandas as pd
+                from fault_tolerant_ml.viz.target import ClassBalance
+
+                figdir = os.environ["FIGDIR"]
+
+                worker_ids = list(self.watch_dog.states.keys())
+                fname = os.path.join(figdir, f"class-balance.png")
+                class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items()]
+                class_names = self.data.class_names
+
+                class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
+                class_balance.fit(y=class_bal)
+                class_balance.poof()
+
         if self.state == REMAP:
 
             self.logger.debug(f"Redistributing data")
@@ -526,11 +543,11 @@ class Master(object):
         gevent.signal(signal.SIGQUIT, gevent.kill)
 
         main_loop = gevent.spawn(self.main_loop)
-        heartbeat_loop = gevent.spawn(self.heartbeat_loop)
+        # heartbeat_loop = gevent.spawn(self.heartbeat_loop)
         
         gevent.joinall([
             main_loop, 
-            heartbeat_loop,
+            # heartbeat_loop,
         ])
 
         self.kill()

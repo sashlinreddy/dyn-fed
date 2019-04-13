@@ -204,7 +204,7 @@ class Distributor(object):
             if "mapping" in params:
                 mapping = params["mapping"]
 
-            labels_per_worker = {}
+            self.labels_per_worker = {}
 
             # Iterate through workers and send
             i = 0
@@ -217,7 +217,11 @@ class Distributor(object):
                     self._logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
                     batch_data = np.hstack((X_batch, y_batch))
 
-                    labels_per_worker[worker] = np.unique(y_batch, return_counts=True)
+                    if y_batch.shape[1] > 1:
+                        y_b = np.argmax(y_batch, axis=1)
+                        self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
+                    else:
+                        self.labels_per_worker[worker] = np.unique(y_batch, return_counts=True)
 
                     # Encode data
                     dtype = batch_data.dtype.str.encode()
@@ -265,4 +269,4 @@ class Distributor(object):
 
             self._logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}")
 
-            self._logger.debug(f"Labels per worker={labels_per_worker}")
+            self._logger.debug(f"Labels per worker={self.labels_per_worker}")

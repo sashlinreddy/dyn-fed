@@ -57,6 +57,9 @@ class WorkerStates(object):
         rep = f"[{rep}]"
         return rep
 
+    def keys(self):
+        return [s.decode() for s in self._states.keys()]
+
     def add(self, worker):
         """Add worker state to dictionary
         
