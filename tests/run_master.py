@@ -10,6 +10,7 @@ from fault_tolerant_ml.ml.optimizer import SGDOptimizer
 from fault_tolerant_ml.ml.loss_fns import cross_entropy_loss, cross_entropy_gradient
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
+from fault_tolerant_ml.utils import setup_logger
 
 # @ftml_trainv2
 # def train_iter(master, *args, **kwargs):
@@ -40,13 +41,13 @@ from fault_tolerant_ml.data import MNist, OccupancyData
 #     return d_theta, epoch_loss, delta
 
 @click.command()
-@click.option('--n_iterations', '-i', default=200, type=int)
+@click.option('--n_iterations', '-i', default=25, type=int)
 @click.option('--learning_rate', '-lr', default=0.99, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
 @click.option('--strategy', '-st', default="mw", type=str)
 @click.option('--scenario', '-s', default=2, type=int)
 @click.option('--n_most_rep', '-nmr', default=100, type=int)
-@click.option('--comm_period', '-cp', default=10, type=int)
+@click.option('--comm_period', '-cp', default=1, type=int)
 @click.option('--delta_switch', '-ds', default=0.0074, type=float)
 def run(n_iterations, learning_rate, verbose, strategy, scenario, n_most_rep, comm_period, 
 delta_switch):
@@ -84,6 +85,7 @@ delta_switch):
         }
     }
     mnist = MNist(filepaths)
+    logger = setup_logger(level=verbose)
 
     # For reproducibility
     np.random.seed(42)
@@ -109,6 +111,30 @@ delta_switch):
     time.sleep(1)
 
     master.train(mnist)
+
+    # Plot class balances
+    if "FIGDIR" in os.environ:
+
+        import pandas as pd
+        from fault_tolerant_ml.viz.target import ClassBalance
+
+        figdir = os.environ["FIGDIR"]
+
+        try:
+            worker_ids = [s.identity.decode() for s in master.watch_dog.states if s.state]
+            fname = os.path.join(figdir, f"mnist-class-balance.png")
+            class_bal = [v[1] for (k, v) in master.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
+            class_names = master.data.class_names
+
+            logger.debug(f"workerids={worker_ids}")
+            logger.debug(f"class_bal={class_bal}")
+            logger.debug(f"class_names={class_names}")
+
+            class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
+            class_balance.fit(y=class_bal)
+            class_balance.poof()
+        except Exception as e:
+            logger.exception(e)
 
 if __name__ == "__main__":
     run()

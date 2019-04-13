@@ -10,6 +10,7 @@ class Distributor(object):
     def __init__(self):
         
         self._logger = logging.getLogger("ftml")
+        self.labels_per_worker = {}
 
     def bcast(self, socket, data, subscribe_msg=b""):
         """Broadcasts to anyone listening on the socket
@@ -204,7 +205,8 @@ class Distributor(object):
             if "mapping" in params:
                 mapping = params["mapping"]
 
-            self.labels_per_worker = {}
+            if params["scenario"] != 2:
+                self.labels_per_worker = {}
 
             # Iterate through workers and send
             i = 0
@@ -218,10 +220,16 @@ class Distributor(object):
                     batch_data = np.hstack((X_batch, y_batch))
 
                     if y_batch.shape[1] > 1:
-                        y_b = np.argmax(y_batch, axis=1)
-                        self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
+                        y_b = np.argmax(y_batch, axis=1) 
                     else:
-                        self.labels_per_worker[worker] = np.unique(y_batch, return_counts=True)
+                        y_b = y_batch
+
+                    if (state == REMAP) and (params["scenario"] == 2):
+                        classes, dists = np.unique(y_b, return_counts=True)
+                        self._logger.debug(f"Classes={classes}")
+                        self.labels_per_worker[worker][1][classes] = self.labels_per_worker[worker][1][classes] + dists
+                    else:
+                        self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
 
                     # Encode data
                     dtype = batch_data.dtype.str.encode()

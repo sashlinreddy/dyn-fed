@@ -64,7 +64,8 @@ class Master(object):
             self.tf_logger = TFLogger(logdir)
 
         # Setup logger
-        self.logger = setup_logger(level=verbose)
+        # self.logger = setup_logger(level=verbose)
+        self.logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
 
     @staticmethod
     def get_quantized_params(theta, interval=8):
@@ -197,26 +198,26 @@ class Master(object):
                 data=data, 
                 workers=self.watch_dog.states, 
                 params=params, 
-                gen_func=OccupancyData.next_batch
+                gen_func=self.data.next_batch
             )
             self.state = DIST_PARAMS
 
-            # Plot class balances
-            if "FIGDIR" in os.environ:
+            # # Plot class balances
+            # if "FIGDIR" in os.environ:
 
-                import pandas as pd
-                from fault_tolerant_ml.viz.target import ClassBalance
+            #     import pandas as pd
+            #     from fault_tolerant_ml.viz.target import ClassBalance
 
-                figdir = os.environ["FIGDIR"]
+            #     figdir = os.environ["FIGDIR"]
 
-                worker_ids = list(self.watch_dog.states.keys())
-                fname = os.path.join(figdir, f"class-balance.png")
-                class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items()]
-                class_names = self.data.class_names
+            #     worker_ids = list(self.watch_dog.states.keys())
+            #     fname = os.path.join(figdir, f"class-balance.png")
+            #     class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items()]
+            #     class_names = self.data.class_names
 
-                class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
-                class_balance.fit(y=class_bal)
-                class_balance.poof()
+            #     class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
+            #     class_balance.fit(y=class_bal)
+            #     class_balance.poof()
 
         if self.state == REMAP:
 
@@ -255,14 +256,6 @@ class Master(object):
                 params = self.set_params()
                 params["n_samples"] = n_samples
 
-                self.distributor.map(
-                    socket=self.ctrl_socket, 
-                    data=data, 
-                    workers=self.watch_dog.states, 
-                    params=params, 
-                    gen_func=OccupancyData.next_batch
-                )
-
             else:
                 # Stack all indices from current dataset that we will use to remap
                 global_idxs = np.hstack([w.idxs for w in self.watch_dog.states if (not w.mr_idxs_used) and (not w.idxs is None)])
@@ -290,13 +283,14 @@ class Master(object):
                 data = (self.X_train, self.y_train)
                 params = self.set_params()
 
-                self.distributor.map(
+            self.distributor.map(
                     socket=self.ctrl_socket, 
                     data=data, 
                     workers=self.watch_dog.states, 
                     params=params, 
-                    gen_func=OccupancyData.next_batch
+                    gen_func=self.data.next_batch
                 )
+
             self.state = DIST_PARAMS
 
         if self.state == DIST_PARAMS:
@@ -311,8 +305,7 @@ class Master(object):
                 socket=self.publisher, 
                 data=data, 
                 workers=workers, 
-                params=params,
-                gen_func=OccupancyData.next_batch
+                params=params
             )
 
             self.state = REDUCE
