@@ -431,15 +431,19 @@ class Master(object):
         # Update the global parameters with weighted error
         self.dist_strategy.model.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)
 
+        y_pred = self.dist_strategy.model.predict(self.data.X_test)
+        acc = accuracy_scorev2(self.data.y_test, y_pred)
+
         if self.tf_logger is not None:
             self.tf_logger.histogram("theta-master", self.dist_strategy.model.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
-            self.tf_logger.scalar("epoch-master", epoch_loss, self.dist_strategy.model.iter)
+            self.tf_logger.scalar("loss-master", epoch_loss, self.dist_strategy.model.iter)
+            self.tf_logger.scalar("accuracy-master", acc, self.dist_strategy.model.iter)
 
         delta = np.max(np.abs(theta_p - self.dist_strategy.model.theta))
 
         # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
 
-        return d_theta, epoch_loss, delta
+        return d_theta, epoch_loss, delta, acc
         
     @ftml_trainv2
     def _train(self, events):
