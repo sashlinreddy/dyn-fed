@@ -44,6 +44,12 @@ class Dataset(object):
     def prepare_data(self):
         raise NotImplementedError("Child required to implement prepare data method")
 
+    def update_xy(self, idxs):
+        X_train = self.X_train[idxs]
+        y_train = self.y_train[idxs]
+        self.n_samples = X_train.shape[0]
+        return X_train, y_train
+
     def do_split(self, X, y, test_size=0.3):
         """
         Returns a dictionary of the train test split numpy arrays

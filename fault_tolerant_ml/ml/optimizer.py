@@ -60,11 +60,17 @@ class SGDOptimizer(Optimizer):
     def compute_loss(self, y, y_pred):
         # Calculate loss between predicted and actual using selected loss function
         batch_loss = self.loss(y_pred, y)
+        self._logger.debug(f"Batch loss shape={batch_loss.shape}")
 
         if self._role is not None:
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
-            self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
+            if batch_loss.shape[1] > 1:
+                temp = np.mean(batch_loss, axis=1)
+                self._logger.debug(f"temp shape={temp.shape}")
+                self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
+            else:
+                self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
             # Calculate worker loss - this is aggregated
             batch_loss = np.mean(batch_loss)
 
@@ -130,7 +136,7 @@ class SGDOptimizer(Optimizer):
             d_theta = self.compute_gradients(X, y, y_pred, theta)
             # Apply them
             theta = self.apply_gradients(d_theta, theta)
-            return theta, batch_loss
+            return theta, d_theta, batch_loss
         else:
             d_theta = precomputed_gradients
             # Apply them

@@ -1,1 +1,1 @@
-from .classification import accuracy_score, confusion_matrix
+from .classification import accuracy_score, accuracy_scorev2, confusion_matrix

@@ -112,5 +112,5 @@ class ftml_train_collect(ftml_wrapper):
                 self.obj.dist_strategy.model.iter += 1
                 if delta < self.obj.dist_strategy.delta_switch and self.obj.dist_strategy.comm_period > 1 and not self.obj.delay_change:
                     self.obj.delay_change = True
-                    self.obj.n_iterations = self.obj.dist_strategy.model.iter + (self.obj.n_iterations - self.obj.dist_strategy.model.iteri) * self.obj.dist_strategy.comm_period
+                    self.obj.n_iterations = self.obj.dist_strategy.model.iter + (self.obj.n_iterations - self.obj.dist_strategy.model.iter) * self.obj.dist_strategy.comm_period
                     self.obj.logger.debug(f"Iterations now = {self.obj.n_iterations}")

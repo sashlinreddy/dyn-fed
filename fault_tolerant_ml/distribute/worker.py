@@ -16,7 +16,7 @@ import os
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.ml import hypotheses, loss_fns
-from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer
+from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer, SGDOptimizer
 from fault_tolerant_ml.tools import TFLogger
 
 class Worker(object):
@@ -85,9 +85,10 @@ class Worker(object):
         # Get predictions
         y_pred = self.hypothesis(X, theta)
 
-        d_theta, batch_loss, most_representative = self.optimizer.minimize(X, y, y_pred, theta)
+        theta, d_theta, batch_loss = self.optimizer.minimize(X, y, y_pred, theta)
+        most_representative = self.optimizer.most_rep
         
-        return d_theta, batch_loss, most_representative
+        return theta, d_theta, batch_loss, most_representative
 
     def receive_data(self, start=True):
         """Receives data from worker
@@ -117,7 +118,8 @@ class Worker(object):
         self.learning_rate = float(learning_rate.decode())
         self.delay = int(delay.decode())
 
-        self.optimizer = ParallelSGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate)
+        # self.optimizer = ParallelSGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate)
+        self.optimizer = SGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate, n_most_rep=self.n_most_representative)
 
         if self.scenario == 2 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])
@@ -227,12 +229,12 @@ class Worker(object):
                             count = 1
                             while True:
                             # Each worker does work and we get the resulting gradients
-                                d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
+                                theta, d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
                                 self._logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
 
                                 # Update the global parameters with weighted error
-                                for k in np.arange(n_classes):
-                                    theta[:, k] = theta[:, k] - self.learning_rate * d_theta[:, k]
+                                # for k in np.arange(n_classes):
+                                #     theta[:, k] = theta[:, k] - self.learning_rate * d_theta[:, k]
 
                                 # Let global theta influence local theta
                                 for k in np.arange(theta.shape[1]):

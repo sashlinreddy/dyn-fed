@@ -67,7 +67,7 @@ class Master(object):
         self.logger = setup_logger(level=verbose)
 
     @staticmethod
-    def get_quantized_params(theta):
+    def get_quantized_params(theta, interval=8):
         """Quantizes parameters
 
         Arguments:
@@ -79,7 +79,6 @@ class Master(object):
         """
         min_theta_val = theta.min() + 1e-8
         max_theta_val = theta.max() + 1e-8
-        interval = 8
         bins = np.linspace(min_theta_val, max_theta_val, interval)
         theta_bins = np.digitize(theta, bins).astype(np.int8)
 
@@ -287,7 +286,7 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.dist_strategy.model.theta if self.dist_strategy.scenario != 1 else Master.get_quantized_params(self.dist_strategy.model.theta)
+            data = self.dist_strategy.model.theta if self.dist_strategy.scenario != 1 else Master.get_quantized_params(self.dist_strategy.model.theta, interval=100)
             workers = None
             params = self.set_params()
 
@@ -301,7 +300,7 @@ class Master(object):
 
             self.state = REDUCE
 
-    def gather(self, events):
+    def gather(self, events, timeout=3):
         """Receives gradients from workers
 
         Args:
@@ -319,7 +318,7 @@ class Master(object):
         self.logger.debug(f"Alive workers={n_alive_workers}")
 
         i = 0
-        timeout = 1 # We give 1 seconds to poll worker if state changed since poll event
+        # timeout = 1 # We give 1 seconds to poll worker if state changed since poll event
         running_time = 0
         n_connected = 0
 
@@ -417,7 +416,7 @@ class Master(object):
     def _train_iteration(self, events):
         theta_p = self.dist_strategy.model.theta.copy()
         # Receive updated parameters from workers
-        d_theta, epoch_loss = self.gather(events)
+        d_theta, epoch_loss = self.gather(events, timeout=10)
 
         # Update the global parameters with weighted error
         self.dist_strategy.model.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)
@@ -527,11 +526,11 @@ class Master(object):
         gevent.signal(signal.SIGQUIT, gevent.kill)
 
         main_loop = gevent.spawn(self.main_loop)
-        # heartbeat_loop = gevent.spawn(self.heartbeat_loop)
+        heartbeat_loop = gevent.spawn(self.heartbeat_loop)
         
         gevent.joinall([
             main_loop, 
-            # heartbeat_loop,
+            heartbeat_loop,
         ])
 
         self.kill()
