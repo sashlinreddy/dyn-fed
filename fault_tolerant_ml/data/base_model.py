@@ -22,7 +22,7 @@ class Dataset(object):
         return (unique_labels == labels[:, np.newaxis]).astype(int)
 
     @staticmethod
-    def next_batch(X, y, batch_size):
+    def next_batch(X, y, batch_size, shuffle=True):
         """
         Returns a batch of the data of size batch_size. If the
         batch_size=1 then it is normal stochastic gradient descent
@@ -35,6 +35,12 @@ class Dataset(object):
             X_batch: random batch of X
             y_batch: random batch of y
         """
+
+        if shuffle:
+            idxs = np.arange(X.shape[0])
+            np.random.shuffle(idxs)
+            X = X[idxs]
+            y = y[idxs]
 
         # loop over our dataset `X` in mini-batches of size `batchSize`
         for i in np.arange(0, X.shape[0], batch_size):

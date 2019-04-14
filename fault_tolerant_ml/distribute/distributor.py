@@ -81,7 +81,7 @@ class Distributor(object):
                             for w in diff:
                                 # Set dead workers state to false
                                 watch_dog.states[w].state = False
-                                if self.dist_strategy.scenario != 2:                                    
+                                if self.dist_strategy.remap != 2:                                    
                                     watch_dog.states[w].idxs = watch_dog.states[w].most_representative
                             
                             self.state = REMAP
@@ -114,7 +114,7 @@ class Distributor(object):
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
-                if self.dist_strategy.scenario == 2:
+                if self.dist_strategy.remap == 2:
                     watch_dog.states[worker].most_representative = watch_dog.states[worker].lower_bound + mr
                     self._logger.debug(f"Min mr={np.min(watch_dog.states[worker].most_representative)}, Max mr={np.max(watch_dog.states[worker].most_representative)}")
                 else:
@@ -164,7 +164,7 @@ class Distributor(object):
         # Publish parameters
         if state == DIST_PARAMS:
                 
-            if params["scenario"] == 0 or params["scenario"] == 2:
+            if params["quantize"] == 0:
                 # Get message send ready
                 msg = data.tostring()
                 dtype = data.dtype.str.encode()
@@ -173,7 +173,7 @@ class Distributor(object):
                 subscribe_msg = b"WORKNODELAY" if params["delay_change"] else b"WORK"
 
             # Quantized parameters
-            elif params["scenario"] == 1:
+            elif params["quantize"] == 1:
                 self._logger.debug("Distributing quantized parameters")
                 # Get message send ready
                 msg = data.tostring()
@@ -194,6 +194,8 @@ class Distributor(object):
             n_features = str(params["n_features"]).encode()
             n_classes = str(params["n_classes"]).encode()
             scenario = str(params["scenario"]).encode()
+            remap = str(params["remap"]).encode()
+            quantize = str(params["quantize"]).encode()
             n_most_rep = str(params["n_most_rep"]).encode()
             learning_rate = str(params["learning_rate"]).encode()
             delay = str(params["comm_period"]).encode()
@@ -205,7 +207,7 @@ class Distributor(object):
             if "mapping" in params:
                 mapping = params["mapping"]
 
-            if params["scenario"] != 2:
+            if params["remap"] != 1:
                 self.labels_per_worker = {}
 
             # Iterate through workers and send
@@ -224,7 +226,7 @@ class Distributor(object):
                     else:
                         y_b = y_batch
 
-                    if (state == REMAP) and (params["scenario"] == 2):
+                    if (state == REMAP) and (params["remap"] == 1):
                         classes, dists = np.unique(y_b, return_counts=True)
                         self._logger.debug(f"Classes={classes}")
                         self.labels_per_worker[worker][1][classes] = self.labels_per_worker[worker][1][classes] + dists
@@ -238,7 +240,7 @@ class Distributor(object):
 
                     # Keep track of samples per worker
                     # Redistribute all data points
-                    if (state == MAP) or params["scenario"] != 2:
+                    if (state == MAP) or params["remap"] != 1:
                         worker.n_samples = X_batch.shape[0]
                         lower_bound = X_batch.shape[0] * i
                         upper_bound = lower_bound + X_batch.shape[0]
@@ -268,7 +270,7 @@ class Distributor(object):
                             worker.most_representative = np.zeros((params["n_most_rep"],))
 
                     multipart_data = [batch_data, dtype, shape]
-                    multipart_params = [n_samples, n_features, n_classes, scenario, n_most_rep, learning_rate, delay]
+                    multipart_params = [n_samples, n_features, n_classes, scenario, remap, quantize, n_most_rep, learning_rate, delay]
 
                     self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
                     self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")

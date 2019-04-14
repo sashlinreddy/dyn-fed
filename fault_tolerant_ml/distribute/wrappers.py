@@ -108,7 +108,7 @@ class ftml_train_collect(ftml_wrapper):
 
                 if self.obj.state != REMAP:
                     self.obj.state = DIST_PARAMS
-                self.obj.logger.info(f"iteration = {self.obj.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, accuracy={acc*100:7.4f}%")
+                # self.obj.logger.info(f"iteration = {self.obj.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, accuracy={acc*100:7.4f}%")
                 self.obj.dist_strategy.model.iter += 1
                 if delta < self.obj.dist_strategy.delta_switch and self.obj.dist_strategy.comm_period > 1 and not self.obj.delay_change:
                     self.obj.delay_change = True

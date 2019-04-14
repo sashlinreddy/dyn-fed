@@ -27,9 +27,9 @@ class Worker(object):
         subscriber (zmq.Socket): zmq.SUB socket which subscribes to all master published messages
         connected (bool): Whether or not the worker is connected successfully to the master
     """
-    def __init__(self, verbose):
+    def __init__(self, verbose, id=None):
 
-        self.worker_id = str(uuid.uuid4())
+        self.worker_id = str(uuid.uuid4()) if id is None else f"worker-{id}"
         self.subscriber = None
         self.connected = False
 
@@ -38,11 +38,7 @@ class Worker(object):
         self.gradient = loss_fns.cross_entropy_gradient
 
         self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
-        self.tf_logger = None
-
-        if "LOGDIR" in os.environ:
-            logdir = os.path.join(os.environ["LOGDIR"], f"tf/{self.worker_id}")
-            self.tf_logger = TFLogger(logdir)
+        self._tf_logger = None
 
     def connect(self):
         """Prepare our context, push socket and publisher
@@ -109,19 +105,27 @@ class Worker(object):
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes, scenario, n_most_representative, learning_rate, delay = self.ctrl_socket.recv_multipart()
+        _, n_samples, n_features, n_classes, scenario, remap, quantize, n_most_rep, learning_rate, comm_period = self.ctrl_socket.recv_multipart()
         n_samples = int(n_samples.decode())
         n_features = int(n_features.decode())
         n_classes = int(n_classes.decode())
         self.scenario = int(scenario.decode())
-        self.n_most_representative = int(n_most_representative.decode())
+        self.remap = int(remap.decode())
+        self.quantize = int(quantize.decode())
+        self.n_most_rep = int(n_most_rep.decode())
         self.learning_rate = float(learning_rate.decode())
-        self.delay = int(delay.decode())
+        self.comm_period = int(comm_period.decode())
+        # self.clip_norm = float(clip_norm.decode())
+        # self.clip_val = float(clip_val.decode())
 
-        # self.optimizer = ParallelSGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate)
-        self.optimizer = SGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate, n_most_rep=self.n_most_representative)
+        if "LOGDIR" in os.environ:
+            encoded_name = f"{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}"
+            logdir = os.path.join(os.environ["LOGDIR"], f"tf/{encoded_name}/{self.worker_id}")
+            self._tf_logger = TFLogger(logdir)
 
-        if self.scenario == 2 and not start:
+        self.optimizer = SGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate, n_most_rep=self.n_most_rep, clip_norm=0.8)
+
+        if self.remap == 1 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])
             self._logger.debug(f"New data shape={self.X.shape}")
         else:
@@ -190,11 +194,11 @@ class Worker(object):
                             break
                         else:
 
-                            if self.scenario != 1:
+                            if self.quantize != 1:
 
                                 # Receive parameter matrix on the subscriber socket
                                 if cmd == b"WORKNODELAY":
-                                    self.delay = 1
+                                    self.comm_period = 1
                                 data, dtype, shape = msg
                                 shape = shape.decode()
 
@@ -205,10 +209,9 @@ class Worker(object):
                                 self._logger.info(f"theta.shape{theta.shape}")
                                 
                                 theta = theta.copy()
-                            elif self.scenario == 1:
+                            elif self.quantize == 1:
 
                                 # Receive numpy struct array
-                                # msg = self.subscriber.recv(flags=flags, copy=True, track=False)
                                 buf = memoryview(msg[0])
 
                                 # Reconstruct theta matrix from min, max, no. of intervals and which bins
@@ -232,19 +235,17 @@ class Worker(object):
                                 theta, d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
                                 self._logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
 
-                                # Update the global parameters with weighted error
-                                # for k in np.arange(n_classes):
-                                #     theta[:, k] = theta[:, k] - self.learning_rate * d_theta[:, k]
-
                                 # Let global theta influence local theta
-                                for k in np.arange(theta.shape[1]):
-                                    theta[:, k] = (self.learning_rate) * theta[:, k] + (1 - self.learning_rate) * theta_g[:, k]
+                                for k in np.arange(n_classes):
+                                    theta[:, k] = (self.learning_rate) * theta[:, k] - (1 - self.learning_rate) * theta_g[:, k]
 
-                                if self.tf_logger is not None:
-                                    self.tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
+                                # Log to tensorboard
+                                if self._tf_logger is not None:
+                                    self._tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
+                                    self._tf_logger.histogram(f"d_theta={self.worker_id}", d_theta, i, bins=400)
 
                                 i += 1
-                                if count == self.delay:
+                                if count == self.comm_period:
                                     break
                                 count += 1
 
@@ -254,9 +255,6 @@ class Worker(object):
                             msg = d_theta.tostring()
                             loss = str(batch_loss).encode()
                             mr = most_representative.tostring()
-
-                            # self.push_socket.send(b"WORK")
-                            # self._logger.debug("Sent work command")
                             self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
 
                             self._logger.debug("Sent work back to master")
@@ -271,10 +269,6 @@ class Worker(object):
 
                     if command == b"WORK":
                         n_samples, n_features, n_classes = self.receive_data()
-
-                    # Receive X, y
-                    # n_samples, n_features, n_classes = self.receive_data()
-                    # poller.register(self.ctrl_socket, zmq.POLLIN)
 
             end = time.time()
 

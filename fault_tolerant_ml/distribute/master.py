@@ -60,7 +60,7 @@ class Master(object):
         self.times = []
         self.tf_logger = None
         if "LOGDIR" in os.environ:
-            logdir = os.path.join(os.environ["LOGDIR"], "tf/master")
+            logdir = os.path.join(os.environ["LOGDIR"], f"tf/{self.dist_strategy.encode()}/master")
             self.tf_logger = TFLogger(logdir)
 
         # Setup logger
@@ -165,6 +165,8 @@ class Master(object):
         params = {}
         params["state"] = self.state
         params["scenario"] = self.dist_strategy.scenario
+        params["remap"] = self.dist_strategy.remap
+        params["quantize"] = self.dist_strategy.quantize
 
         if self.state == DIST_PARAMS:
             params["delay_change"] = self.delay_change
@@ -222,7 +224,7 @@ class Master(object):
         if self.state == REMAP:
 
             self.logger.debug(f"Redistributing data")
-            if self.dist_strategy.scenario == 2:
+            if self.dist_strategy.remap == 1:
                 
                 # Remap only data for workers that went down in previous iteration
                 # Get indices for dead workers
@@ -297,7 +299,7 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.dist_strategy.model.theta if self.dist_strategy.scenario != 1 else Master.get_quantized_params(self.dist_strategy.model.theta, interval=100)
+            data = self.dist_strategy.model.theta if self.dist_strategy.quantize != 1 else Master.get_quantized_params(self.dist_strategy.model.theta, interval=100)
             workers = None
             params = self.set_params()
 
@@ -356,7 +358,7 @@ class Master(object):
                             for w in diff:
                                 # Set dead workers state to false
                                 self.watch_dog.states[w].state = False
-                                if self.dist_strategy.scenario != 2:                                    
+                                if self.dist_strategy.remap != 1:                                    
                                     self.watch_dog.states[w].idxs = self.watch_dog.states[w].most_representative
                             
                             self.state = REMAP
@@ -380,7 +382,8 @@ class Master(object):
 
                 # Calculate weighting
                 samples_for_worker = self.watch_dog.states[worker].n_samples
-                beta = (samples_for_worker / self.data.n_samples)
+                # beta = (samples_for_worker / self.data.n_samples)
+                beta = 1
 
                 # Decode gradient matrix
                 d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
@@ -389,7 +392,7 @@ class Master(object):
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
-                if self.dist_strategy.scenario == 2:
+                if self.dist_strategy.remap == 1:
                     self.watch_dog.states[worker].most_representative = self.watch_dog.states[worker].lower_bound + mr
                     self.logger.debug(f"Min mr={np.min(self.watch_dog.states[worker].most_representative)}, Max mr={np.max(self.watch_dog.states[worker].most_representative)}")
                 else:
@@ -438,10 +441,13 @@ class Master(object):
             self.tf_logger.histogram("theta-master", self.dist_strategy.model.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
             self.tf_logger.scalar("loss-master", epoch_loss, self.dist_strategy.model.iter)
             self.tf_logger.scalar("accuracy-master", acc, self.dist_strategy.model.iter)
+            grad_l2_norm = np.linalg.norm(d_theta)
+            self.tf_logger.scalar("gradnorm-master", grad_l2_norm, self.dist_strategy.model.iter)
 
         delta = np.max(np.abs(theta_p - self.dist_strategy.model.theta))
 
         # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+        self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, accuracy={acc*100:7.4f}%")
 
         return d_theta, epoch_loss, delta, acc
         

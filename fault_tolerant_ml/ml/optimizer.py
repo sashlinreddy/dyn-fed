@@ -43,11 +43,17 @@ class SGDOptimizer(Optimizer):
         super().__init__(loss, grad, learning_rate)
         self._role = None
         self._most_rep = None
+        self._clip_norm = None
+        self._clip_val = None
         self._n_most_rep = 0
         if "n_most_rep" in kwargs:
             self._n_most_rep = kwargs["n_most_rep"]
         if "role" in kwargs:
             self._role = kwargs["role"]
+        if "clip_norm" in kwargs:
+            self._clip_norm = kwargs["clip_norm"]
+        if "clip_val" in kwargs:
+            self._clip_val = kwargs["clip_val"]
 
     @property
     def most_rep(self):
@@ -134,6 +140,11 @@ class SGDOptimizer(Optimizer):
 
             # Get gradients
             d_theta = self.compute_gradients(X, y, y_pred, theta)
+
+            # Clip gradients to prevent getting too large
+            if self._clip_norm is not None:
+                d_theta = d_theta * self._clip_norm / np.linalg.norm(d_theta)
+
             # Apply them
             theta = self.apply_gradients(d_theta, theta)
             return theta, d_theta, batch_loss
