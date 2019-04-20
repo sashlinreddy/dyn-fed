@@ -30,7 +30,7 @@ class MNist(Dataset):
         """Scales data between 0 and 1 and one-hot encodes labels
         """
         # Scale data
-        fac = 255  *0.99 + 0.01
+        fac = 255 * 0.99 + 0.01
         self.X_train = self.X_train / fac
         self.X_test = self.X_test / fac
 
