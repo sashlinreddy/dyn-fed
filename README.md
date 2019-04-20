@@ -13,6 +13,8 @@ Fault tolerant framework for machine learning algorithms
 ```bash
 export LOGDIR=${PWD}/logs
 ./run.sh
+python tests/run_master.py
+python tests/run_worker.py -i ${TMUX_PANE}
 ```
 ## Run tests
 
