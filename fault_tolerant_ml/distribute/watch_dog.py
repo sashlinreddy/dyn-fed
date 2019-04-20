@@ -111,7 +111,7 @@ class WatchDog(object):
             self.logger.info(f"Worker Registered: {worker}")
             self.states.add(worker)
         elif not self.states()[worker].state:
-            self.states[worker] = True
+            self.states[worker].state = True
         else:
             self.logger.debug("Worker asking for work again?")
 
