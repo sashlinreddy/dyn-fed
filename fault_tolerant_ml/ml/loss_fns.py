@@ -8,7 +8,9 @@ def cross_entropy_loss(h, y):
     return np.mean(single_cross_entropy_loss(h, y))
 
 def cross_entropy_gradient(X, e):
-    d_theta = np.mean(X * e, axis=0).T
+    # d_theta = np.mean(X * e, axis=0).T
+    d_theta = np.dot(X.T, e)
+    # d_theta = np.sum(X * e, axis=0)
     return d_theta
 
 # Linear regression
