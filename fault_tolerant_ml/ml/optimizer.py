@@ -78,7 +78,7 @@ class SGDOptimizer(Optimizer):
             else:
                 self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
             # Calculate worker loss - this is aggregated
-            batch_loss = np.mean(batch_loss)
+            batch_loss = np.mean(abs(batch_loss))
 
         return batch_loss
 
@@ -94,17 +94,13 @@ class SGDOptimizer(Optimizer):
         """
         # Calculate error/residuals
         e = (y_pred - y)
+        # e = y_pred * (1 - y_pred) * e
 
-        n_features, n_classes = theta.shape
-        d_theta = np.zeros((n_features, n_classes))
-
-        # To be moved to optimizer
-        for k in np.arange(n_classes):
-            d_theta[:, k] = self.grad(X, e[:, np.newaxis, k])
+        d_theta = self.grad(X, e)
 
         return d_theta
 
-    def apply_gradients(self, d_theta, theta):
+    def apply_gradients(self, d_theta, theta, N):
         """Applies gradients by updating parameter matrix
         
         Args:
@@ -113,10 +109,8 @@ class SGDOptimizer(Optimizer):
         Returns:
             theta (numpy.ndarray): Updated parameter matrix
         """
-        _, n_classes = theta.shape
-        # Update the global parameters with weighted error
-        for k in np.arange(n_classes):
-            theta[:, k] = theta[:, k] - self.learning_rate * d_theta[:, k]
+
+        theta = theta - self.learning_rate * 1 / N * d_theta
 
         return theta
 
@@ -146,12 +140,12 @@ class SGDOptimizer(Optimizer):
                 d_theta = d_theta * self._clip_norm / np.linalg.norm(d_theta)
 
             # Apply them
-            theta = self.apply_gradients(d_theta, theta)
+            theta = self.apply_gradients(d_theta, theta, X.shape[0])
             return theta, d_theta, batch_loss
         else:
             d_theta = precomputed_gradients
             # Apply them
-            theta = self.apply_gradients(d_theta, theta)
+            theta = self.apply_gradients(d_theta, theta, X.shape[0])
             return theta
 
 class AdamOptimizer(Optimizer):
