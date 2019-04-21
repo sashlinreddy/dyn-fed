@@ -123,7 +123,7 @@ class Worker(object):
             logdir = os.path.join(os.environ["LOGDIR"], f"tf/{encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
 
-        self.optimizer = SGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate, n_most_rep=self.n_most_rep, clip_norm=0.8)
+        self.optimizer = SGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate, n_most_rep=self.n_most_rep, clip_norm=None)
 
         if self.remap == 1 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])
@@ -206,7 +206,7 @@ class Worker(object):
                                 buf = memoryview(data)
                                 theta = np.frombuffer(buf, dtype=dtype)
                                 theta = theta.reshape(eval(shape))
-                                self._logger.info(f"theta.shape{theta.shape}")
+                                # self._logger.info(f"theta.shape {theta.shape}")
                                 
                                 theta = theta.copy()
                             elif self.quantize == 1:

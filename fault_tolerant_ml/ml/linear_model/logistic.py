@@ -42,7 +42,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
         n_classes = len(self.classes_)
 
         # Initialize parameters
-        self.theta = np.random.randn(n_features, n_classes) * 0.01
+        self.theta = (np.random.randn(n_features, n_classes) * 0.01).astype(np.float32)
         
         i = 0
         delta = 1.0

@@ -322,7 +322,7 @@ class Master(object):
             d_theta (numpy.ndarray): Our gradient matrix that is aggregated with a weighting according to the number    of samples each worker has
             epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
         """
-        d_theta = np.zeros(self.dist_strategy.model.theta.shape)
+        d_theta = np.zeros_like(self.dist_strategy.model.theta)
         epoch_loss = 0.0
 
         self.logger.debug(f"Receiving gradients")
@@ -335,6 +335,9 @@ class Master(object):
         n_connected = 0
 
         workers_received = set()
+
+        errs = []
+        d_thetas = []
 
         while i < n_alive_workers:
 
@@ -384,9 +387,10 @@ class Master(object):
                 samples_for_worker = self.watch_dog.states[worker].n_samples
                 # beta = (samples_for_worker / self.data.n_samples)
                 beta = 1
+                # beta = samples_for_worker
 
                 # Decode gradient matrix
-                d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
+                d_theta_temp = np.frombuffer(d_theta_temp, dtype=self.dist_strategy.model.theta.dtype)
                 d_theta_temp = d_theta_temp.reshape(self.dist_strategy.model.theta.shape)
 
                 # Store most representative points
@@ -403,13 +407,26 @@ class Master(object):
                 epoch_loss_temp = float(epoch_loss_temp.decode())
 
                 # Weight parameters and loss
-                d_theta += beta * d_theta_temp              
-                epoch_loss += beta * epoch_loss_temp
+                # d_theta += beta * d_theta_temp              
+                # epoch_loss += beta * epoch_loss_temp
+                # d_theta += d_theta_temp
+                epoch_loss += epoch_loss_temp
+                errs.append(np.exp(-epoch_loss_temp))
+                # d_thetas.append(d_theta)
+                d_thetas.append(d_theta_temp)
 
                 workers_received.add(worker)
 
                 i += 1
                 running_time = 0
+
+        sum_es = np.sum(errs)
+        epsilon = 1e-8
+        for j in np.arange(i):
+            weight = errs[j] / sum_es
+            # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
+            # d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
+            d_theta += d_thetas[j]
 
         # Average parameters
         # d_theta /= len(self.workers)
@@ -418,7 +435,7 @@ class Master(object):
         assert i > 0
         assert i > 0
         i -= n_connected
-        d_theta /= i
+        # d_theta /= i
         epoch_loss /= i
 
         self.logger.debug("Calculated gradients")
@@ -432,24 +449,27 @@ class Master(object):
         d_theta, epoch_loss = self.gather(events, timeout=10)
 
         # Update the global parameters with weighted error
-        self.dist_strategy.model.theta = self.optimizer.minimize(X=None, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)
+        self.dist_strategy.model.theta = self.optimizer.minimize(X=self.X_train, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)
 
         y_pred = self.dist_strategy.model.predict(self.data.X_test)
-        acc = accuracy_scorev2(self.data.y_test, y_pred)
+        y_train_pred = self.dist_strategy.model.predict(self.data.X_train)
+        train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
+        test_acc = accuracy_scorev2(self.data.y_test, y_pred)
 
         if self.tf_logger is not None:
             self.tf_logger.histogram("theta-master", self.dist_strategy.model.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
             self.tf_logger.scalar("loss-master", epoch_loss, self.dist_strategy.model.iter)
-            self.tf_logger.scalar("accuracy-master", acc, self.dist_strategy.model.iter)
+            self.tf_logger.scalar("train-accuracy-master", train_acc, self.dist_strategy.model.iter)
+            self.tf_logger.scalar("test-accuracy-master", test_acc, self.dist_strategy.model.iter)
             grad_l2_norm = np.linalg.norm(d_theta)
             self.tf_logger.scalar("gradnorm-master", grad_l2_norm, self.dist_strategy.model.iter)
 
         delta = np.max(np.abs(theta_p - self.dist_strategy.model.theta))
 
         # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-        self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, accuracy={acc*100:7.4f}%")
+        self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
 
-        return d_theta, epoch_loss, delta, acc
+        return delta
         
     @ftml_trainv2
     def _train(self, events):
@@ -527,7 +547,7 @@ class Master(object):
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
-        self.dist_strategy.model.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(np.float32)
+        self.dist_strategy.model.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
         self.logger.debug(f"Init theta={self.dist_strategy.model.theta}")
         
         self.poller = self.setup_poller()

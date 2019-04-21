@@ -187,7 +187,7 @@ class Distributor(object):
             self._logger.debug("Distributor distributing data")
             X_train, y_train = data
             batch_size = int(np.ceil(params["n_samples"] / params["n_alive"]))
-            batch_gen = gen_func(X_train, y_train, batch_size)
+            batch_gen = gen_func(X_train, y_train, batch_size, shuffle=False)
 
             # Encode to bytes
             n_samples = str(params["n_samples"]).encode()
