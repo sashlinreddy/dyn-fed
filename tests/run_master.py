@@ -41,15 +41,15 @@ from fault_tolerant_ml.utils import setup_logger
 #     return d_theta, epoch_loss, delta
 
 @click.command()
-@click.option('--n_iterations', '-i', default=200, type=int)
+@click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.99, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
 @click.option('--strategy', '-st', default="mw", type=str)
-@click.option('--scenario', '-s', default=5, type=int)
+@click.option('--scenario', '-s', default=3, type=int)
 @click.option('--remap', '-r', default=1, type=int)
 @click.option('--quantize', '-q', default=0, type=int)
 @click.option('--n_most_rep', '-nmr', default=100, type=int)
-@click.option('--comm_period', '-cp', default=5, type=int)
+@click.option('--comm_period', '-cp', default=1, type=int)
 @click.option('--clip_norm', '-cn', default=None, type=int)
 @click.option('--clip_val', '-ct', default=None, type=int)
 @click.option('--delta_switch', '-ds', default=1e-4, type=float)
@@ -67,7 +67,7 @@ def run(n_iterations, learning_rate, verbose, strategy, scenario, remap, quantiz
         quantize (int): Whether or not to quantize parameters
             0: No quantization
             1: Min theta value, max theta value, interval, bins sent across the network to reconstruct the parameters on the worker side
-        scenario (int): The scenario we would like to run. Default 1: Normal run, Scenario 2: Kill worker. Scenario 3: Kill worker and reintroduce another worker.
+        scenario (int): The scenario we would like to run. Default 1: Normal run, Scenario 2: Kill worker. Scenario 3: Kill     worker and reintroduce another worker. Scenario 4: Communicate every 10 iterations, Scenario 5: Every 5             iterations and gradient clipping?
         n_most_rep (int): No. of most representative data points to keep track of for redistributing
         comm_period (int): Communicate parameters back to master every so often depending on this number
         delta_switch (float): Delta threshold to let us know when we switch back to communicating every ith iteration
@@ -80,7 +80,7 @@ def run(n_iterations, learning_rate, verbose, strategy, scenario, remap, quantiz
         from fault_tolerant_ml.lib.io.file_io import flush_dir
         ignore_dir = [os.path.join(os.environ["LOGDIR"], "tf/")]
         # ignore_dir = []
-        flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
+        # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
     loss = cross_entropy_loss
     grad = cross_entropy_gradient

@@ -112,7 +112,7 @@ class SGDOptimizer(Optimizer):
 
         return theta
 
-    def minimize(self, X, y, y_pred, theta, precomputed_gradients=None):
+    def minimize(self, X, y, y_pred, theta, precomputed_gradients=None, N=None):
         """Minimizes gradients. Computes loss from actual and predicted, computes gradients and applies gradients
         
         Args:
@@ -138,7 +138,7 @@ class SGDOptimizer(Optimizer):
                 d_theta = d_theta * self._clip_norm / np.linalg.norm(d_theta)
 
             # Apply them
-            theta = self.apply_gradients(d_theta, theta, X.shape[0])
+            theta = self.apply_gradients(d_theta, theta, N)
             return theta, d_theta, batch_loss
         else:
             d_theta = precomputed_gradients

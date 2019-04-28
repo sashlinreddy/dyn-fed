@@ -81,7 +81,7 @@ class Worker(object):
         # Get predictions
         y_pred = self.hypothesis(X, theta)
 
-        theta, d_theta, batch_loss = self.optimizer.minimize(X, y, y_pred, theta)
+        theta, d_theta, batch_loss = self.optimizer.minimize(X, y, y_pred, theta, N=self.n_samples)
         most_representative = self.optimizer.most_rep
         
         return theta, d_theta, batch_loss, most_representative
@@ -106,9 +106,9 @@ class Worker(object):
 
         # Receive shape of X, y so we can reshape
         _, n_samples, n_features, n_classes, scenario, remap, quantize, n_most_rep, learning_rate, comm_period = self.ctrl_socket.recv_multipart()
-        n_samples = int(n_samples.decode())
-        n_features = int(n_features.decode())
-        n_classes = int(n_classes.decode())
+        self.n_samples = int(n_samples.decode())
+        self.n_features = int(n_features.decode())
+        self.n_classes = int(n_classes.decode())
         self.scenario = int(scenario.decode())
         self.remap = int(remap.decode())
         self.quantize = int(quantize.decode())
@@ -126,18 +126,16 @@ class Worker(object):
         self.optimizer = SGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate, n_most_rep=self.n_most_rep, clip_norm=None)
 
         if self.remap == 1 and not start:
-            self.X, self.y = np.vstack([self.X, data[:, :n_features]]), np.vstack([self.y, data[:, -n_classes:]])
+            self.X, self.y = np.vstack([self.X, data[:, :self.n_features]]), np.vstack([self.y, data[:, -self.n_classes:]])
             self._logger.debug(f"New data shape={self.X.shape}")
         else:
-            self.X, self.y = data[:, :n_features], data[:, -n_classes:]
+            self.X, self.y = data[:, :self.n_features], data[:, -self.n_classes:]
 
         # Check if we need to add a new axis if the dimension of y is not 2d
         if len(self.y.shape) < 2:
             self.y = self.y[:, np.newaxis]
         self._logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
         self.have_work = True
-
-        return n_samples, n_features, n_classes
                     
 
     def start(self):
@@ -154,9 +152,10 @@ class Worker(object):
             start = time.time()
             i = 0
             self.scenario = 0
-            n_samples = 0
-            n_features = 0
-            n_classes = 0
+            self.n_samples = 0
+            self.n_features = 0
+            self.n_classes = 0
+            theta = None
 
             # self.starter.send_multipart([b"READY", self.worker_id.encode()])
             # self.ctrl_socket.send(b"READY")
@@ -172,7 +171,7 @@ class Worker(object):
                         self._logger.debug(f"Command={command}")
 
                         if command == b"WORK":
-                            n_samples, n_features, n_classes = self.receive_data(start=False)
+                            self.receive_data(start=False)
 
                         if command == b"HEARTBEAT":
                             self.ctrl_socket.send(b"PONG")
@@ -204,11 +203,18 @@ class Worker(object):
 
                                 # Reconstruct numpy array
                                 buf = memoryview(data)
+                                # if theta is None:
+                                #     theta_l = np.frombuffer(buf, dtype=dtype)
+                                #     theta_l = theta_l.reshape(eval(shape))
+                                #     theta_l = theta_l.copy()
+                                #     theta = theta_l.copy()
+                                # else:
                                 theta = np.frombuffer(buf, dtype=dtype)
                                 theta = theta.reshape(eval(shape))
+                                theta = theta.copy()
                                 # self._logger.info(f"theta.shape {theta.shape}")
                                 
-                                theta = theta.copy()
+                                # theta = theta.copy()
                             elif self.quantize == 1:
 
                                 # Receive numpy struct array
@@ -218,15 +224,15 @@ class Worker(object):
                                 # each parameter value falls in
                                 struct_field_names = ["min_val", "max_val", "interval", "bins"]
                                 struct_field_types = [np.float32, np.float32, np.int32, 'b']
-                                struct_field_shapes = [1, 1, 1, ((n_features, n_classes))]
+                                struct_field_shapes = [1, 1, 1, ((self.n_features, self.n_classes))]
                                 dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
                                                                 
                                 data = np.frombuffer(buf, dtype=dtype)
                                 min_theta_val, max_theta_val, interval, theta_bins = data[0]
 
                                 # Generate lineared space vector
-                                bins = np.linspace(min_theta_val, max_theta_val, interval)
-                                theta = bins[theta_bins].reshape(n_features, n_classes)                             
+                                bins = np.linspace(min_theta_val, max_theta_val, interval, dtype=np.float32)
+                                theta = bins[theta_bins].reshape(self.n_features, self.n_classes)                             
 
                             theta_g = theta.copy()
                             count = 1
@@ -236,18 +242,23 @@ class Worker(object):
                                 self._logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
 
                                 # Let global theta influence local theta
-                                for k in np.arange(n_classes):
-                                    theta[:, k] = (self.learning_rate) * theta[:, k] - (1 - self.learning_rate) * theta_g[:, k]
+                                # for k in np.arange(self.n_classes):
+                                #     theta_l[:, k] = (self.learning_rate) * theta[:, k] - (1 - self.learning_rate) * theta_g[:, k]
+
+                                # theta = (self.learning_rate) * theta - (1 - self.learning_rate) * theta_g
 
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
                                     self._tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
                                     self._tf_logger.histogram(f"d_theta={self.worker_id}", d_theta, i, bins=400)
+                                    self._tf_logger.scalar(f"loss-{self.worker_id}", batch_loss, i)
 
+                                # theta = theta_l
                                 i += 1
                                 if count == self.comm_period:
                                     break
                                 count += 1
+                                # theta = None
 
                             # Get messages ready to send by converting them to bytes format. We do not
                             # need to send the shape since the gradients have the same shape as theta which
@@ -268,7 +279,7 @@ class Worker(object):
                     command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
 
                     if command == b"WORK":
-                        n_samples, n_features, n_classes = self.receive_data()
+                        self.receive_data()
 
             end = time.time()
 

@@ -58,10 +58,10 @@ class Master(object):
 
         # Tracking variables
         self.times = []
-        self.tf_logger = None
+        self._tf_logger = None
         if "LOGDIR" in os.environ:
             logdir = os.path.join(os.environ["LOGDIR"], f"tf/{self.dist_strategy.encode()}/master")
-            self.tf_logger = TFLogger(logdir)
+            self._tf_logger = TFLogger(logdir)
 
         # Setup logger
         # self.logger = setup_logger(level=verbose)
@@ -229,7 +229,12 @@ class Master(object):
                 # Remap only data for workers that went down in previous iteration
                 # Get indices for dead workers
                 if self.mapping:
-                    dead_worker = [w for w in self.watch_dog.states if not w.mr_idxs_used and not w.state][0]
+                    dead_worker = [w for w in self.watch_dog.states if not w.mr_idxs_used and not w.state]
+                    if dead_worker:
+                        dead_worker = dead_worker[0]
+                    else:
+                        return
+
                     remap_idxs = np.hstack([[w.mapping.get(i) for i in w.most_representative] for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
                     worker_ids_down = [w.identity for w in self.watch_dog.states if not w.mr_idxs_used and not w.state]
                     self.logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
@@ -390,6 +395,7 @@ class Master(object):
                 # beta = samples_for_worker
 
                 # Decode gradient matrix
+                self.logger.debug(f"theta.dtype={self.dist_strategy.model.theta.dtype}")
                 d_theta_temp = np.frombuffer(d_theta_temp, dtype=self.dist_strategy.model.theta.dtype)
                 d_theta_temp = d_theta_temp.reshape(self.dist_strategy.model.theta.shape)
 
@@ -398,7 +404,7 @@ class Master(object):
                 # Determine current index - we will map this back to the global index if worker dies
                 if self.dist_strategy.remap == 1:
                     self.watch_dog.states[worker].most_representative = self.watch_dog.states[worker].lower_bound + mr
-                    self.logger.debug(f"Min mr={np.min(self.watch_dog.states[worker].most_representative)}, Max mr={np.max(self.watch_dog.states[worker].most_representative)}")
+                    # self.logger.debug(f"Min mr={np.min(self.watch_dog.states[worker].most_representative)}, Max mr={np.max(self.watch_dog.states[worker].most_representative)}")
                 else:
                     self.watch_dog.states[worker].most_representative = np.min(self.watch_dog.states[worker].idxs) + mr
                     
@@ -409,10 +415,8 @@ class Master(object):
                 # Weight parameters and loss
                 # d_theta += beta * d_theta_temp              
                 # epoch_loss += beta * epoch_loss_temp
-                # d_theta += d_theta_temp
                 epoch_loss += epoch_loss_temp
                 errs.append(np.exp(-epoch_loss_temp))
-                # d_thetas.append(d_theta)
                 d_thetas.append(d_theta_temp)
 
                 workers_received.add(worker)
@@ -422,16 +426,13 @@ class Master(object):
 
         sum_es = np.sum(errs)
         epsilon = 1e-8
-        for j in np.arange(i):
+        for j in np.arange(len(errs)):
             weight = errs[j] / sum_es
             # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
-            # d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
+            d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
             d_theta += d_thetas[j]
 
         # Average parameters
-        # d_theta /= len(self.workers)
-        # epoch_loss /= len(self.workers)
-        # self.logger.debug(f"Len worker={len(self.workers)}, i-1={i-1}")
         assert i > 0
         assert i > 0
         i -= n_connected
@@ -456,13 +457,13 @@ class Master(object):
         train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
         test_acc = accuracy_scorev2(self.data.y_test, y_pred)
 
-        if self.tf_logger is not None:
-            self.tf_logger.histogram("theta-master", self.dist_strategy.model.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
-            self.tf_logger.scalar("loss-master", epoch_loss, self.dist_strategy.model.iter)
-            self.tf_logger.scalar("train-accuracy-master", train_acc, self.dist_strategy.model.iter)
-            self.tf_logger.scalar("test-accuracy-master", test_acc, self.dist_strategy.model.iter)
+        if self._tf_logger is not None:
+            self._tf_logger.histogram("theta-master", self.dist_strategy.model.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
+            self._tf_logger.scalar("loss-master", epoch_loss, self.dist_strategy.model.iter)
+            self._tf_logger.scalar("train-accuracy-master", train_acc, self.dist_strategy.model.iter)
+            self._tf_logger.scalar("test-accuracy-master", test_acc, self.dist_strategy.model.iter)
             grad_l2_norm = np.linalg.norm(d_theta)
-            self.tf_logger.scalar("gradnorm-master", grad_l2_norm, self.dist_strategy.model.iter)
+            self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.dist_strategy.model.iter)
 
         delta = np.max(np.abs(theta_p - self.dist_strategy.model.theta))
 

@@ -40,6 +40,12 @@ class MNist(Dataset):
         # we don't want zeroes and ones in the labels neither:
         self.y_train = np.where(self.y_train == 0, 0.01, 0.99)
         self.y_test = np.where(self.y_test == 0, 0.01, 0.99)
+
+        self.X_train = self.X_train.astype(np.float32)
+        self.y_train = self.y_train.astype(np.float32)
+
+        self.X_test = self.X_test.astype(np.float32)
+        self.y_test = self.y_test.astype(np.float32)
         # self.y_train[self.y_train==0] = 0.01
         # self.y_train[self.y_train==1] = 0.99
         # self.y_test[self.y_test==0] = 0.01

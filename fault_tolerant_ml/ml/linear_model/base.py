@@ -2,7 +2,7 @@ import numpy as np
 
 # Local
 from ..base import BaseEstimator, ClassifierMixin
-from ..utils import maths_utils
+from ..ops import maths_utils
 
 class LinearModel(BaseEstimator):
     """Base class for Linear Models
