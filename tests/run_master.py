@@ -106,6 +106,8 @@ def run(data_dir, n_iterations, learning_rate, verbose, strategy, scenario, rema
     # data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
     # data.transform()
 
+    time.sleep(2)
+
     dist_strategy = MasterStrategy(
         strategy=strategy,
         scenario=scenario,
