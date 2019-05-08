@@ -2,6 +2,8 @@ import click
 import os
 import time 
 import numpy as np
+import socket
+import json
 
 from fault_tolerant_ml.distribute import Master
 from fault_tolerant_ml.distribute import MasterStrategy
@@ -123,6 +125,13 @@ def run(data_dir, n_iterations, learning_rate, verbose, strategy, scenario, rema
         dist_strategy=dist_strategy,
         verbose=verbose,
     )
+
+    hostname = socket.gethostname()
+    ip_address = socket.gethostbyname(hostname)
+    ip_config = {"ipAddress" : ip_address}
+
+    with open(os.path.join(data_dir, "ip_config.json"), "w") as f:
+        json.dump(ip_config, f)
 
     logger.info("Connecting master sockets")
     master.connect()
