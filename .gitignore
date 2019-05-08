@@ -104,3 +104,6 @@ ENV/
 # Local
 # notebooks/
 logs/
+
+# VS code project setting
+.vscode
