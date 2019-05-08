@@ -41,6 +41,7 @@ from fault_tolerant_ml.utils import setup_logger
 #     return d_theta, epoch_loss, delta
 
 @click.command()
+@click.argument('data_dir', type=click.Path(exists=True))
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.99, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
@@ -54,7 +55,7 @@ from fault_tolerant_ml.utils import setup_logger
 @click.option('--clip_val', '-ct', default=None, type=int)
 @click.option('--delta_switch', '-ds', default=1e-4, type=float)
 @click.option('--shuffle', '-sh', default=1, type=int)
-def run(n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle):
+def run(data_dir, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -86,7 +87,8 @@ def run(n_iterations, learning_rate, verbose, strategy, scenario, remap, quantiz
     grad = cross_entropy_gradient
     optimizer = SGDOptimizer(loss=loss, grad=grad, learning_rate=learning_rate, role="master", n_most_rep=n_most_rep, clip_norm=clip_norm, clip_val=clip_val)
     model = LogisticRegression(optimizer, max_iter=n_iterations, shuffle=shuffle)
-    data_dir = "/c/Users/nb304836/Documents/git-repos/fault_tolerant_ml/data/"
+    # data_dir = "/c/Users/nb304836/Documents/git-repos/fault_tolerant_ml/data/"
+    # data_dir = "/Users/sashlinreddy/Documents/repos/fault-tolerant-ml/data/"
     filepaths = {
         "train": {
             "images": os.path.join(data_dir, "train-images-idx3-ubyte.gz"), "labels": os.path.join(data_dir, "train-labels-idx1-ubyte.gz")
