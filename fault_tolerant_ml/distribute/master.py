@@ -136,8 +136,8 @@ class Master(object):
     def detect_workers(self):
         """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
         """
-        # timeout = 10 # 10 second time out
-        # start = time.time()
+        timeout = self.dist_strategy.worker_timeout # 10 second time out
+        start = time.time()
 
         while True:
             events = dict(self.poller.poll())
@@ -147,15 +147,16 @@ class Master(object):
 
                 if command == b"CONNECT":
                     self.register_workers()
-                    # start = time.time()
+                    start = time.time()
             else:
-                break
-        
-            # end = time.time()
-            # if round(end - start, 2) % 1 == 0:
-            #     self.logger.debug(end-start)
-            # if end-start > timeout:
             #     break
+        
+                end = time.time()
+                # if round(end - start, 2) % 1 == 0:
+                #     self.logger.debug(end-start)
+                if end-start > timeout:
+                    self.logger.info("10 second timeout - no more workers found")
+                    break
 
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 

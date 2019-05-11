@@ -8,7 +8,8 @@ from fault_tolerant_ml.distribute import Worker
 @click.argument('config_dir', type=click.Path(exists=True))
 @click.option('--verbose', '-v', default=10, type=int)
 @click.option('--id', '-i', default="", type=str)
-def run(config_dir, verbose, id):
+@click.option('--tmux', '-t', default=0, type=int)
+def run(config_dir, verbose, id, tmux):
     """Run worker
 
     Args:
@@ -16,9 +17,16 @@ def run(config_dir, verbose, id):
     """
     # load_dotenv(find_dotenv())
 
+    identity: int = 0
+
+    if tmux:
+        identity = id=int(id[1:]) if id != "" else None
+    else:
+        identity = int(id) if id != "" else None
+
     worker = Worker(
         verbose=verbose,
-        id=int(id[1:]) if id != "" else None
+        id=identity
     )
 
 

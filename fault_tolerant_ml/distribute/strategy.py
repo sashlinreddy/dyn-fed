@@ -18,13 +18,26 @@ class DistributionStrategy(object):
 
 class MasterStrategy(DistributionStrategy):
 
-    def __init__(self, strategy, scenario, model, remap=0, quantize=0, n_most_rep=100, comm_period=1, delta_switch=1e-4):
+    def __init__(
+        self, 
+        strategy, 
+        scenario, 
+        model, 
+        remap=0, 
+        quantize=0, 
+        n_most_rep=100, 
+        comm_period=1, 
+        delta_switch=1e-4, 
+        worker_timeout=10
+        ):
+
         super().__init__(strategy, scenario, model)
         self.remap = remap
         self.quantize = quantize
         self.n_most_rep = n_most_rep
         self.comm_period = comm_period
         self.delta_switch = delta_switch
+        self.worker_timeout = worker_timeout
 
     def encode(self):
         return f"{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}"
