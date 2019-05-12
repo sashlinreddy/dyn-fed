@@ -57,7 +57,9 @@ from fault_tolerant_ml.utils import setup_logger
 @click.option('--clip_val', '-ct', default=None, type=int)
 @click.option('--delta_switch', '-ds', default=1e-4, type=float)
 @click.option('--shuffle', '-sh', default=1, type=int)
-def run(data_dir, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle):
+@click.option('--timeout', '-t', default=15, type=int)
+def run(data_dir, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, 
+n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -116,7 +118,8 @@ def run(data_dir, n_iterations, learning_rate, verbose, strategy, scenario, rema
         quantize=quantize,
         n_most_rep=n_most_rep, 
         comm_period=comm_period,
-        delta_switch=delta_switch
+        delta_switch=delta_switch,
+        worker_timeout=timeout
     )
 
     master = Master(
