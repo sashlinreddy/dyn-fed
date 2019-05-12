@@ -40,7 +40,7 @@ class Worker(object):
         self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self._tf_logger = None
 
-    def connect(self, ip_address):
+    def connect(self, ip_address="localhost"):
         """Prepare our context, push socket and publisher
         """
         self.context    = zmq.Context()
@@ -57,6 +57,8 @@ class Worker(object):
         self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
         # self.ctrl_socket.connect("tcp://localhost:5565")
         self.ctrl_socket.connect(f"tcp://{ip_address}:5565")
+
+        self._logger.info(f"Connected to ip address {ip_address}, on ports 5563, 5562 & 5565")
 
     def setup_poller(self):
         """Register necessary sockets for poller

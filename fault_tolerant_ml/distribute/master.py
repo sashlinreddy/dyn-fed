@@ -149,7 +149,6 @@ class Master(object):
                     self.register_workers()
                     # start = time.time()
             else:
-            #     break
         
                 end = time.time()
                 # if round(end - start, 2) % 1 == 0:
