@@ -147,7 +147,7 @@ class Master(object):
 
                 if command == b"CONNECT":
                     self.register_workers()
-                    start = time.time()
+                    # start = time.time()
             else:
             #     break
         
