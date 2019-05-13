@@ -154,9 +154,10 @@ class Master(object):
                 # if round(end - start, 2) % 1 == 0:
                 #     self.logger.debug(end-start)
                 if end-start > timeout:
-                    self.logger.info("10 second timeout - no more workers found")
+                    self.logger.info(f"{timeout} second timeout - no more workers found")
                     break
 
+        self.logger.info(f"Signed up all {len(self.watch_dog.states)} workers")
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
     def set_params(self):
