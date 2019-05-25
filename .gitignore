@@ -107,3 +107,6 @@ logs/
 
 # VS code project setting
 .vscode
+
+# data
+ip_config.json
