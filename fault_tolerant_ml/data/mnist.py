@@ -7,13 +7,19 @@ from .base_model import Dataset
 
 class MNist(Dataset):
 
-    def __init__(self, filepath):
+    def __init__(self, filepath, fashion=False):
         super().__init__(filepath)
 
         self.class_names = [
             "Zero", "One", "Two", "Three", "Four", "Five",
             "Six", "Seven", "Eight", "Nine"
         ]
+
+        if fashion:
+            self.class_names = [
+                "T-shirt/top", "Trouser", "Pullover", "Dress", 
+                "Coat", "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"
+                ]
 
         self.prepare_data()
         self.n_samples, self.n_features = self.X_train.shape
