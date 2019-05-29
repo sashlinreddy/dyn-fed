@@ -1,6 +1,7 @@
 import click
 import os
 import json
+import time
 
 from fault_tolerant_ml.distribute import Worker
 
@@ -29,6 +30,7 @@ def run(config_dir, verbose, id, tmux):
         id=identity
     )
 
+    time.sleep(1)
 
     with open(os.path.join(config_dir, "ip_config.json"), "r") as f:
         ip_config = json.load(f)
