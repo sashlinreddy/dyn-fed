@@ -129,6 +129,8 @@ n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
     ip_address = socket.gethostbyname(hostname)
     ip_config = {"ipAddress" : ip_address}
 
+    logger.info(f"Master on ip={ip_address}")
+
     with open(os.path.join(data_dir, "ip_config.json"), "w") as f:
         json.dump(ip_config, f)
 
