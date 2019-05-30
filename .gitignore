@@ -111,3 +111,4 @@ logs/
 # data
 ip_config.json
 *.conf
+.DS_Store
