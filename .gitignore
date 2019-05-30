@@ -110,3 +110,4 @@ logs/
 
 # data
 ip_config.json
+*.conf
