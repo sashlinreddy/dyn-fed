@@ -37,7 +37,13 @@ Go to http://localhost:6006.
 ## Running on SLURM cluster
 
 ```bash
-sbatch slurm_launch.sh
+sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh
+```
+
+The [slurm launch](slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [master execution script](tests/run_master.py). However, arguments can be passed to the job submission as below:
+
+```bash
+sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh -s 8 -t 25 -v 20 -cp 2 -q 1
 ```
 
 To view the results on tensorboard:
