@@ -46,7 +46,7 @@ class WorkerStates(object):
         return len(self._states)
 
     def __iter__(self):
-        for key, value in self._states.items():
+        for _, value in self._states.items():
             yield value
 
     def __contains__(self, key):

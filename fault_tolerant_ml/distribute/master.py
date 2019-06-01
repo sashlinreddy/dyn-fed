@@ -367,7 +367,7 @@ class Master(object):
                             for w in diff:
                                 # Set dead workers state to false
                                 self.watch_dog.states[w].state = False
-                                if self.dist_strategy.remap != 1:                                    
+                                if self.dist_strategy.remap != 1:                            
                                     self.watch_dog.states[w].idxs = self.watch_dog.states[w].most_representative
                             
                             self.state = REMAP
@@ -391,7 +391,7 @@ class Master(object):
 
                 # Calculate weighting
                 samples_for_worker = self.watch_dog.states[worker].n_samples
-                # beta = (samples_for_worker / self.data.n_samples)
+                beta = (samples_for_worker / self.data.n_samples)
                 beta = 1
                 # beta = samples_for_worker
 
@@ -448,7 +448,19 @@ class Master(object):
     def _train_iteration(self, events):
         theta_p = self.dist_strategy.model.theta.copy()
         # Receive updated parameters from workers
-        d_theta, epoch_loss = self.gather(events, timeout=10)
+        # d_theta, epoch_loss = self.gather(events, timeout=10)
+        params = {
+            "watch_dog": self.watch_dog,
+            "dist_strategy": self.dist_strategy,
+            "state": self.state,
+            "n_samples": self.data.n_samples,
+            "timeout": 10
+        }
+        d_theta, epoch_loss = self.distributor.collect(
+            events=events, 
+            socket=self.pull_socket,
+            params=params
+        )
 
         # Update the global parameters with weighted error
         self.dist_strategy.model.theta = self.optimizer.minimize(X=self.X_train, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)

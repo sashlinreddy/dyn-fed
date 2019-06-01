@@ -1,7 +1,7 @@
 import logging
 import zmq.green as zmq
 import numpy as np
-
+import time
 from .states import *
 class Distributor(object):
     """Responsible for distributing data
@@ -32,7 +32,7 @@ class Distributor(object):
         """Reduce across workers to master with some op
         """
 
-    def collect(self, events, socket, workers, params):
+    def collect(self, events, socket, params):
         """Receives gradients from workers
 
         Args:
@@ -43,21 +43,26 @@ class Distributor(object):
             epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
         """
         watch_dog = params["watch_dog"]
-        self.state = params["state"]
+        dist_strategy = params["dist_strategy"]
+        self.state: int = params["state"]
+        n_samples: int = params["n_samples"]
+        timeout = params["timeout"] # We give x seconds to poll worker if state changed since poll event
         
-        d_theta = np.zeros(params["theta"].shape)
-        epoch_loss = 0.0
+        d_theta: np.ndarray = np.zeros_like(dist_strategy.model.theta)
+        epoch_loss: int = 0.0
 
         self._logger.debug(f"Receiving gradients")
         n_alive_workers = watch_dog.n_alive
         self._logger.debug(f"Alive workers={n_alive_workers}")
 
         i = 0
-        timeout = 1 # We give 1 seconds to poll worker if state changed since poll event
         running_time = 0
         n_connected = 0
 
         workers_received = set()
+
+        errs = []
+        d_thetas = []
 
         while i < n_alive_workers:
 
@@ -81,7 +86,7 @@ class Distributor(object):
                             for w in diff:
                                 # Set dead workers state to false
                                 watch_dog.states[w].state = False
-                                if self.dist_strategy.remap != 2:                                    
+                                if dist_strategy.remap != 1:                                    
                                     watch_dog.states[w].idxs = watch_dog.states[w].most_representative
                             
                             self.state = REMAP
@@ -98,25 +103,29 @@ class Distributor(object):
                     if cmd == b"WORK":
                         worker, d_theta_temp, epoch_loss_temp, mr = msg[1:]
                     elif cmd == b"CONNECT":
-                        self.register_workers(msg[1])
+                        # self.register_workers(msg[1])
+                        watch_dog.add_worker(msg[1])
                         n_connected += 1
                         i += 1
                         continue
 
                 # Calculate weighting
                 samples_for_worker = watch_dog.states[worker].n_samples
-                beta = (samples_for_worker / self.data.n_samples)
+                beta = (samples_for_worker / n_samples)
+                beta = 1
+                # beta = samples_for_worker
 
                 # Decode gradient matrix
-                d_theta_temp = np.frombuffer(d_theta_temp, dtype=np.float64)
-                d_theta_temp = d_theta_temp.reshape(self.theta.shape)
+                self._logger.debug(f"theta.dtype={dist_strategy.model.theta.dtype}")
+                d_theta_temp = np.frombuffer(d_theta_temp, dtype=dist_strategy.model.theta.dtype)
+                d_theta_temp = d_theta_temp.reshape(dist_strategy.model.theta.shape)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
-                if self.dist_strategy.remap == 2:
+                if dist_strategy.remap == 2:
                     watch_dog.states[worker].most_representative = watch_dog.states[worker].lower_bound + mr
-                    self._logger.debug(f"Min mr={np.min(watch_dog.states[worker].most_representative)}, Max mr={np.max(watch_dog.states[worker].most_representative)}")
+                    # self._logger.debug(f"Min mr={np.min(watch_dog.states[worker].most_representative)}, Max mr={np.max(watch_dog.states[worker].most_representative)}")
                 else:
                     watch_dog.states[worker].most_representative = np.min(watch_dog.states[worker].idxs) + mr
                     
@@ -125,14 +134,24 @@ class Distributor(object):
                 epoch_loss_temp = float(epoch_loss_temp.decode())
 
                 # Weight parameters and loss
-                d_theta += beta * d_theta_temp              
-                epoch_loss += beta * epoch_loss_temp
+                # d_theta += beta * d_theta_temp              
+                # epoch_loss += beta * epoch_loss_temp
+                epoch_loss += epoch_loss_temp
+                errs.append(np.exp(-epoch_loss_temp))
+                d_thetas.append(d_theta_temp)
 
                 workers_received.add(worker)
 
                 i += 1
                 running_time = 0
 
+        sum_es = np.sum(errs)
+        epsilon = 1e-8
+        for j in np.arange(len(errs)):
+            weight = errs[j] / sum_es
+            # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
+            d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
+            d_theta += d_thetas[j]
         # Average parameters
         # d_theta /= len(self.workers)
         # epoch_loss /= len(self.workers)
@@ -140,7 +159,7 @@ class Distributor(object):
         assert i > 0
         assert i > 0
         i -= n_connected
-        d_theta /= i
+        # d_theta /= i
         epoch_loss /= i
 
         self._logger.debug("Calculated gradients")
