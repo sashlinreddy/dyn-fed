@@ -10,7 +10,8 @@ from fault_tolerant_ml.distribute import Worker
 @click.option('--verbose', '-v', default=10, type=int)
 @click.option('--id', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
-def run(config_dir, verbose, id, tmux):
+@click.option('--add', '-a', default=0, type=int)
+def run(config_dir, verbose, id, tmux, add):
     """Run worker
 
     Args:
@@ -24,6 +25,8 @@ def run(config_dir, verbose, id, tmux):
         identity = id=int(id[1:]) if id != "" else None
     else:
         identity = int(id) if id != "" else None
+        if add:
+            identity += 1000
 
     worker = Worker(
         verbose=verbose,
