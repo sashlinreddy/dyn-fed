@@ -18,6 +18,8 @@ from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.ml import hypotheses, loss_fns
 from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer, SGDOptimizer
 from fault_tolerant_ml.tools import TFLogger
+from fault_tolerant_ml.ml.ops.maths_utils import reconstruct_approximation, linspace_quantization
+from fault_tolerant_ml.distribute.distributor import Distributor
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -39,6 +41,7 @@ class Worker(object):
 
         self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self._tf_logger = None
+        self.distributor = Distributor()
 
     def connect(self, ip_address="localhost"):
         """Prepare our context, push socket and publisher
@@ -227,17 +230,8 @@ class Worker(object):
 
                                 # Reconstruct theta matrix from min, max, no. of intervals and which bins
                                 # each parameter value falls in
-                                struct_field_names = ["min_val", "max_val", "interval", "bins"]
-                                struct_field_types = [np.float32, np.float32, np.int32, 'b']
-                                struct_field_shapes = [1, 1, 1, ((self.n_features, self.n_classes))]
-                                dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
-                                                                
-                                data = np.frombuffer(buf, dtype=dtype)
-                                min_theta_val, max_theta_val, interval, theta_bins = data[0]
-
-                                # Generate lineared space vector
-                                bins = np.linspace(min_theta_val, max_theta_val, interval, dtype=np.float32)
-                                theta = bins[theta_bins].reshape(self.n_features, self.n_classes)                             
+                                shape = (self.n_features, self.n_classes)
+                                theta = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
 
                             theta_g = theta.copy()
                             count = 1
@@ -268,6 +262,8 @@ class Worker(object):
                             # Get messages ready to send by converting them to bytes format. We do not
                             # need to send the shape since the gradients have the same shape as theta which
                             # the master already owns
+                            if self.quantize:
+                                d_theta = linspace_quantization(d_theta, interval=100)
                             msg = d_theta.tostring()
                             loss = str(batch_loss).encode()
                             mr = most_representative.tostring()
@@ -289,7 +285,7 @@ class Worker(object):
             end = time.time()
 
             self._logger.info("Time taken for %d iterations is %7.6fs" % (i-1, end-start))
-        except KeyboardInterrupt as e:
+        except KeyboardInterrupt:
             self._logger.info("Keyboard quit")
         except zmq.ZMQError:
             self._logger.info("ZMQError")

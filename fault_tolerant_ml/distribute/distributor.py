@@ -2,7 +2,8 @@ import logging
 import zmq.green as zmq
 import numpy as np
 import time
-from .states import *
+from fault_tolerant_ml.distribute.states import *
+from fault_tolerant_ml.ml.ops.maths_utils import reconstruct_approximation
 class Distributor(object):
     """Responsible for distributing data
     """
@@ -47,6 +48,7 @@ class Distributor(object):
         self.state: int = params["state"]
         n_samples: int = params["n_samples"]
         timeout = params["timeout"] # We give x seconds to poll worker if state changed since poll event
+        quantize: bool = params["quantize"]
         
         d_theta: np.ndarray = np.zeros_like(dist_strategy.model.theta)
         epoch_loss: int = 0.0
@@ -117,8 +119,14 @@ class Distributor(object):
 
                 # Decode gradient matrix
                 self._logger.debug(f"theta.dtype={dist_strategy.model.theta.dtype}")
-                d_theta_temp = np.frombuffer(d_theta_temp, dtype=dist_strategy.model.theta.dtype)
-                d_theta_temp = d_theta_temp.reshape(dist_strategy.model.theta.shape)
+                
+                if quantize:
+                    self._logger.debug(f"Reconstructing gradients")
+                    shape = dist_strategy.model.theta.shape
+                    d_theta_temp = reconstruct_approximation(d_theta_temp, shape, r_dtype=dist_strategy.model.theta.dtype)
+                else:
+                    d_theta_temp = np.frombuffer(d_theta_temp, dtype=dist_strategy.model.theta.dtype)
+                    d_theta_temp = d_theta_temp.reshape(dist_strategy.model.theta.shape)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)

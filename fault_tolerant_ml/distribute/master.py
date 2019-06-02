@@ -24,6 +24,7 @@ from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer
 from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
 from fault_tolerant_ml.ml.metrics_temp import accuracy_scorev2
+from fault_tolerant_ml.ml.ops.maths_utils import linspace_quantization
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.distributor import Distributor
@@ -66,31 +67,6 @@ class Master(object):
         # Setup logger
         # self.logger = setup_logger(level=verbose)
         self.logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
-
-    @staticmethod
-    def get_quantized_params(theta, interval=8):
-        """Quantizes parameters
-
-        Arguments:
-            theta (np.ndarray): Parameter matrix to be quantized
-
-        Returns:
-            msg (np.ndarray): Structured numpy array that is quantized
-
-        """
-        min_theta_val = theta.min() + 1e-8
-        max_theta_val = theta.max() + 1e-8
-        bins = np.linspace(min_theta_val, max_theta_val, interval)
-        theta_bins = np.digitize(theta, bins).astype(np.int8)
-
-        struct_field_names = ["min_val", "max_val", "interval", "bins"]
-        struct_field_types = [np.float32, np.float32, np.int32, 'b']
-        struct_field_shapes = [1, 1, 1, (theta.shape)]
-
-        msg = np.zeros(1, dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes))))
-        msg[0] = (min_theta_val, max_theta_val, interval, theta_bins)
-
-        return msg
 
     def connect(self):
         """Connects to necessary sockets
@@ -305,7 +281,7 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.dist_strategy.model.theta if self.dist_strategy.quantize != 1 else Master.get_quantized_params(self.dist_strategy.model.theta, interval=100)
+            data = self.dist_strategy.model.theta if self.dist_strategy.quantize != 1 else linspace_quantization(self.dist_strategy.model.theta, interval=100)
             workers = None
             params = self.set_params()
 
@@ -454,7 +430,8 @@ class Master(object):
             "dist_strategy": self.dist_strategy,
             "state": self.state,
             "n_samples": self.data.n_samples,
-            "timeout": 10
+            "timeout": 10,
+            "quantize": self.dist_strategy.quantize
         }
         d_theta, epoch_loss = self.distributor.collect(
             events=events, 
@@ -496,7 +473,6 @@ class Master(object):
 
     @ftml_train
     def _training_loop(self):
-        completed = False
         self.dist_strategy.model.iter = 0
         delta = 1.0
         start = time.time()
