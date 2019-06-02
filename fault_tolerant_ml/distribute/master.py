@@ -20,7 +20,6 @@ import os
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData, MNist
-from fault_tolerant_ml.ml.optimizer import ParallelSGDOptimizer
 from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
 from fault_tolerant_ml.ml.metrics_temp import accuracy_scorev2
