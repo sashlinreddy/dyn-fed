@@ -72,13 +72,14 @@ class Worker(object):
 
         return poller
 
-    def do_work(self, X, y, theta):
+    def do_work(self, X, y, theta, theta_g=None):
         """Worker doing the heavy lifting of calculating gradients and calculating loss
 
         Args:
             X (numpy.ndarray): Feature matrix
             y (numpy.ndarray): Label vector
             theta (numpy.ndarray): Parameter matrix
+            theta_g (numpy.ndarray): Global parameters
 
         Returns:
             d_theta (numpy.ndarray): Gradient matrix for parameters
@@ -89,7 +90,13 @@ class Worker(object):
         # Get predictions
         y_pred = self.hypothesis(X, theta)
 
-        theta, d_theta, batch_loss = self.optimizer.minimize(X, y, y_pred, theta, N=self.n_samples)
+        theta, d_theta, batch_loss = self.optimizer.minimize(
+            X, 
+            y, 
+            y_pred, 
+            theta, 
+            N=self.n_samples, 
+            theta_g=theta_g)
         most_representative = self.optimizer.most_rep
         
         return theta, d_theta, batch_loss, most_representative
@@ -113,7 +120,8 @@ class Worker(object):
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes, scenario, remap, quantize, n_most_rep, learning_rate, comm_period = self.ctrl_socket.recv_multipart()
+        _, n_samples, n_features, n_classes, scenario, remap, \
+        quantize, n_most_rep, learning_rate, comm_period = self.ctrl_socket.recv_multipart()
         self.n_samples = int(n_samples.decode())
         self.n_features = int(n_features.decode())
         self.n_classes = int(n_classes.decode())
@@ -131,7 +139,14 @@ class Worker(object):
             logdir = os.path.join(os.environ["LOGDIR"], f"tf/{encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
 
-        self.optimizer = SGDOptimizer(loss=loss_fns.single_cross_entropy_loss, grad=self.gradient, role="worker", learning_rate=self.learning_rate, n_most_rep=self.n_most_rep, clip_norm=None)
+        self.optimizer = SGDOptimizer(
+            loss=loss_fns.single_cross_entropy_loss, 
+            grad=self.gradient, role="worker", 
+            learning_rate=self.learning_rate, 
+            n_most_rep=self.n_most_rep, 
+            clip_norm=None,
+            mu_g=1.0/self.learning_rate
+        )
 
         if self.remap == 1 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :self.n_features]]), np.vstack([self.y, data[:, -self.n_classes:]])
@@ -234,10 +249,17 @@ class Worker(object):
                                 theta = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
 
                             theta_g = theta.copy()
+                            
                             count = 1
                             while True:
                             # Each worker does work and we get the resulting gradients
-                                theta, d_theta, batch_loss, most_representative = self.do_work(self.X, self.y, theta)
+                                theta, d_theta, batch_loss, most_representative = \
+                                self.do_work(
+                                    self.X, 
+                                    self.y, 
+                                    theta, 
+                                    theta_g=theta_g
+                                )
                                 self._logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
 
                                 # Let global theta influence local theta

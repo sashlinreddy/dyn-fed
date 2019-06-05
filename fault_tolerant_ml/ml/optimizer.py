@@ -46,6 +46,7 @@ class SGDOptimizer(Optimizer):
         self._clip_norm = None
         self._clip_val = None
         self._n_most_rep = 0
+        self.mu_g = 1.0 / self.learning_rate
         if "n_most_rep" in kwargs:
             self._n_most_rep = kwargs["n_most_rep"]
         if "role" in kwargs:
@@ -54,6 +55,8 @@ class SGDOptimizer(Optimizer):
             self._clip_norm = kwargs["clip_norm"]
         if "clip_val" in kwargs:
             self._clip_val = kwargs["clip_val"]
+        if "mu_g" in kwargs:
+            self._mu_g = kwargs["mu_g"]
 
     @property
     def most_rep(self):
@@ -97,7 +100,7 @@ class SGDOptimizer(Optimizer):
 
         return d_theta
 
-    def apply_gradients(self, d_theta, theta, N):
+    def apply_gradients(self, d_theta, theta, N, theta_g=None):
         """Applies gradients by updating parameter matrix
         
         Args:
@@ -107,11 +110,18 @@ class SGDOptimizer(Optimizer):
             theta (numpy.ndarray): Updated parameter matrix
         """
 
-        theta = theta - self.learning_rate * 1 / N * d_theta
+        if self.role != "worker":
+            theta = theta - self.learning_rate * 1 / N * d_theta
+        else:
+            theta = (
+                (1 - self._mu_g * self.learning_rate) * theta - 
+                (self.learning_rate * 1 / N * d_theta) + 
+                (self._mu_g * theta_g * self.learning_rate)
+            )
 
         return theta
 
-    def minimize(self, X, y, y_pred, theta, precomputed_gradients=None, N=None):
+    def minimize(self, X, y, y_pred, theta, precomputed_gradients=None, N=None, theta_g=None):
         """Minimizes gradients. Computes loss from actual and predicted, computes gradients and applies gradients
         
         Args:
@@ -137,7 +147,8 @@ class SGDOptimizer(Optimizer):
                 d_theta = d_theta * self._clip_norm / np.linalg.norm(d_theta)
 
             # Apply them
-            theta = self.apply_gradients(d_theta, theta, N)
+            theta = self.apply_gradients(d_theta, theta, N, theta_g=theta_g)
+            # theta = self.apply_gradients(d_theta, theta, X.shape[0])
             return theta, d_theta, batch_loss
         else:
             d_theta = precomputed_gradients

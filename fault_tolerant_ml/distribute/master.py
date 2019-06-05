@@ -536,7 +536,8 @@ class Master(object):
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
-        self.dist_strategy.model.theta = np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
+        self.dist_strategy.model.theta = \
+        np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
         self.logger.debug(f"Init theta={self.dist_strategy.model.theta}")
         
         self.poller = self.setup_poller()

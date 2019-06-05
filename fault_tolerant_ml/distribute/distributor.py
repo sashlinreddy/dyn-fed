@@ -113,13 +113,14 @@ class Distributor(object):
 
                 # Calculate weighting
                 samples_for_worker = watch_dog.states[worker].n_samples
-                beta = (samples_for_worker / n_samples)
+                # beta = (samples_for_worker / n_samples)
                 beta = 1
+                # beta = 1 / n_samples
                 # beta = samples_for_worker
 
                 # Decode gradient matrix
                 self._logger.debug(f"theta.dtype={dist_strategy.model.theta.dtype}")
-                
+
                 if quantize:
                     self._logger.debug(f"Reconstructing gradients")
                     shape = dist_strategy.model.theta.shape
@@ -141,10 +142,10 @@ class Distributor(object):
                 # Decode loss
                 epoch_loss_temp = float(epoch_loss_temp.decode())
 
-                # Weight parameters and loss
-                # d_theta += beta * d_theta_temp              
-                # epoch_loss += beta * epoch_loss_temp
-                epoch_loss += epoch_loss_temp
+                # # Weight parameters and loss
+                d_theta += beta * d_theta_temp              
+                epoch_loss += beta * epoch_loss_temp
+                # epoch_loss += epoch_loss_temp
                 errs.append(np.exp(-epoch_loss_temp))
                 d_thetas.append(d_theta_temp)
 
@@ -153,13 +154,14 @@ class Distributor(object):
                 i += 1
                 running_time = 0
 
-        sum_es = np.sum(errs)
-        epsilon = 1e-8
-        for j in np.arange(len(errs)):
-            weight = errs[j] / sum_es
-            # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
-            d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
-            d_theta += d_thetas[j]
+        # sum_es = np.sum(errs)
+        # epsilon = 1e-8
+        # for j in np.arange(len(errs)):
+        #     weight = errs[j] / sum_es
+        #     # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
+        #     d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
+        #     d_theta += d_thetas[j]
+
         # Average parameters
         # d_theta /= len(self.workers)
         # epoch_loss /= len(self.workers)
