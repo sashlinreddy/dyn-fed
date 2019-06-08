@@ -59,8 +59,8 @@ class Master(object):
         # Tracking variables
         self.times = []
         self._tf_logger = None
-        if "LOGDIR" in os.environ:
-            logdir = os.path.join(os.environ["LOGDIR"], f"tf/{self.dist_strategy.encode()}/master")
+        if "TFDIR" in os.environ:
+            logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.dist_strategy.encode()}/master")
             self._tf_logger = TFLogger(logdir)
 
         # Setup logger
@@ -148,6 +148,7 @@ class Master(object):
             params["delay_change"] = self.delay_change
         else:
             params["n_alive"] = self.watch_dog.n_alive
+            params["n_workers"] = self.dist_strategy.n_workers
             params["n_samples"] = self.data.n_samples
             params["n_features"] = self.data.n_features
             params["n_classes"] = self.data.n_classes
@@ -518,6 +519,32 @@ class Master(object):
         acc = accuracy_scorev2(self.data.y_test, y_pred)
         # acc = accuracy(self.data.X_test, self.data.y_test, self.dist_strategy.model.theta, self.hypothesis)
         self.logger.info(f"Accuracy={acc * 100:7.4f}%")
+
+    def plot_metrics(self):
+
+        if "FIGDIR" in os.environ:
+
+            import pandas as pd
+            from fault_tolerant_ml.viz.target import ClassBalance
+
+            figdir = os.environ["FIGDIR"]
+
+            try:
+                self.logger.debug("Saving class balances distribution plot...")
+                worker_ids = [s.identity.decode() for s in self.watch_dog.states if s.state]
+                fname = os.path.join(figdir, f"mnist-class-balance.png")
+                class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
+                class_names = self.data.class_names
+
+                class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=None, stacked=True, percentage=True)
+                class_balance.fit(y=class_bal)
+                class_balance.poof()
+
+                fig = class_balance.fig
+
+                self._tf_logger.images("class-bal-master", [fig], self.dist_strategy.model.iter)
+            except Exception as e:
+                self.logger.exception(e)
 
     def main_loop(self):
         """Main loop for training.

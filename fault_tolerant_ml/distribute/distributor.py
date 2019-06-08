@@ -219,6 +219,7 @@ class Distributor(object):
             batch_gen = gen_func(X_train, y_train, batch_size, shuffle=False)
 
             # Encode to bytes
+            n_workers = str(params["n_workers"]).encode()
             n_samples = str(params["n_samples"]).encode()
             n_features = str(params["n_features"]).encode()
             n_classes = str(params["n_classes"]).encode()
@@ -299,7 +300,7 @@ class Distributor(object):
                             worker.most_representative = np.zeros((params["n_most_rep"],))
 
                     multipart_data = [batch_data, dtype, shape]
-                    multipart_params = [n_samples, n_features, n_classes, scenario, remap, quantize, n_most_rep, learning_rate, delay]
+                    multipart_params = [n_workers, n_samples, n_features, n_classes, scenario, remap, quantize, n_most_rep, learning_rate, delay]
 
                     self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
                     self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")
