@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -J ftml
-#SBATCH -o /home-mscluster/sreddy/logs/slurm_%j.log
+#SBATCH -o /home-mscluster/sreddy/logs/slurm/slurm_%j.log
 #SBATCH -t 10:00
 #SBATCH -p batch
-#SBATCH --export=LOGDIR=/home-mscluster/sreddy/logs
+#SBATCH --export=LOGDIR=/home-mscluster/sreddy/logs/slurm,TFDIR=/home-mscluster/sreddy/logs/,FIGDIR=/home-mscluster/sreddy/fault-tolerant-ml/reports/figures
 
 while [ "$1" != "" ]; do
     case $1 in
@@ -48,7 +48,7 @@ export MASTER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/tests/run_master.py
 export WORKER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/tests/run_worker.py
 export DATA_DIR=/home-mscluster/sreddy/fault-tolerant-ml/data
 
-echo -e '0\t' $PYTHON_EXE $MASTER_EXE $DATA_DIR $n_iterations $learning_rate \
+echo -e '0\t' $PYTHON_EXE $MASTER_EXE $DATA_DIR $SLURM_NTASKS $n_iterations $learning_rate \
 $verbose $scenario $remap $quantize $n_most_rep $comm_period $timeout \
 > /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
 echo -e '*\t' $PYTHON_EXE $WORKER_EXE $DATA_DIR -i %t >> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf

@@ -44,6 +44,7 @@ from fault_tolerant_ml.utils import setup_logger
 
 @click.command()
 @click.argument('data_dir', type=click.Path(exists=True))
+@click.argument('n_workers', type=int)
 @click.option('--n_iterations', '-i', default=400, type=int)
 @click.option('--learning_rate', '-lr', default=0.99, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
@@ -58,7 +59,7 @@ from fault_tolerant_ml.utils import setup_logger
 @click.option('--delta_switch', '-ds', default=1e-4, type=float)
 @click.option('--shuffle', '-sh', default=1, type=int)
 @click.option('--timeout', '-t', default=15, type=int)
-def run(data_dir, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, 
+def run(data_dir, n_workers, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, 
 n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
     """Controller function which creates the master and starts off the training
 
@@ -116,6 +117,7 @@ n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
     # data.transform()
 
     dist_strategy = MasterStrategy(
+        n_workers=n_workers,
         strategy=strategy,
         scenario=scenario,
         model=model,
@@ -159,25 +161,26 @@ n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
     logger.info("*******************************")
 
     # Plot class balances
-    if "FIGDIR" in os.environ:
+    # if "FIGDIR" in os.environ:
 
-        import pandas as pd
-        from fault_tolerant_ml.viz.target import ClassBalance
+    #     import pandas as pd
+    #     from fault_tolerant_ml.viz.target import ClassBalance
 
-        figdir = os.environ["FIGDIR"]
+    #     figdir = os.environ["FIGDIR"]
 
-        try:
-            logger.debug("Saving class balances distribution plot...")
-            worker_ids = [s.identity.decode() for s in master.watch_dog.states if s.state]
-            fname = os.path.join(figdir, f"mnist-class-balance.png")
-            class_bal = [v[1] for (k, v) in master.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
-            class_names = master.data.class_names
+    #     try:
+    #         logger.debug("Saving class balances distribution plot...")
+    #         worker_ids = [s.identity.decode() for s in master.watch_dog.states if s.state]
+    #         fname = os.path.join(figdir, f"mnist-class-balance.png")
+    #         class_bal = [v[1] for (k, v) in master.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
+    #         class_names = master.data.class_names
 
-            class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
-            class_balance.fit(y=class_bal)
-            class_balance.poof()
-        except Exception as e:
-            logger.exception(e)
+    #         class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
+    #         class_balance.fit(y=class_bal)
+    #         class_balance.poof()
+    #     except Exception as e:
+    #         logger.exception(e)
+    master.plot_metrics()
 
     logger.info("DONE!")
 

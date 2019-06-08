@@ -1,11 +1,13 @@
 """Log scalars, histograms and images to tensorboard without tensor ops.
+
+From https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-from io import StringIO
+from io import StringIO, BytesIO
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -36,13 +38,25 @@ class TFLogger(object):
         im_summaries = []
         for nr, img in enumerate(images):
             # Write the image to a string
-            s = StringIO()
-            plt.imsave(s, img, format='png')
+            buf = BytesIO()
+            # plt.imsave(s, img, format='png')
+            plt.savefig(buf, format="png")
+
+            # Closing the figure prevents it from being displayed directly inside
+            # the notebook.
+            plt.close(img)
+            buf.seek(0)
+            # Convert PNG buffer to TF image
+            image = tf.image.decode_png(buf.getvalue(), channels=4)
+            # Add the batch dimension
+            image = tf.expand_dims(image, 0)
+
+            # size = img.get_size_inches()*img.dpi
 
             # Create an Image object
-            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(),
-                                       height=img.shape[0],
-                                       width=img.shape[1])
+            img_sum = tf.Summary.Image(encoded_image_string=buf.getvalue(),
+                                       height=image.shape[0],
+                                       width=image.shape[1]
             # Create a Summary value
             im_summaries.append(tf.Summary.Value(tag='%s/%d' % (tag, nr),
                                                  image=img_sum))

@@ -120,8 +120,9 @@ class Worker(object):
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes, scenario, remap, \
+        _, n_workers, n_samples, n_features, n_classes, scenario, remap, \
         quantize, n_most_rep, learning_rate, comm_period = self.ctrl_socket.recv_multipart()
+        self.n_workers = int(n_workers.decode())
         self.n_samples = int(n_samples.decode())
         self.n_features = int(n_features.decode())
         self.n_classes = int(n_classes.decode())
@@ -134,9 +135,9 @@ class Worker(object):
         # self.clip_norm = float(clip_norm.decode())
         # self.clip_val = float(clip_val.decode())
 
-        if "LOGDIR" in os.environ:
-            encoded_name = f"{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}"
-            logdir = os.path.join(os.environ["LOGDIR"], f"tf/{encoded_name}/{self.worker_id}")
+        if "TFDIR" in os.environ:
+            encoded_name = f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}"
+            logdir = os.path.join(os.environ["TFDIR"], f"tf/{encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
 
         self.optimizer = SGDOptimizer(

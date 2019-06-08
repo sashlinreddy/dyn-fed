@@ -69,7 +69,11 @@ def setup_logger(filename='logfile.log', level=10, console_logging=True):
     """
     # Creating log directory if it doesn't exist
 
-    path = os.path.join("logs", filename)
+    if "LOGDIR" in os.environ:
+        logdir = os.environ["LOGDIR"]
+    else:
+        logdir = "logs"
+    path = os.path.join(logdir, filename)
     # # Clear old logs
     # for f in os.listdir("logs"):
     #     os.remove(f)

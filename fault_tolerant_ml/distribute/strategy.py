@@ -11,10 +11,11 @@ class DistributionStrategy(object):
         comm_period (int): Communicate every comm_period iteration(s)
         delta_switch (float): The delta threshold we reach before switching back to communication every iteration
     """
-    def __init__(self, strategy, scenario, model):
+    def __init__(self, strategy, scenario, model, n_workers):
         self.strategy = strategy
         self.scenario = scenario
         self.model = model
+        self.n_workers = n_workers
 
 class MasterStrategy(DistributionStrategy):
 
@@ -22,7 +23,8 @@ class MasterStrategy(DistributionStrategy):
         self, 
         strategy, 
         scenario, 
-        model, 
+        model,
+        n_workers, 
         remap=0, 
         quantize=0, 
         n_most_rep=100, 
@@ -31,7 +33,7 @@ class MasterStrategy(DistributionStrategy):
         worker_timeout=10
         ):
 
-        super().__init__(strategy, scenario, model)
+        super().__init__(strategy, scenario, model, n_workers)
         self.remap = remap
         self.quantize = quantize
         self.n_most_rep = n_most_rep
@@ -40,4 +42,4 @@ class MasterStrategy(DistributionStrategy):
         self.worker_timeout = worker_timeout
 
     def encode(self):
-        return f"{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}"
+        return f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}"
