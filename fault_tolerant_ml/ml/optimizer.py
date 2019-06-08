@@ -46,7 +46,7 @@ class SGDOptimizer(Optimizer):
         self._clip_norm = None
         self._clip_val = None
         self._n_most_rep = 0
-        self.mu_g = 1.0 / self.learning_rate
+        self._mu_g = 1.0 / self.learning_rate
         if "n_most_rep" in kwargs:
             self._n_most_rep = kwargs["n_most_rep"]
         if "role" in kwargs:
@@ -61,6 +61,10 @@ class SGDOptimizer(Optimizer):
     @property
     def most_rep(self):
         return self._most_rep
+
+    @property
+    def mu_g(self):
+        return self._mu_g
 
     @property
     def role(self):

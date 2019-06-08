@@ -136,6 +136,8 @@ class Worker(object):
         # self.clip_norm = float(clip_norm.decode())
         # self.clip_val = float(clip_val.decode())
 
+        self._logger.debug(f"mu={self.mu_g}")
+
         if "TFDIR" in os.environ:
             encoded_name = f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}"
             logdir = os.path.join(os.environ["TFDIR"], f"tf/{encoded_name}/{self.worker_id}")
