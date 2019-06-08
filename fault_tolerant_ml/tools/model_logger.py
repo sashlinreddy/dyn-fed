@@ -46,17 +46,14 @@ class TFLogger(object):
             # the notebook.
             plt.close(img)
             buf.seek(0)
-            # Convert PNG buffer to TF image
-            image = tf.image.decode_png(buf.getvalue(), channels=4)
-            # Add the batch dimension
-            image = tf.expand_dims(image, 0)
 
-            # size = img.get_size_inches()*img.dpi
+            size = img.get_size_inches()*img.dpi
 
             # Create an Image object
             img_sum = tf.Summary.Image(encoded_image_string=buf.getvalue(),
-                                       height=image.shape[0],
-                                       width=image.shape[1]
+                                       height=int(size[0]),
+                                       width=int(size[1]))
+
             # Create a Summary value
             im_summaries.append(tf.Summary.Value(tag='%s/%d' % (tag, nr),
                                                  image=img_sum))
