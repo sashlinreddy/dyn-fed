@@ -1,4 +1,6 @@
 """Log scalars, histograms and images to tensorboard without tensor ops.
+
+From https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -37,7 +39,8 @@ class TFLogger(object):
         for nr, img in enumerate(images):
             # Write the image to a string
             s = StringIO()
-            plt.imsave(s, img, format='png')
+            # plt.imsave(s, img, format='png')
+            img.savefig(s, format="png")
 
             # Create an Image object
             img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(),
