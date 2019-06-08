@@ -31,6 +31,9 @@ while [ "$1" != "" ]; do
         -cp | --comm_period)    shift
                                 comm_period="-cp $1"
                                 ;;
+        -m | --mu_g)            shift
+                                mu_g="-m $1"
+                                ;;
         -t | --timeout )        shift
                                 timeout="-t $1"
                                 ;;
@@ -49,7 +52,7 @@ export WORKER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/tests/run_worker.py
 export DATA_DIR=/home-mscluster/sreddy/fault-tolerant-ml/data
 
 echo -e '0\t' $PYTHON_EXE $MASTER_EXE $DATA_DIR $SLURM_NTASKS $n_iterations $learning_rate \
-$verbose $scenario $remap $quantize $n_most_rep $comm_period $timeout \
+$verbose $scenario $remap $quantize $n_most_rep $comm_period $mu_g $timeout \
 > /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
 echo -e '*\t' $PYTHON_EXE $WORKER_EXE $DATA_DIR -i %t >> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
 

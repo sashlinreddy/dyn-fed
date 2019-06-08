@@ -13,6 +13,10 @@ class Distributor(object):
         self._logger = logging.getLogger("ftml")
         self.labels_per_worker = {}
 
+    def _encode(self, params, vars):
+        
+        return [str(params[i]).encode() for i in vars]
+
     def bcast(self, socket, data, subscribe_msg=b""):
         """Broadcasts to anyone listening on the socket
         """
@@ -229,6 +233,15 @@ class Distributor(object):
             n_most_rep = str(params["n_most_rep"]).encode()
             learning_rate = str(params["learning_rate"]).encode()
             delay = str(params["comm_period"]).encode()
+            mu_g = str(params["mu_g"]).encode()
+
+            # enc_vars = [
+            #     "n_workers", "n_samples", "n_features",
+            #     "n_classes", "scenario", "remap", "quantize",
+            #     "n_most_rep", "learning_rate", "comm_period",
+            #     "mu_g"
+            # ]
+            # multipart_params = self._encode(params, enc_vars)
 
             state = params["state"]
 
@@ -300,7 +313,10 @@ class Distributor(object):
                             worker.most_representative = np.zeros((params["n_most_rep"],))
 
                     multipart_data = [batch_data, dtype, shape]
-                    multipart_params = [n_workers, n_samples, n_features, n_classes, scenario, remap, quantize, n_most_rep, learning_rate, delay]
+                    multipart_params = [
+                        n_workers, n_samples, n_features, n_classes, scenario, 
+                        remap, quantize, n_most_rep, learning_rate, delay, mu_g
+                    ]
 
                     self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
                     self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")

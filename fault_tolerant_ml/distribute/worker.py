@@ -121,7 +121,7 @@ class Worker(object):
 
         # Receive shape of X, y so we can reshape
         _, n_workers, n_samples, n_features, n_classes, scenario, remap, \
-        quantize, n_most_rep, learning_rate, comm_period = self.ctrl_socket.recv_multipart()
+        quantize, n_most_rep, learning_rate, comm_period, mu_g = self.ctrl_socket.recv_multipart()
         self.n_workers = int(n_workers.decode())
         self.n_samples = int(n_samples.decode())
         self.n_features = int(n_features.decode())
@@ -132,11 +132,12 @@ class Worker(object):
         self.n_most_rep = int(n_most_rep.decode())
         self.learning_rate = float(learning_rate.decode())
         self.comm_period = int(comm_period.decode())
+        self.mu_g = float(mu_g.decode())
         # self.clip_norm = float(clip_norm.decode())
         # self.clip_val = float(clip_val.decode())
 
         if "TFDIR" in os.environ:
-            encoded_name = f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}"
+            encoded_name = f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}"
             logdir = os.path.join(os.environ["TFDIR"], f"tf/{encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
 
@@ -146,7 +147,7 @@ class Worker(object):
             learning_rate=self.learning_rate, 
             n_most_rep=self.n_most_rep, 
             clip_norm=None,
-            mu_g=1.0/self.learning_rate
+            mu_g=self.mu_g
         )
 
         if self.remap == 1 and not start:

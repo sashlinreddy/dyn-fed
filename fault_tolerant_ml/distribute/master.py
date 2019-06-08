@@ -53,6 +53,7 @@ class Master(object):
         # Model variables
         self.n_iterations = int(np.ceil(self.dist_strategy.model.max_iter / self.dist_strategy.comm_period))
         self.learning_rate = self.dist_strategy.model.optimizer.learning_rate
+        self.mu_g = self.dist_strategy.model.optimizer.mu_g
         self.hypothesis = hypotheses.log_hypothesis
         self.optimizer = self.dist_strategy.model.optimizer
 
@@ -154,6 +155,7 @@ class Master(object):
             params["n_classes"] = self.data.n_classes
             params["n_most_rep"] = self.dist_strategy.n_most_rep
             params["learning_rate"] = self.learning_rate
+            params["mu_g"] = self.mu_g
             params["comm_period"] = self.dist_strategy.comm_period
             params["mapping"] = self.mapping
         return params

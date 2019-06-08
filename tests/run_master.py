@@ -56,11 +56,12 @@ from fault_tolerant_ml.utils import setup_logger
 @click.option('--comm_period', '-cp', default=1, type=int)
 @click.option('--clip_norm', '-cn', default=None, type=int)
 @click.option('--clip_val', '-ct', default=None, type=int)
+@click.option('--mu_g', '-m', default=1.0, type=float)
 @click.option('--delta_switch', '-ds', default=1e-4, type=float)
 @click.option('--shuffle', '-sh', default=1, type=int)
 @click.option('--timeout', '-t', default=15, type=int)
 def run(data_dir, n_workers, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, 
-n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
+n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeout):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -97,7 +98,9 @@ n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
         role="master", 
         n_most_rep=n_most_rep, 
         clip_norm=clip_norm, 
-        clip_val=clip_val)
+        clip_val=clip_val,
+        mu_g=mu_g
+    )
     model = LogisticRegression(optimizer, max_iter=n_iterations, shuffle=shuffle)
     filepaths = {
         "train": {
@@ -126,7 +129,8 @@ n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
         n_most_rep=n_most_rep, 
         comm_period=comm_period,
         delta_switch=delta_switch,
-        worker_timeout=timeout
+        worker_timeout=timeout,
+        mu_g=mu_g
     )
 
     master = Master(
