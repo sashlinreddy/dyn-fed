@@ -89,7 +89,14 @@ n_most_rep, comm_period, clip_norm, clip_val, delta_switch, shuffle, timeout):
 
     loss = cross_entropy_loss
     grad = cross_entropy_gradient
-    optimizer = SGDOptimizer(loss=loss, grad=grad, learning_rate=learning_rate, role="master", n_most_rep=n_most_rep, clip_norm=clip_norm, clip_val=clip_val)
+    optimizer = SGDOptimizer(
+        loss=loss, 
+        grad=grad, 
+        learning_rate=learning_rate, 
+        role="master", 
+        n_most_rep=n_most_rep, 
+        clip_norm=clip_norm, 
+        clip_val=clip_val)
     model = LogisticRegression(optimizer, max_iter=n_iterations, shuffle=shuffle)
     filepaths = {
         "train": {
