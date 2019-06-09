@@ -145,7 +145,8 @@ class Worker(object):
 
         self.optimizer = SGDOptimizer(
             loss=loss_fns.single_cross_entropy_loss, 
-            grad=self.gradient, role="worker", 
+            grad=self.gradient, 
+            role="worker", 
             learning_rate=self.learning_rate, 
             n_most_rep=self.n_most_rep, 
             clip_norm=None,
@@ -290,7 +291,8 @@ class Worker(object):
                             # the master already owns
                             if self.quantize:
                                 d_theta = linspace_quantization(d_theta, interval=100)
-                            msg = d_theta.tostring()
+                            # msg = d_theta.tostring()
+                            msg = theta.tostring()
                             loss = str(batch_loss).encode()
                             mr = most_representative.tostring()
                             self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])

@@ -173,7 +173,7 @@ class Distributor(object):
         assert i > 0
         assert i > 0
         i -= n_connected
-        # d_theta /= i
+        d_theta /= i
         epoch_loss /= i
 
         self._logger.debug("Calculated gradients")

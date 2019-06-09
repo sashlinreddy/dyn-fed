@@ -441,8 +441,9 @@ class Master(object):
             params=params
         )
 
+        self.dist_strategy.model.theta = d_theta
         # Update the global parameters with weighted error
-        self.dist_strategy.model.theta = self.optimizer.minimize(X=self.X_train, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)
+        # self.dist_strategy.model.theta = self.optimizer.minimize(X=self.X_train, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)
 
         y_pred = self.dist_strategy.model.predict(self.data.X_test)
         y_train_pred = self.dist_strategy.model.predict(self.data.X_train)
