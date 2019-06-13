@@ -31,7 +31,8 @@ class MasterStrategy(DistributionStrategy):
         comm_period=1, 
         delta_switch=1e-4, 
         worker_timeout=10,
-        mu_g=1.0
+        mu_g=1.0,
+        send_gradients=True
         ):
 
         super().__init__(strategy, scenario, model, n_workers)
@@ -42,6 +43,8 @@ class MasterStrategy(DistributionStrategy):
         self.delta_switch = delta_switch
         self.worker_timeout = worker_timeout
         self.mu_g = mu_g
+        self.send_gradients = send_gradients
 
     def encode(self):
-        return f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}"
+        return f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}"
+        f"-{self.comm_period}-{self.mu_g}-{self.send_gradients}"

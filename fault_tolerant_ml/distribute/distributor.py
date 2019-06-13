@@ -223,25 +223,25 @@ class Distributor(object):
             batch_gen = gen_func(X_train, y_train, batch_size, shuffle=False)
 
             # Encode to bytes
-            n_workers = str(params["n_workers"]).encode()
-            n_samples = str(params["n_samples"]).encode()
-            n_features = str(params["n_features"]).encode()
-            n_classes = str(params["n_classes"]).encode()
-            scenario = str(params["scenario"]).encode()
-            remap = str(params["remap"]).encode()
-            quantize = str(params["quantize"]).encode()
-            n_most_rep = str(params["n_most_rep"]).encode()
-            learning_rate = str(params["learning_rate"]).encode()
-            delay = str(params["comm_period"]).encode()
-            mu_g = str(params["mu_g"]).encode()
+            # n_workers = str(params["n_workers"]).encode()
+            # n_samples = str(params["n_samples"]).encode()
+            # n_features = str(params["n_features"]).encode()
+            # n_classes = str(params["n_classes"]).encode()
+            # scenario = str(params["scenario"]).encode()
+            # remap = str(params["remap"]).encode()
+            # quantize = str(params["quantize"]).encode()
+            # n_most_rep = str(params["n_most_rep"]).encode()
+            # learning_rate = str(params["learning_rate"]).encode()
+            # delay = str(params["comm_period"]).encode()
+            # mu_g = str(params["mu_g"]).encode()
 
-            # enc_vars = [
-            #     "n_workers", "n_samples", "n_features",
-            #     "n_classes", "scenario", "remap", "quantize",
-            #     "n_most_rep", "learning_rate", "comm_period",
-            #     "mu_g"
-            # ]
-            # multipart_params = self._encode(params, enc_vars)
+            enc_vars = [
+                "n_workers", "n_samples", "n_features",
+                "n_classes", "scenario", "remap", "quantize",
+                "n_most_rep", "learning_rate", "comm_period",
+                "mu_g", "send_gradients"
+            ]
+            multipart_params = self._encode(params, enc_vars)
 
             state = params["state"]
 
@@ -313,10 +313,10 @@ class Distributor(object):
                             worker.most_representative = np.zeros((params["n_most_rep"],))
 
                     multipart_data = [batch_data, dtype, shape]
-                    multipart_params = [
-                        n_workers, n_samples, n_features, n_classes, scenario, 
-                        remap, quantize, n_most_rep, learning_rate, delay, mu_g
-                    ]
+                    # multipart_params = [
+                    #     n_workers, n_samples, n_features, n_classes, scenario, 
+                    #     remap, quantize, n_most_rep, learning_rate, delay, mu_g
+                    # ]
 
                     self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
                     self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")

@@ -37,6 +37,9 @@ while [ "$1" != "" ]; do
         -t | --timeout )        shift
                                 timeout="-t $1"
                                 ;;
+        -sg | --send_gradients )shift
+                                send_gradients="-t $1"
+                                ;;
         -h | --help )           usage
                                 exit
                                 ;;
@@ -52,7 +55,7 @@ export WORKER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/tests/run_worker.py
 export DATA_DIR=/home-mscluster/sreddy/fault-tolerant-ml/data
 
 echo -e '0\t' $PYTHON_EXE $MASTER_EXE $DATA_DIR $SLURM_NTASKS $n_iterations $learning_rate \
-$verbose $scenario $remap $quantize $n_most_rep $comm_period $mu_g $timeout \
+$verbose $scenario $remap $quantize $n_most_rep $comm_period $mu_g $timeout $send_gradients\
 > /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
 echo -e '*\t' $PYTHON_EXE $WORKER_EXE $DATA_DIR -i %t >> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
 

@@ -121,7 +121,7 @@ class Worker(object):
 
         # Receive shape of X, y so we can reshape
         _, n_workers, n_samples, n_features, n_classes, scenario, remap, \
-        quantize, n_most_rep, learning_rate, comm_period, mu_g = self.ctrl_socket.recv_multipart()
+        quantize, n_most_rep, learning_rate, comm_period, mu_g, send_gradients = self.ctrl_socket.recv_multipart()
         self.n_workers = int(n_workers.decode())
         self.n_samples = int(n_samples.decode())
         self.n_features = int(n_features.decode())
@@ -133,13 +133,15 @@ class Worker(object):
         self.learning_rate = float(learning_rate.decode())
         self.comm_period = int(comm_period.decode())
         self.mu_g = float(mu_g.decode())
+        self.send_gradients = int(send_gradients.decode())
         # self.clip_norm = float(clip_norm.decode())
         # self.clip_val = float(clip_val.decode())
 
         self._logger.debug(f"mu={self.mu_g}")
 
         if "TFDIR" in os.environ:
-            encoded_name = f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}"
+            encoded_name = \
+            f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
             logdir = os.path.join(os.environ["TFDIR"], f"tf/{encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
 
@@ -291,8 +293,12 @@ class Worker(object):
                             # the master already owns
                             if self.quantize:
                                 d_theta = linspace_quantization(d_theta, interval=100)
-                            # msg = d_theta.tostring()
+                                theta = linspace_quantization(theta, interval=100)
+
                             msg = theta.tostring()
+                            if self.send_gradients:
+                                msg = d_theta.tostring()
+                                
                             loss = str(batch_loss).encode()
                             mr = most_representative.tostring()
                             self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])

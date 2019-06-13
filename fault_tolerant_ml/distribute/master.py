@@ -156,6 +156,7 @@ class Master(object):
             params["n_most_rep"] = self.dist_strategy.n_most_rep
             params["learning_rate"] = self.learning_rate
             params["mu_g"] = self.mu_g
+            params["send_gradients"] = self.dist_strategy.send_gradients
             params["comm_period"] = self.dist_strategy.comm_period
             params["mapping"] = self.mapping
         return params
@@ -441,9 +442,18 @@ class Master(object):
             params=params
         )
 
-        self.dist_strategy.model.theta = d_theta
-        # Update the global parameters with weighted error
-        # self.dist_strategy.model.theta = self.optimizer.minimize(X=self.X_train, y=None, y_pred=None, theta=self.dist_strategy.model.theta, precomputed_gradients=d_theta)
+        if not self.dist_strategy.send_gradients:
+            self.dist_strategy.model.theta = d_theta
+        else:
+            # Update the global parameters with weighted error
+            self.dist_strategy.model.theta = \
+            self.optimizer.minimize(
+                X=self.X_train, 
+                y=None, 
+                y_pred=None, 
+                theta=self.dist_strategy.model.theta, 
+                precomputed_gradients=d_theta
+            )
 
         y_pred = self.dist_strategy.model.predict(self.data.X_test)
         y_train_pred = self.dist_strategy.model.predict(self.data.X_train)

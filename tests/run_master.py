@@ -60,8 +60,9 @@ from fault_tolerant_ml.utils import setup_logger
 @click.option('--delta_switch', '-ds', default=1e-4, type=float)
 @click.option('--shuffle', '-sh', default=1, type=int)
 @click.option('--timeout', '-t', default=15, type=int)
+@click.option('--send_gradients', '-sg', default=1, type=int)
 def run(data_dir, n_workers, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, 
-n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeout):
+n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeout, send_gradients):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -79,6 +80,8 @@ n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeo
         comm_period (int): Communicate parameters back to master every so often depending on this number
         delta_switch (float): Delta threshold to let us know when we switch back to communicating every ith iteration
         shuffle (bool): Flag whether or not to shuffle training data at each iteration
+        timeout (int): Time given for workers to connect to master
+        send_gradients (bool): Whether or not to send gradients or parameters back
     """
 
     # # load_dotenv(find_dotenv())
@@ -130,7 +133,8 @@ n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeo
         comm_period=comm_period,
         delta_switch=delta_switch,
         worker_timeout=timeout,
-        mu_g=mu_g
+        mu_g=mu_g,
+        send_gradients=send_gradients
     )
 
     master = Master(
