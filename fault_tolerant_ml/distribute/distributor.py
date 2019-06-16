@@ -236,10 +236,7 @@ class Distributor(object):
             # mu_g = str(params["mu_g"]).encode()
 
             enc_vars = [
-                "n_workers", "n_samples", "n_features",
-                "n_classes", "scenario", "remap", "quantize",
-                "n_most_rep", "learning_rate", "comm_period",
-                "mu_g", "send_gradients"
+                "n_samples", "n_features", "n_classes"
             ]
             multipart_params = self._encode(params, enc_vars)
 
@@ -313,10 +310,6 @@ class Distributor(object):
                             worker.most_representative = np.zeros((params["n_most_rep"],))
 
                     multipart_data = [batch_data, dtype, shape]
-                    # multipart_params = [
-                    #     n_workers, n_samples, n_features, n_classes, scenario, 
-                    #     remap, quantize, n_most_rep, learning_rate, delay, mu_g
-                    # ]
 
                     self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
                     self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")
