@@ -30,7 +30,7 @@ class Worker(object):
         subscriber (zmq.Socket): zmq.SUB socket which subscribes to all master published messages
         connected (bool): Whether or not the worker is connected successfully to the master
     """
-    def __init__(self, strategy, n_workers, verbose, id=None):
+    def __init__(self, model, verbose, id=None):
 
         self.worker_id = str(uuid.uuid4()) if id is None else f"worker-{id}"
         self.subscriber = None
@@ -40,26 +40,27 @@ class Worker(object):
         # self.hypothesis = hypotheses.log_hypothesis
         # self.gradient = loss_fns.cross_entropy_gradient
 
-        self.strategy = strategy
-        self.model = self.strategy.model
+        self.model = model
+        self.strategy = self.model.strategy
 
-        self.n_workers = n_workers
-        self.scenario = self.strategy.scenario
-        self.remap = self.strategy.remap
-        self.quantize = self.strategy.quantize
-        self.n_most_rep = self.strategy.n_most_rep
+        self.n_workers = self.model.strategy.n_workers
+        self.scenario = self.model.strategy.scenario
+        self.remap = self.model.strategy.remap
+        self.quantize = self.model.strategy.quantize
+        self.n_most_rep = self.model.optimizer.n_most_rep
         self.learning_rate = self.model.optimizer.learning_rate
-        self.comm_period = self.strategy.comm_period
-        self.mu_g = self.strategy.model.optimizer.mu_g
-        self.send_gradients = self.strategy.send_gradients
+        self.comm_period = self.model.strategy.comm_period
+        self.mu_g = self.model.optimizer.mu_g
+        self.send_gradients = self.model.strategy.send_gradients
 
-        with open(os.path.join(self.strategy.shared_folder, "ip_config.json"), "r") as f:
+        with open(os.path.join(self.model.strategy.shared_folder, "ip_config.json"), "r") as f:
             ip_config = json.load(f)
 
         self.master_ip_address = ip_config["ipAddress"]
 
-        self.encoded_name = \
-        f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
+        # self.encoded_name = \
+        # f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
+        self.encoded_name = self.model.encode()
 
         if "LOGDIR" in os.environ:
             logdir = os.path.join(os.environ["LOGDIR"], self.encoded_name)
@@ -180,7 +181,7 @@ class Worker(object):
         self.have_work = True
                     
 
-    def start(self):
+    def train(self):
         """Training for the worker
 
         Boots up the worker to start receiving data. Thereafter, the worker does the heavy lifting by computing the gradients of the parameter matrix. This is returned to the master, where the master will aggregate gradients and apply them to the global theta. The parameters will be distributed back to the worker and this occurs iteratively, to find the global minima for the parameter matrix.

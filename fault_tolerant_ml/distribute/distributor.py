@@ -48,13 +48,14 @@ class Distributor(object):
             epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
         """
         watch_dog = params["watch_dog"]
-        dist_strategy = params["dist_strategy"]
+        strategy = params["strategy"]
         self.state: int = params["state"]
         n_samples: int = params["n_samples"]
         timeout = params["timeout"] # We give x seconds to poll worker if state changed since poll event
         quantize: bool = params["quantize"]
+        theta: np.ndarray = params["theta"]
         
-        d_theta: np.ndarray = np.zeros_like(dist_strategy.model.theta)
+        d_theta: np.ndarray = np.zeros_like(theta)
         epoch_loss: int = 0.0
 
         self._logger.debug(f"Receiving gradients")
@@ -92,7 +93,7 @@ class Distributor(object):
                             for w in diff:
                                 # Set dead workers state to false
                                 watch_dog.states[w].state = False
-                                if dist_strategy.remap != 1:                                    
+                                if strategy.remap != 1:                                    
                                     watch_dog.states[w].idxs = watch_dog.states[w].most_representative
                             
                             self.state = REMAP
@@ -123,20 +124,20 @@ class Distributor(object):
                 # beta = samples_for_worker
 
                 # Decode gradient matrix
-                # self._logger.debug(f"theta.dtype={dist_strategy.model.theta.dtype}")
+                # self._logger.debug(f"theta.dtype={theta.dtype}")
 
                 if quantize:
                     self._logger.debug(f"Reconstructing gradients")
-                    shape = dist_strategy.model.theta.shape
-                    d_theta_temp = reconstruct_approximation(d_theta_temp, shape, r_dtype=dist_strategy.model.theta.dtype)
+                    shape = theta.shape
+                    d_theta_temp = reconstruct_approximation(d_theta_temp, shape, r_dtype=theta.dtype)
                 else:
-                    d_theta_temp = np.frombuffer(d_theta_temp, dtype=dist_strategy.model.theta.dtype)
-                    d_theta_temp = d_theta_temp.reshape(dist_strategy.model.theta.shape)
+                    d_theta_temp = np.frombuffer(d_theta_temp, dtype=theta.dtype)
+                    d_theta_temp = d_theta_temp.reshape(theta.shape)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
-                if dist_strategy.remap == 2:
+                if strategy.remap == 2:
                     watch_dog.states[worker].most_representative = watch_dog.states[worker].lower_bound + mr
                     # self._logger.debug(f"Min mr={np.min(watch_dog.states[worker].most_representative)}, Max mr={np.max(watch_dog.states[worker].most_representative)}")
                 else:

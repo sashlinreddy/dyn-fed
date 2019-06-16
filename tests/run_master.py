@@ -3,7 +3,6 @@ import os
 import time 
 import numpy as np
 
-from fault_tolerant_ml.distribute import Master
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
 from fault_tolerant_ml.ml.optimizer import SGDOptimizer
@@ -69,8 +68,22 @@ def run(n_workers, verbose):
         mu_g=opt_cfg['mu_g']
     )
 
+    # Decide on distribution strategy
+    strategy = MasterWorkerStrategy(
+        n_workers=n_workers,
+        config=executor_cfg
+    )
+
+    logger = setup_logger(level=verbose)
+
     # Create model
-    model = LogisticRegression(optimizer, max_iter=model_cfg['n_iterations'], shuffle=model_cfg['shuffle'])
+    model = LogisticRegression(
+        optimizer, 
+        strategy, 
+        max_iter=model_cfg['n_iterations'], 
+        shuffle=model_cfg['shuffle'], 
+        verbose=verbose
+    )
 
     # Get data
     filepaths = {
@@ -89,46 +102,31 @@ def run(n_workers, verbose):
     # data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
     # data.transform()
 
-    # Decide on distribution strategy
-    dist_strategy = MasterWorkerStrategy(
-        model=model,
-        n_workers=n_workers,
-        config=executor_cfg
-    )
-
     # Setup logger
     if "LOGDIR" in os.environ:
-        logdir = os.path.join(os.environ["LOGDIR"], dist_strategy.encode())
+        logdir = os.path.join(os.environ["LOGDIR"], model.encode())
         if not os.path.exists(logdir):
             os.mkdir(logdir)
         os.environ["LOGDIR"] = logdir
-        
-    logger = setup_logger(level=verbose)
 
-    # Setup master
-    master = Master(
-        dist_strategy=dist_strategy,
-        verbose=verbose,
-    )
+    
 
     # time.sleep(2)
 
-    logger.info("Connecting master sockets")
-    master.connect()
-    # setattr(master, "train_iter", train_iter)
-    time.sleep(1)
+    
 
     logger.info("*******************************")
     logger.info("STARTING TRAINING")
     logger.info("*******************************")
 
-    master.train(mnist)
+    # master.train(mnist)
+    model.fit(mnist)
 
     logger.info("*******************************")
     logger.info("COMPLETED TRAINING")
     logger.info("*******************************")
 
-    master.plot_metrics()
+    model.plot_metrics()
 
     logger.info("DONE!")
 

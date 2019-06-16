@@ -1,20 +1,56 @@
 import numpy as np
+import logging
+import time
 
 # Local
 from ..base import BaseEstimator
 from .base import LinearClassifierMixin
 from ..metrics_temp import accuracy_scorev2
+from fault_tolerant_ml.distribute import Master, Worker
 
 class LogisticRegression(BaseEstimator, LinearClassifierMixin):
 
-    def __init__(self, optimizer, max_iter=300, shuffle=True):
-        self.optimizer = optimizer
+    def __init__(self, optimizer, strategy, max_iter=300, shuffle=True, verbose=10):
+        super().__init__(optimizer, strategy)
         self.max_iter = max_iter
         self.shuffle = shuffle
         self.iter = 0
+        self.verbose = verbose
 
-    def fit(self, X, y):
-        
+        self._logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
+
+        self._setup()
+
+    def _setup(self):
+
+        if self.strategy.name == "local":
+            pass # TODO: Local strategy
+        elif self.strategy.name == "master_worker":
+            if self.strategy.role == "master":
+                # Setup master
+                self._master = Master(
+                    model=self,
+                    verbose=self.verbose,
+                )
+
+                self._logger.info("Connecting master sockets")
+                self._master.connect()
+                # setattr(master, "train_iter", train_iter)
+                time.sleep(1)
+            else:
+                self._worker = Worker(
+                    model=self,
+                    verbose=self.verbose,
+                    id=self.strategy.identity
+                )
+
+                time.sleep(1)
+
+                self._worker.connect()
+
+    def _fit_local(self, X=None, y=None):
+        """Training for local strategy
+        """
         n_samples, n_features = X.shape
         self.classes_ = np.unique(y.argmax(axis=1))
         n_classes = len(self.classes_)
@@ -47,8 +83,32 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
 
             i += 1
 
+    def _fit_mw(self, X=None, y=None):
+        """Training logistic regression using the master worker strategy
+        """
+        if self.strategy.role == "master":
+            # Master training
+            self._master.train(X)
+        else:
+            # Worker training
+            self._worker.train()
+
+    def fit(self, X=None, y=None):
+        """Training for estimating parameters
+        """
+        if self.strategy.name == 'local':
+            self._fit_local(X, y)
+        elif self.strategy.name == "master_worker":
+            self._fit_mw(X, y)
+        
     def predict_proba(self, X):
         pass
 
     def predict_log_proba(self, X):
         pass
+
+    def plot_metrics(self):
+        """Plots metrics
+        """
+        if self.strategy.name == "master_worker":
+            self._master.plot_metrics()

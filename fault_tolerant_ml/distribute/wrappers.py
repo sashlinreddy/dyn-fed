@@ -49,13 +49,13 @@ class ftml_trainv2(ftml_wrapper):
             if not self.obj.watch_dog.states:
                 self.obj.logger.info("No workers found")
                 raise KeyboardInterrupt
-            self.obj.dist_strategy.model.iter = 0
+            self.obj.model.iter = 0
             # i = 0
             delta = 1.0
             start = time.time()
 
             # while i < self.n_iterations:
-            while self.obj.dist_strategy.model.iter < self.obj.n_iterations:
+            while self.obj.model.iter < self.obj.n_iterations:
 
                 events = dict(self.obj.poller.poll())
 
@@ -109,8 +109,8 @@ class ftml_train_collect(ftml_wrapper):
                 if self.obj.state != REMAP:
                     self.obj.state = DIST_PARAMS
                 
-                self.obj.dist_strategy.model.iter += 1
-                if delta < self.obj.dist_strategy.delta_switch and self.obj.dist_strategy.comm_period > 1 and not self.obj.delay_change:
+                self.obj.model.iter += 1
+                if delta < self.obj.strategy.delta_switch and self.obj.strategy.comm_period > 1 and not self.obj.delay_change:
                     self.obj.delay_change = True
-                    self.obj.n_iterations = self.obj.dist_strategy.model.iter + (self.obj.n_iterations - self.obj.dist_strategy.model.iter) * self.obj.dist_strategy.comm_period
+                    self.obj.n_iterations = self.obj.model.iter + (self.obj.n_iterations - self.obj.model.iter) * self.obj.strategy.comm_period
                     self.obj.logger.debug(f"Iterations now = {self.obj.n_iterations}")

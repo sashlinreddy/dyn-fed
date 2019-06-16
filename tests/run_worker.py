@@ -2,7 +2,6 @@ import click
 import os
 import time
 
-from fault_tolerant_ml.distribute import Worker
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.lib.io import file_io
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
@@ -39,7 +38,7 @@ def run(n_workers, verbose, id, tmux, add):
     model_cfg = cfg['model']
     opt_cfg = cfg['optimizer']
     executor_cfg = cfg['executor']
-
+    executor_cfg['identity'] = identity
     
     # Setup optimizer
     gradient = loss_fns.cross_entropy_gradient
@@ -53,28 +52,24 @@ def run(n_workers, verbose, id, tmux, add):
         mu_g=opt_cfg['mu_g']
     )
 
-    # Create model
-    model = LogisticRegression(optimizer, max_iter=model_cfg['n_iterations'], shuffle=model_cfg['shuffle'])
-
-    # Setup distribution strategy
+       # Setup distribution strategy
     strategy = MasterWorkerStrategy(
-        model=model,
         n_workers=n_workers,
-        config=executor_cfg
+        config=executor_cfg,
+        role='worker'
     )
 
-    worker = Worker(
-        strategy=strategy,
-        n_workers=n_workers,
-        verbose=verbose,
-        id=identity
-    )
+    # Create model
+    model = LogisticRegression(
+        optimizer, 
+        strategy, 
+        max_iter=model_cfg['n_iterations'], 
+        shuffle=model_cfg['shuffle'], 
+        verbose=verbose)
 
-    time.sleep(1)
-
-    worker.connect()
+    
     # time.sleep(1)
-    worker.start()
+    model.fit()
 
 if __name__ == "__main__":
     run() # pylint: disable=no-value-for-parameter
