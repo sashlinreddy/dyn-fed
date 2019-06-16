@@ -46,13 +46,19 @@ def run(n_workers, verbose):
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
     # Load model config
-    cfg = file_io.load_model_config('config.yml')
+    config_path = 'config.yml'
+    if 'PROJECT_DIR' in os.environ:
+        config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
+        
+    cfg = file_io.load_model_config(config_path)
     
     model_cfg = cfg['model']
     opt_cfg = cfg['optimizer']
     executor_cfg = cfg['executor']
 
     data_dir = executor_cfg['shared_folder']
+    if 'PROJECT_DIR' in os.environ:
+        data_dir = os.path.join(os.environ['PROJECT_DIR'], data_dir)
 
     # Create optimizer
     loss = cross_entropy_loss
