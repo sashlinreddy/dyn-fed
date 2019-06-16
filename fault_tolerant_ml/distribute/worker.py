@@ -58,18 +58,7 @@ class Worker(object):
 
         self.master_ip_address = ip_config["ipAddress"]
 
-        # self.encoded_name = \
-        # f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
         self.encoded_name = self.model.encode_name
-
-        # if "LOGDIR" in os.environ:
-        #     logdir = os.path.join(os.environ["LOGDIR"], self.encoded_name)
-        #     if not os.path.exists(logdir):
-        #         try:
-        #             os.mkdir(logdir)
-        #         except FileExistsError:
-        #             pass
-        #     os.environ["LOGDIR"] = logdir
 
         self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self._tf_logger = None
@@ -161,16 +150,6 @@ class Worker(object):
         if "TFDIR" in os.environ:
             logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
-
-        # self.optimizer = SGDOptimizer(
-        #     loss=loss_fns.single_cross_entropy_loss, 
-        #     grad=self.gradient, 
-        #     role="worker", 
-        #     learning_rate=self.learning_rate, 
-        #     n_most_rep=self.n_most_rep, 
-        #     clip_norm=None,
-        #     mu_g=self.mu_g
-        # )
 
         if self.remap == 1 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :self.n_features]]), np.vstack([self.y, data[:, -self.n_classes:]])
@@ -282,7 +261,7 @@ class Worker(object):
                                 self.do_work( 
                                     theta_g=theta_g
                                 )
-                                self._logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
+                                self._logger.info(f"iteration = {i}, Loss = {batch_loss:7.4f}")
 
                                 # Let global theta influence local theta
                                 # for k in np.arange(self.n_classes):
@@ -323,7 +302,7 @@ class Worker(object):
 
                     self._logger.info("Connecting to server")
                     self.push_socket.send_multipart([b"CONNECT", self.worker_id.encode()])
-                    self._logger.debug("Connected")
+                    self._logger.info("Connected")
                     self.connected = True
 
                     command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
