@@ -7,6 +7,7 @@ from fault_tolerant_ml.lib.io import file_io
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
 from fault_tolerant_ml.ml.optimizer import SGDOptimizer
 from fault_tolerant_ml.ml import loss_fns
+from fault_tolerant_ml.utils import model_utils
 
 @click.command()
 @click.argument('n_workers', type=int)
@@ -43,6 +44,11 @@ def run(n_workers, verbose, id, tmux, add):
     opt_cfg = cfg['optimizer']
     executor_cfg = cfg['executor']
     executor_cfg['identity'] = identity
+
+    if 'PROJECT_DIR' in os.environ:
+        executor_cfg['shared_folder'] = os.path.join(os.environ['PROJECT_DIR'], executor_cfg['shared_folder'])
+
+    encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
     
     # Setup optimizer
     gradient = loss_fns.cross_entropy_gradient
@@ -69,8 +75,8 @@ def run(n_workers, verbose, id, tmux, add):
         strategy, 
         max_iter=model_cfg['n_iterations'], 
         shuffle=model_cfg['shuffle'], 
-        verbose=verbose)
-
+        verbose=verbose,
+        encode_name=encoded_run_name)
     
     # time.sleep(1)
     model.fit()

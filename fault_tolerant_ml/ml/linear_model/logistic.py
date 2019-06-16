@@ -10,8 +10,8 @@ from fault_tolerant_ml.distribute import Master, Worker
 
 class LogisticRegression(BaseEstimator, LinearClassifierMixin):
 
-    def __init__(self, optimizer, strategy, max_iter=300, shuffle=True, verbose=10):
-        super().__init__(optimizer, strategy)
+    def __init__(self, optimizer, strategy, max_iter=300, shuffle=True, verbose=10, encode_name=None):
+        super().__init__(optimizer, strategy, encode_name=encode_name)
         self.max_iter = max_iter
         self.shuffle = shuffle
         self.iter = 0

@@ -9,7 +9,7 @@ from fault_tolerant_ml.ml.optimizer import SGDOptimizer
 from fault_tolerant_ml.ml.loss_fns import cross_entropy_loss, cross_entropy_gradient
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
-from fault_tolerant_ml.utils import setup_logger
+from fault_tolerant_ml.utils import setup_logger, model_utils
 from fault_tolerant_ml.lib.io import file_io
 
 @click.command()
@@ -59,6 +59,30 @@ def run(n_workers, verbose):
     data_dir = executor_cfg['shared_folder']
     if 'PROJECT_DIR' in os.environ:
         data_dir = os.path.join(os.environ['PROJECT_DIR'], data_dir)
+        executor_cfg['shared_folder'] = data_dir
+
+    # encode_vars = [
+    #     "n_workers", "scenario", "remap", "quantize" , "n_most_rep",
+    #     "comm_period", "mu_g", "send_gradients"
+    # ]
+
+    # global_cfg = {"n_workers": n_workers}
+    # global_cfg.update(executor_cfg)
+    # global_cfg.update(opt_cfg)
+    # encode_name = string_utils.dict_to_str(global_cfg, choose=encode_vars)
+
+    # if "LOGDIR" in os.environ:
+    #     logdir = os.path.join(os.environ["LOGDIR"], encode_name)
+    #     if not os.path.exists(logdir):
+    #         try:
+    #             os.mkdir(logdir)
+    #         except FileExistsError:
+    #             pass
+    #     os.environ["LOGDIR"] = logdir
+
+    encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
+
+    logger = setup_logger(level=verbose)
 
     # Create optimizer
     loss = cross_entropy_loss
@@ -80,8 +104,6 @@ def run(n_workers, verbose):
         config=executor_cfg
     )
 
-    logger = setup_logger(level=verbose)
-
     # Create model
     model = LogisticRegression(
         optimizer, 
@@ -90,6 +112,8 @@ def run(n_workers, verbose):
         shuffle=model_cfg['shuffle'], 
         verbose=verbose
     )
+
+    model.encode_name = encoded_run_name
 
     # Get data
     filepaths = {
@@ -106,20 +130,9 @@ def run(n_workers, verbose):
     np.random.seed(42)
 
     # data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
-    # data.transform()
-
-    # Setup logger
-    if "LOGDIR" in os.environ:
-        logdir = os.path.join(os.environ["LOGDIR"], model.encode())
-        if not os.path.exists(logdir):
-            os.mkdir(logdir)
-        os.environ["LOGDIR"] = logdir
-
-    
+    # data.transform()    
 
     # time.sleep(2)
-
-    
 
     logger.info("*******************************")
     logger.info("STARTING TRAINING")

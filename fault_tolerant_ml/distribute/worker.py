@@ -60,13 +60,17 @@ class Worker(object):
 
         # self.encoded_name = \
         # f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
-        self.encoded_name = self.model.encode()
+        self.encoded_name = self.model.encode_name
 
-        if "LOGDIR" in os.environ:
-            logdir = os.path.join(os.environ["LOGDIR"], self.encoded_name)
-            if not os.path.exists(logdir):
-                os.mkdir(logdir)
-            os.environ["LOGDIR"] = logdir
+        # if "LOGDIR" in os.environ:
+        #     logdir = os.path.join(os.environ["LOGDIR"], self.encoded_name)
+        #     if not os.path.exists(logdir):
+        #         try:
+        #             os.mkdir(logdir)
+        #         except FileExistsError:
+        #             pass
+        #     os.environ["LOGDIR"] = logdir
+
         self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self._tf_logger = None
         self.distributor = Distributor()

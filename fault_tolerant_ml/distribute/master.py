@@ -68,7 +68,7 @@ class Master(object):
         self.times = []
         self._tf_logger = None
         if "TFDIR" in os.environ:
-            logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.model.encode()}/master")
+            logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.model.encode_name}/master")
             self._tf_logger = TFLogger(logdir)
 
         # Setup logger

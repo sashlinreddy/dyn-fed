@@ -3,42 +3,12 @@
 #SBATCH -o /home-mscluster/sreddy/logs/slurm/slurm_%j.log
 #SBATCH -t 10:00
 #SBATCH -p batch
-#SBATCH --export=LOGDIR=/home-mscluster/sreddy/logs/slurm,TFDIR=/home-mscluster/sreddy/logs/,FIGDIR=/home-mscluster/sreddy/fault-tolerant-ml/reports/figures
+#SBATCH --export=LOGDIR=/home-mscluster/sreddy/logs/slurm,TFDIR=/home-mscluster/sreddy/logs/,FIGDIR=/home-mscluster/sreddy/fault-tolerant-ml/reports/figures,PROJECT_DIR=/home-mscluster/sreddy/fault-tolerant-ml
 
 while [ "$1" != "" ]; do
     case $1 in
-        -i | --n_iterations )   shift
-                                n_iterations="-i $1"
-                                ;;
-        -lr | --learning_rate)  shift
-                                learning_rate="-lr $1"
-                                ;;
         -v| --verbose )         shift
                                 verbose="-v $1"
-                                ;;
-        -s | --scenario)        shift
-                                scenario="-s $1"
-                                ;;
-        -r | --remap )          shift
-                                remap="-r $1"
-                                ;;
-        -q | --quantize)        shift
-                                quantize="-q $1"
-                                ;;
-        -nmp | --n_most_rep )   shift
-                                n_most_rep="-nmp $1"
-                                ;;
-        -cp | --comm_period)    shift
-                                comm_period="-cp $1"
-                                ;;
-        -m | --mu_g)            shift
-                                mu_g="-m $1"
-                                ;;
-        -t | --timeout )        shift
-                                timeout="-t $1"
-                                ;;
-        -sg | --send_gradients )shift
-                                send_gradients="-t $1"
                                 ;;
         -h | --help )           usage
                                 exit
@@ -54,9 +24,7 @@ export MASTER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/tests/run_master.py
 export WORKER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/tests/run_worker.py
 export DATA_DIR=/home-mscluster/sreddy/fault-tolerant-ml/data
 
-echo -e '0\t' $PYTHON_EXE $MASTER_EXE $DATA_DIR $SLURM_NTASKS $n_iterations $learning_rate \
-$verbose $scenario $remap $quantize $n_most_rep $comm_period $mu_g $timeout $send_gradients\
-> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
-echo -e '*\t' $PYTHON_EXE $WORKER_EXE $DATA_DIR -i %t >> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
+echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS $verbose > /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
+echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS $verbose -i %t >> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
 
 srun --multi-prog /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
