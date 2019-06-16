@@ -555,7 +555,8 @@ class Master(object):
 
                 fig = class_balance.fig
 
-                self._tf_logger.images("class-bal-master", [fig], self.dist_strategy.model.iter)
+                if self._tf_logger is not None:
+                    self._tf_logger.images("class-bal-master", [fig], self.dist_strategy.model.iter)
             except Exception as e:
                 self.logger.exception(e)
 

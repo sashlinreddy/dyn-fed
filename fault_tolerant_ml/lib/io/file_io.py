@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import os
 import datetime
+import yaml
 
 def flush_dir(dir, ignore_dir=[], mins=1, hours=0):
     """Flushes directory for files that were modified hours, mins ago
@@ -28,3 +29,10 @@ def flush_dir(dir, ignore_dir=[], mins=1, hours=0):
                 ignore_files_length = len([dir for dir in ignore_dir if dir in dirpath])
                 if (ignore_files_length < 1) or len(ignore_dir) > 0:
                     os.remove(curpath)
+
+def load_model_config(path):
+    with open(path, 'r') as ymlfile:
+        cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
+
+    return cfg
+

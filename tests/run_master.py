@@ -13,56 +13,12 @@ from fault_tolerant_ml.ml.loss_fns import cross_entropy_loss, cross_entropy_grad
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
 from fault_tolerant_ml.utils import setup_logger
-
-# @ftml_trainv2
-# def train_iter(master, *args, **kwargs):
-#     # Map tasks
-#     master.map()
-
-#     # Gather and apply gradients
-#     master.train_iteration(events)
-#     train_gather(master)
-
-# @ftml_train_collect
-# def train_gather(master, *args, **kwargs):
-#     theta_p = master.theta.copy()
-#     # Receive updated parameters from workers
-#     d_theta, epoch_loss = master.gather(events)
-
-#     # Update the global parameters with weighted error
-#     master.theta = master.optimizer.minimize(X=None, y=None, y_pred=None, theta=master.theta, precomputed_gradients=d_theta)
-
-#     if master.tf_logger is not None:
-#         master.tf_logger.histogram("theta-master", master.theta, master.dist_strategy.model.iter, bins=master.n_iterations)
-#         master.tf_logger.scalar("epoch-master", epoch_loss, master.dist_strategy.model.iter)
-
-#     delta = np.max(np.abs(theta_p - master.theta))
-
-#     # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-
-#     return d_theta, epoch_loss, delta
+from fault_tolerant_ml.lib.io import file_io
 
 @click.command()
 @click.argument('data_dir', type=click.Path(exists=True))
-@click.argument('n_workers', type=int)
-@click.option('--n_iterations', '-i', default=400, type=int)
-@click.option('--learning_rate', '-lr', default=0.99, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
-@click.option('--strategy', '-st', default="mw", type=str)
-@click.option('--scenario', '-s', default=3, type=int)
-@click.option('--remap', '-r', default=1, type=int)
-@click.option('--quantize', '-q', default=0, type=int)
-@click.option('--n_most_rep', '-nmr', default=100, type=int)
-@click.option('--comm_period', '-cp', default=1, type=int)
-@click.option('--clip_norm', '-cn', default=None, type=int)
-@click.option('--clip_val', '-ct', default=None, type=int)
-@click.option('--mu_g', '-m', default=1.0, type=float)
-@click.option('--delta_switch', '-ds', default=1e-4, type=float)
-@click.option('--shuffle', '-sh', default=1, type=int)
-@click.option('--timeout', '-t', default=15, type=int)
-@click.option('--send_gradients', '-sg', default=1, type=int)
-def run(data_dir, n_workers, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, 
-n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeout, send_gradients):
+def run(data_dir, verbose):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -92,19 +48,22 @@ n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeo
         # ignore_dir = []
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
+    # Load model config
+    cfg = file_io.load_model_config('config.yml')['model']
+
     loss = cross_entropy_loss
     grad = cross_entropy_gradient
     optimizer = SGDOptimizer(
         loss=loss, 
         grad=grad, 
-        learning_rate=learning_rate, 
+        learning_rate=cfg['learning_rate'], 
         role="master", 
-        n_most_rep=n_most_rep, 
-        clip_norm=clip_norm, 
-        clip_val=clip_val,
-        mu_g=mu_g
+        n_most_rep=cfg['n_most_rep'], 
+        clip_norm=cfg['clip_norm'], 
+        clip_val=cfg['clip_val'],
+        mu_g=cfg['mu_g']
     )
-    model = LogisticRegression(optimizer, max_iter=n_iterations, shuffle=shuffle)
+    model = LogisticRegression(optimizer, max_iter=cfg['n_iterations'], shuffle=cfg['shuffle'])
     filepaths = {
         "train": {
             "images": os.path.join(data_dir, "train-images-idx3-ubyte.gz"), "labels": os.path.join(data_dir, "train-labels-idx1-ubyte.gz")
@@ -114,7 +73,6 @@ n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeo
         }
     }
     mnist = MNist(filepaths)
-    logger = setup_logger(level=verbose)
 
     # For reproducibility
     np.random.seed(42)
@@ -123,19 +81,27 @@ n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeo
     # data.transform()
 
     dist_strategy = MasterStrategy(
-        n_workers=n_workers,
-        strategy=strategy,
-        scenario=scenario,
+        n_workers=cfg['n_workers'],
+        strategy=cfg['strategy'],
+        scenario=cfg['scenario'],
         model=model,
-        remap=remap,
-        quantize=quantize,
-        n_most_rep=n_most_rep, 
-        comm_period=comm_period,
-        delta_switch=delta_switch,
-        worker_timeout=timeout,
-        mu_g=mu_g,
-        send_gradients=send_gradients
+        remap=cfg['remap'],
+        quantize=cfg['quantize'],
+        n_most_rep=cfg['n_most_rep'], 
+        comm_period=cfg['comm_period'],
+        delta_switch=cfg['delta_switch'],
+        worker_timeout=cfg['timeout'],
+        mu_g=cfg['mu_g'],
+        send_gradients=cfg['send_gradients']
     )
+
+    if "LOGDIR" in os.environ:
+        logdir = os.path.join(os.environ["LOGDIR"], dist_strategy.encode())
+        if not os.path.exists(logdir):
+            os.mkdir(logdir)
+        os.environ["LOGDIR"] = logdir
+        
+    logger = setup_logger(level=verbose)
 
     master = Master(
         dist_strategy=dist_strategy,
@@ -168,26 +134,6 @@ n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeo
     logger.info("COMPLETED TRAINING")
     logger.info("*******************************")
 
-    # Plot class balances
-    # if "FIGDIR" in os.environ:
-
-    #     import pandas as pd
-    #     from fault_tolerant_ml.viz.target import ClassBalance
-
-    #     figdir = os.environ["FIGDIR"]
-
-    #     try:
-    #         logger.debug("Saving class balances distribution plot...")
-    #         worker_ids = [s.identity.decode() for s in master.watch_dog.states if s.state]
-    #         fname = os.path.join(figdir, f"mnist-class-balance.png")
-    #         class_bal = [v[1] for (k, v) in master.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
-    #         class_names = master.data.class_names
-
-    #         class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
-    #         class_balance.fit(y=class_bal)
-    #         class_balance.poof()
-    #     except Exception as e:
-    #         logger.exception(e)
     master.plot_metrics()
 
     logger.info("DONE!")

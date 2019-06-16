@@ -4,6 +4,10 @@ import json
 import time
 
 from fault_tolerant_ml.distribute import Worker
+from fault_tolerant_ml.lib.io import file_io
+from fault_tolerant_ml.ml.linear_model import LogisticRegression
+from fault_tolerant_ml.ml.optimizer import SGDOptimizer
+from fault_tolerant_ml.ml import loss_fns
 
 @click.command()
 @click.argument('config_dir', type=click.Path(exists=True))
@@ -28,7 +32,26 @@ def run(config_dir, verbose, id, tmux, add):
         if add:
             identity += 1000
 
+    cfg = file_io.load_model_config('config.yml')['model']
+
+    # self.hypothesis = hypotheses.log_hypothesis
+    gradient = loss_fns.cross_entropy_gradient
+
+    optimizer = SGDOptimizer(
+        loss=loss_fns.single_cross_entropy_loss, 
+        grad=gradient, 
+        role="worker", 
+        learning_rate=cfg['learning_rate'], 
+        n_most_rep=cfg['n_most_rep'], 
+        clip_norm=None,
+        mu_g=cfg['mu_g']
+    )
+
+    model = LogisticRegression(optimizer, max_iter=cfg['n_iterations'], shuffle=cfg['shuffle'])
+
     worker = Worker(
+        model=model,
+        cfg=cfg,
         verbose=verbose,
         id=identity
     )

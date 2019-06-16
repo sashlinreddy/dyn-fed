@@ -29,16 +29,36 @@ class Worker(object):
         subscriber (zmq.Socket): zmq.SUB socket which subscribes to all master published messages
         connected (bool): Whether or not the worker is connected successfully to the master
     """
-    def __init__(self, verbose, id=None):
+    def __init__(self, model, cfg, verbose, id=None):
 
         self.worker_id = str(uuid.uuid4()) if id is None else f"worker-{id}"
         self.subscriber = None
         self.connected = False
 
         # Model variables
-        self.hypothesis = hypotheses.log_hypothesis
-        self.gradient = loss_fns.cross_entropy_gradient
+        # self.hypothesis = hypotheses.log_hypothesis
+        # self.gradient = loss_fns.cross_entropy_gradient
 
+        self.model = model
+
+        self.n_workers = cfg['n_workers']
+        self.scenario = cfg['scenario']
+        self.remap = cfg['remap']
+        self.quantize = cfg['quantize']
+        self.n_most_rep = cfg['n_most_rep']
+        self.learning_rate = cfg['learning_rate']
+        self.comm_period = cfg['comm_period']
+        self.mu_g = cfg['mu_g']
+        self.send_gradients = cfg['send_gradients']
+
+        self.encoded_name = \
+        f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
+
+        if "LOGDIR" in os.environ:
+            logdir = os.path.join(os.environ["LOGDIR"], self.encoded_name)
+            if not os.path.exists(logdir):
+                os.mkdir(logdir)
+            os.environ["LOGDIR"] = logdir
         self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self._tf_logger = None
         self.distributor = Distributor()
@@ -72,7 +92,7 @@ class Worker(object):
 
         return poller
 
-    def do_work(self, X, y, theta, theta_g=None):
+    def do_work(self, theta_g=None):
         """Worker doing the heavy lifting of calculating gradients and calculating loss
 
         Args:
@@ -88,18 +108,19 @@ class Worker(object):
         """
 
         # Get predictions
-        y_pred = self.hypothesis(X, theta)
+        # y_pred = self.hypothesis(X, theta)
+        y_pred = self.model.predict(self.X)
 
-        theta, d_theta, batch_loss = self.optimizer.minimize(
-            X, 
-            y, 
+        self.model.theta, d_theta, batch_loss = self.model.optimizer.minimize(
+            self.X, 
+            self.y, 
             y_pred, 
-            theta, 
+            self.model.theta, 
             N=self.n_samples, 
             theta_g=theta_g)
-        most_representative = self.optimizer.most_rep
+        most_representative = self.model.optimizer.most_rep
         
-        return theta, d_theta, batch_loss, most_representative
+        return d_theta, batch_loss, most_representative
 
     def receive_data(self, start=True):
         """Receives data from worker
@@ -120,40 +141,24 @@ class Worker(object):
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_workers, n_samples, n_features, n_classes, scenario, remap, \
-        quantize, n_most_rep, learning_rate, comm_period, mu_g, send_gradients = self.ctrl_socket.recv_multipart()
-        self.n_workers = int(n_workers.decode())
+        _, n_samples, n_features, n_classes = self.ctrl_socket.recv_multipart()
         self.n_samples = int(n_samples.decode())
         self.n_features = int(n_features.decode())
         self.n_classes = int(n_classes.decode())
-        self.scenario = int(scenario.decode())
-        self.remap = int(remap.decode())
-        self.quantize = int(quantize.decode())
-        self.n_most_rep = int(n_most_rep.decode())
-        self.learning_rate = float(learning_rate.decode())
-        self.comm_period = int(comm_period.decode())
-        self.mu_g = float(mu_g.decode())
-        self.send_gradients = int(send_gradients.decode())
-        # self.clip_norm = float(clip_norm.decode())
-        # self.clip_val = float(clip_val.decode())
-
-        self._logger.debug(f"mu={self.mu_g}")
 
         if "TFDIR" in os.environ:
-            encoded_name = \
-            f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
-            logdir = os.path.join(os.environ["TFDIR"], f"tf/{encoded_name}/{self.worker_id}")
+            logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
 
-        self.optimizer = SGDOptimizer(
-            loss=loss_fns.single_cross_entropy_loss, 
-            grad=self.gradient, 
-            role="worker", 
-            learning_rate=self.learning_rate, 
-            n_most_rep=self.n_most_rep, 
-            clip_norm=None,
-            mu_g=self.mu_g
-        )
+        # self.optimizer = SGDOptimizer(
+        #     loss=loss_fns.single_cross_entropy_loss, 
+        #     grad=self.gradient, 
+        #     role="worker", 
+        #     learning_rate=self.learning_rate, 
+        #     n_most_rep=self.n_most_rep, 
+        #     clip_norm=None,
+        #     mu_g=self.mu_g
+        # )
 
         if self.remap == 1 and not start:
             self.X, self.y = np.vstack([self.X, data[:, :self.n_features]]), np.vstack([self.y, data[:, -self.n_classes:]])
@@ -256,15 +261,13 @@ class Worker(object):
                                 theta = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
 
                             theta_g = theta.copy()
+                            self.model.theta = theta
                             
                             count = 1
                             while True:
                             # Each worker does work and we get the resulting gradients
-                                theta, d_theta, batch_loss, most_representative = \
-                                self.do_work(
-                                    self.X, 
-                                    self.y, 
-                                    theta, 
+                                d_theta, batch_loss, most_representative = \
+                                self.do_work( 
                                     theta_g=theta_g
                                 )
                                 self._logger.debug(f"iteration = {i}, Loss = {batch_loss:7.4f}")
@@ -293,9 +296,9 @@ class Worker(object):
                             # the master already owns
                             if self.quantize:
                                 d_theta = linspace_quantization(d_theta, interval=100)
-                                theta = linspace_quantization(theta, interval=100)
+                                self.model.theta = linspace_quantization(self.model.theta, interval=100)
 
-                            msg = theta.tostring()
+                            msg = self.model.theta.tostring()
                             if self.send_gradients:
                                 msg = d_theta.tostring()
                                 
