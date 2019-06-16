@@ -11,28 +11,46 @@ class DistributionStrategy(object):
         comm_period (int): Communicate every comm_period iteration(s)
         delta_switch (float): The delta threshold we reach before switching back to communication every iteration
     """
-    def __init__(self, model, n_workers, config):
-        self.model = model
-        self.n_workers = n_workers
+    def __init__(self, config):
         assert config
         self.strategy = config['strategy']
         self.scenario = config['scenario']
 
+    @property
+    def name(self):
+        raise NotImplementedError("Child should override this")
+
+class LocalStrategy(DistributionStrategy):
+    
+    def __init__(self, config):
+        pass
+
+    @property
+    def name(self):
+        return "local"
+    
+
 class MasterWorkerStrategy(DistributionStrategy):
 
-    def __init__(self, model, n_workers, config):
+    def __init__(self, n_workers, config, role='master'):
 
-        super().__init__(model, n_workers, config)
+        super().__init__(config)
+        self.n_workers = n_workers
         self.remap = config['remap']
         self.quantize = config['quantize']
-        self.n_most_rep = self.model.optimizer.n_most_rep
         self.comm_period = config['comm_period']
         self.delta_switch = config['delta_switch']
         self.worker_timeout = config['timeout']
-        self.mu_g = self.model.optimizer.mu_g
         self.send_gradients = config['send_gradients']
         self.shared_folder = config['shared_folder']
+        self.role = role
+        if self.role =='worker':
+            self.identity = config['identity']
 
-    def encode(self):
-        return f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}"
-        f"-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
+    @property
+    def name(self):
+        return "master_worker"
+
+    # def encode(self):
+    #     return f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}"
+    #     f"-{self.comm_period}-{self.mu_g}-{self.send_gradients}"

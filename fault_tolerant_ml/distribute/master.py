@@ -35,7 +35,7 @@ from fault_tolerant_ml.distribute.states import *
 class Master(object):
     """Master class for distributed machine learning system
     """
-    def __init__(self, dist_strategy, verbose):
+    def __init__(self, model, verbose):
         
         # ZMQ variables
         self.ctrl_socket = None
@@ -49,7 +49,8 @@ class Master(object):
 
         # Distributed environ variables
         self.state = START
-        self.dist_strategy = dist_strategy
+        self.model = model
+        self.strategy = self.model.strategy
         self.delay_change = False
 
         # Get ipaddress for workers to connect to
@@ -57,24 +58,24 @@ class Master(object):
         self.ip_address = socket.gethostbyname(self.hostname)
 
         # Model variables
-        self.n_iterations = int(np.ceil(self.dist_strategy.model.max_iter / self.dist_strategy.comm_period))
-        self.learning_rate = self.dist_strategy.model.optimizer.learning_rate
-        self.mu_g = self.dist_strategy.model.optimizer.mu_g
+        self.n_iterations = int(np.ceil(self.model.max_iter / self.strategy.comm_period))
+        self.learning_rate = self.model.optimizer.learning_rate
+        self.mu_g = self.model.optimizer.mu_g
         self.hypothesis = hypotheses.log_hypothesis
-        self.optimizer = self.dist_strategy.model.optimizer
+        self.optimizer = self.model.optimizer
 
         # Tracking variables
         self.times = []
         self._tf_logger = None
         if "TFDIR" in os.environ:
-            logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.dist_strategy.encode()}/master")
+            logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.model.encode_name}/master")
             self._tf_logger = TFLogger(logdir)
 
         # Setup logger
         # self.logger = setup_logger(level=verbose)
         self.logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
 
-        data_dir = self.dist_strategy.shared_folder
+        data_dir = self.strategy.shared_folder
         self.logger.info(f"Master on ip={self.ip_address}")
 
         ip_config = {"ipAddress" : self.ip_address}
@@ -125,7 +126,7 @@ class Master(object):
     def detect_workers(self):
         """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
         """
-        timeout = self.dist_strategy.worker_timeout # 10 second time out
+        timeout = self.strategy.worker_timeout # 10 second time out
         start = time.time()
 
         while True:
@@ -154,23 +155,23 @@ class Master(object):
         """
         params = {}
         params["state"] = self.state
-        params["scenario"] = self.dist_strategy.scenario
-        params["remap"] = self.dist_strategy.remap
-        params["quantize"] = self.dist_strategy.quantize
+        params["scenario"] = self.strategy.scenario
+        params["remap"] = self.strategy.remap
+        params["quantize"] = self.strategy.quantize
 
         if self.state == DIST_PARAMS:
             params["delay_change"] = self.delay_change
         else:
             params["n_alive"] = self.watch_dog.n_alive
-            params["n_workers"] = self.dist_strategy.n_workers
+            params["n_workers"] = self.strategy.n_workers
             params["n_samples"] = self.data.n_samples
             params["n_features"] = self.data.n_features
             params["n_classes"] = self.data.n_classes
-            params["n_most_rep"] = self.dist_strategy.n_most_rep
+            params["n_most_rep"] = self.optimizer.n_most_rep
             params["learning_rate"] = self.learning_rate
             params["mu_g"] = self.mu_g
-            params["send_gradients"] = self.dist_strategy.send_gradients
-            params["comm_period"] = self.dist_strategy.comm_period
+            params["send_gradients"] = self.strategy.send_gradients
+            params["comm_period"] = self.strategy.comm_period
             params["mapping"] = self.mapping
         return params
 
@@ -217,7 +218,7 @@ class Master(object):
         if self.state == REMAP:
 
             self.logger.debug(f"Redistributing data")
-            if self.dist_strategy.remap == 1:
+            if self.strategy.remap == 1:
                 
                 # Remap only data for workers that went down in previous iteration
                 # Get indices for dead workers
@@ -297,7 +298,7 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.dist_strategy.model.theta if self.dist_strategy.quantize != 1 else linspace_quantization(self.dist_strategy.model.theta, interval=100)
+            data = self.model.theta if self.strategy.quantize != 1 else linspace_quantization(self.model.theta, interval=100)
             workers = None
             params = self.set_params()
 
@@ -320,7 +321,7 @@ class Master(object):
             d_theta (numpy.ndarray): Our gradient matrix that is aggregated with a weighting according to the number    of samples each worker has
             epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
         """
-        d_theta = np.zeros_like(self.dist_strategy.model.theta)
+        d_theta = np.zeros_like(self.model.theta)
         epoch_loss = 0.0
 
         self.logger.debug(f"Receiving gradients")
@@ -359,7 +360,7 @@ class Master(object):
                             for w in diff:
                                 # Set dead workers state to false
                                 self.watch_dog.states[w].state = False
-                                if self.dist_strategy.remap != 1:                            
+                                if self.strategy.remap != 1:                            
                                     self.watch_dog.states[w].idxs = self.watch_dog.states[w].most_representative
                             
                             self.state = REMAP
@@ -388,14 +389,14 @@ class Master(object):
                 # beta = samples_for_worker
 
                 # Decode gradient matrix
-                self.logger.debug(f"theta.dtype={self.dist_strategy.model.theta.dtype}")
-                d_theta_temp = np.frombuffer(d_theta_temp, dtype=self.dist_strategy.model.theta.dtype)
-                d_theta_temp = d_theta_temp.reshape(self.dist_strategy.model.theta.shape)
+                self.logger.debug(f"theta.dtype={self.model.theta.dtype}")
+                d_theta_temp = np.frombuffer(d_theta_temp, dtype=self.model.theta.dtype)
+                d_theta_temp = d_theta_temp.reshape(self.model.theta.shape)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
-                if self.dist_strategy.remap == 1:
+                if self.strategy.remap == 1:
                     self.watch_dog.states[worker].most_representative = self.watch_dog.states[worker].lower_bound + mr
                     # self.logger.debug(f"Min mr={np.min(self.watch_dog.states[worker].most_representative)}, Max mr={np.max(self.watch_dog.states[worker].most_representative)}")
                 else:
@@ -438,16 +439,17 @@ class Master(object):
 
     @ftml_train_collect
     def _train_iteration(self, events):
-        theta_p = self.dist_strategy.model.theta.copy()
+        theta_p = self.model.theta.copy()
         # Receive updated parameters from workers
         # d_theta, epoch_loss = self.gather(events, timeout=10)
         params = {
             "watch_dog": self.watch_dog,
-            "dist_strategy": self.dist_strategy,
+            "strategy": self.strategy,
             "state": self.state,
             "n_samples": self.data.n_samples,
             "timeout": 10,
-            "quantize": self.dist_strategy.quantize
+            "quantize": self.strategy.quantize,
+            "theta": self.model.theta
         }
         d_theta, epoch_loss = self.distributor.collect(
             events=events, 
@@ -455,36 +457,36 @@ class Master(object):
             params=params
         )
 
-        if not self.dist_strategy.send_gradients:
-            self.dist_strategy.model.theta = d_theta
+        if not self.strategy.send_gradients:
+            self.model.theta = d_theta
         else:
             # Update the global parameters with weighted error
-            self.dist_strategy.model.theta = \
+            self.model.theta = \
             self.optimizer.minimize(
                 X=self.X_train, 
                 y=None, 
                 y_pred=None, 
-                theta=self.dist_strategy.model.theta, 
+                theta=self.model.theta, 
                 precomputed_gradients=d_theta
             )
 
-        y_pred = self.dist_strategy.model.predict(self.data.X_test)
-        y_train_pred = self.dist_strategy.model.predict(self.data.X_train)
+        y_pred = self.model.predict(self.data.X_test)
+        y_train_pred = self.model.predict(self.data.X_train)
         train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
         test_acc = accuracy_scorev2(self.data.y_test, y_pred)
 
         if self._tf_logger is not None:
-            self._tf_logger.histogram("theta-master", self.dist_strategy.model.theta, self.dist_strategy.model.iter, bins=self.n_iterations)
-            self._tf_logger.scalar("loss-master", epoch_loss, self.dist_strategy.model.iter)
-            self._tf_logger.scalar("train-accuracy-master", train_acc, self.dist_strategy.model.iter)
-            self._tf_logger.scalar("test-accuracy-master", test_acc, self.dist_strategy.model.iter)
+            self._tf_logger.histogram("theta-master", self.model.theta, self.model.iter, bins=self.n_iterations)
+            self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
+            self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
+            self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
             grad_l2_norm = np.linalg.norm(d_theta)
-            self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.dist_strategy.model.iter)
+            self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.model.iter)
 
-        delta = np.max(np.abs(theta_p - self.dist_strategy.model.theta))
+        delta = np.max(np.abs(theta_p - self.model.theta))
 
-        # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-        self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
+        # self.logger.info(f"iteration = {self.strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+        self.logger.info(f"iteration = {self.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
 
         return delta
         
@@ -499,11 +501,11 @@ class Master(object):
 
     @ftml_train
     def _training_loop(self):
-        self.dist_strategy.model.iter = 0
+        self.model.iter = 0
         delta = 1.0
         start = time.time()
 
-        while self.dist_strategy.model.iter < self.n_iterations:
+        while self.model.iter < self.n_iterations:
 
             # Poll events
             events = dict(self.poller.poll())
@@ -537,13 +539,13 @@ class Master(object):
         self.logger.debug(f"Times={diff.mean():7.6f}s")
 
         # Print confusion matrix
-        confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.dist_strategy.model.theta)
+        confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.model.theta)
         self.logger.info(f"Confusion matrix=\n{confusion_matrix}")
 
         # Accuracy
-        y_pred = self.dist_strategy.model.predict(self.data.X_test)
+        y_pred = self.model.predict(self.data.X_test)
         acc = accuracy_scorev2(self.data.y_test, y_pred)
-        # acc = accuracy(self.data.X_test, self.data.y_test, self.dist_strategy.model.theta, self.hypothesis)
+        # acc = accuracy(self.data.X_test, self.data.y_test, self.model.theta, self.hypothesis)
         self.logger.info(f"Accuracy={acc * 100:7.4f}%")
 
     def plot_metrics(self):
@@ -569,7 +571,7 @@ class Master(object):
                 fig = class_balance.fig
 
                 if self._tf_logger is not None:
-                    self._tf_logger.images("class-bal-master", [fig], self.dist_strategy.model.iter)
+                    self._tf_logger.images("class-bal-master", [fig], self.model.iter)
             except Exception as e:
                 self.logger.exception(e)
 
@@ -590,9 +592,9 @@ class Master(object):
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
-        self.dist_strategy.model.theta = \
+        self.model.theta = \
         np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
-        self.logger.debug(f"Init theta={self.dist_strategy.model.theta}")
+        self.logger.debug(f"Init theta={self.model.theta}")
         
         self.poller = self.setup_poller()
 

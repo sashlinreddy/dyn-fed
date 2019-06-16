@@ -3,14 +3,13 @@ import os
 import time 
 import numpy as np
 
-from fault_tolerant_ml.distribute import Master
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
 from fault_tolerant_ml.ml.optimizer import SGDOptimizer
 from fault_tolerant_ml.ml.loss_fns import cross_entropy_loss, cross_entropy_gradient
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
-from fault_tolerant_ml.utils import setup_logger
+from fault_tolerant_ml.utils import setup_logger, model_utils
 from fault_tolerant_ml.lib.io import file_io
 
 @click.command()
@@ -47,13 +46,43 @@ def run(n_workers, verbose):
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
     # Load model config
-    cfg = file_io.load_model_config('config.yml')
+    config_path = 'config.yml'
+    if 'PROJECT_DIR' in os.environ:
+        config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
+        
+    cfg = file_io.load_model_config(config_path)
     
     model_cfg = cfg['model']
     opt_cfg = cfg['optimizer']
     executor_cfg = cfg['executor']
 
     data_dir = executor_cfg['shared_folder']
+    if 'PROJECT_DIR' in os.environ:
+        data_dir = os.path.join(os.environ['PROJECT_DIR'], data_dir)
+        executor_cfg['shared_folder'] = data_dir
+
+    # encode_vars = [
+    #     "n_workers", "scenario", "remap", "quantize" , "n_most_rep",
+    #     "comm_period", "mu_g", "send_gradients"
+    # ]
+
+    # global_cfg = {"n_workers": n_workers}
+    # global_cfg.update(executor_cfg)
+    # global_cfg.update(opt_cfg)
+    # encode_name = string_utils.dict_to_str(global_cfg, choose=encode_vars)
+
+    # if "LOGDIR" in os.environ:
+    #     logdir = os.path.join(os.environ["LOGDIR"], encode_name)
+    #     if not os.path.exists(logdir):
+    #         try:
+    #             os.mkdir(logdir)
+    #         except FileExistsError:
+    #             pass
+    #     os.environ["LOGDIR"] = logdir
+
+    encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
+
+    logger = setup_logger(level=verbose)
 
     # Create optimizer
     loss = cross_entropy_loss
@@ -69,8 +98,22 @@ def run(n_workers, verbose):
         mu_g=opt_cfg['mu_g']
     )
 
+    # Decide on distribution strategy
+    strategy = MasterWorkerStrategy(
+        n_workers=n_workers,
+        config=executor_cfg
+    )
+
     # Create model
-    model = LogisticRegression(optimizer, max_iter=model_cfg['n_iterations'], shuffle=model_cfg['shuffle'])
+    model = LogisticRegression(
+        optimizer, 
+        strategy, 
+        max_iter=model_cfg['n_iterations'], 
+        shuffle=model_cfg['shuffle'], 
+        verbose=verbose
+    )
+
+    model.encode_name = encoded_run_name
 
     # Get data
     filepaths = {
@@ -87,48 +130,22 @@ def run(n_workers, verbose):
     np.random.seed(42)
 
     # data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
-    # data.transform()
-
-    # Decide on distribution strategy
-    dist_strategy = MasterWorkerStrategy(
-        model=model,
-        n_workers=n_workers,
-        config=executor_cfg
-    )
-
-    # Setup logger
-    if "LOGDIR" in os.environ:
-        logdir = os.path.join(os.environ["LOGDIR"], dist_strategy.encode())
-        if not os.path.exists(logdir):
-            os.mkdir(logdir)
-        os.environ["LOGDIR"] = logdir
-        
-    logger = setup_logger(level=verbose)
-
-    # Setup master
-    master = Master(
-        dist_strategy=dist_strategy,
-        verbose=verbose,
-    )
+    # data.transform()    
 
     # time.sleep(2)
-
-    logger.info("Connecting master sockets")
-    master.connect()
-    # setattr(master, "train_iter", train_iter)
-    time.sleep(1)
 
     logger.info("*******************************")
     logger.info("STARTING TRAINING")
     logger.info("*******************************")
 
-    master.train(mnist)
+    # master.train(mnist)
+    model.fit(mnist)
 
     logger.info("*******************************")
     logger.info("COMPLETED TRAINING")
     logger.info("*******************************")
 
-    master.plot_metrics()
+    model.plot_metrics()
 
     logger.info("DONE!")
 
