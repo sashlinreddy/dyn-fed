@@ -15,55 +15,10 @@ from fault_tolerant_ml.data import MNist, OccupancyData
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.lib.io import file_io
 
-# @ftml_trainv2
-# def train_iter(master, *args, **kwargs):
-#     # Map tasks
-#     master.map()
-
-#     # Gather and apply gradients
-#     master.train_iteration(events)
-#     train_gather(master)
-
-# @ftml_train_collect
-# def train_gather(master, *args, **kwargs):
-#     theta_p = master.theta.copy()
-#     # Receive updated parameters from workers
-#     d_theta, epoch_loss = master.gather(events)
-
-#     # Update the global parameters with weighted error
-#     master.theta = master.optimizer.minimize(X=None, y=None, y_pred=None, theta=master.theta, precomputed_gradients=d_theta)
-
-#     if master.tf_logger is not None:
-#         master.tf_logger.histogram("theta-master", master.theta, master.dist_strategy.model.iter, bins=master.n_iterations)
-#         master.tf_logger.scalar("epoch-master", epoch_loss, master.dist_strategy.model.iter)
-
-#     delta = np.max(np.abs(theta_p - master.theta))
-
-#     # self.logger.info(f"iteration = {self.dist_strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-
-#     return d_theta, epoch_loss, delta
-
 @click.command()
 @click.argument('data_dir', type=click.Path(exists=True))
-@click.argument('n_workers', type=int)
-@click.option('--n_iterations', '-i', default=400, type=int)
-@click.option('--learning_rate', '-lr', default=0.99, type=float)
 @click.option('--verbose', '-v', default=10, type=int)
-@click.option('--strategy', '-st', default="mw", type=str)
-@click.option('--scenario', '-s', default=3, type=int)
-@click.option('--remap', '-r', default=1, type=int)
-@click.option('--quantize', '-q', default=0, type=int)
-@click.option('--n_most_rep', '-nmr', default=100, type=int)
-@click.option('--comm_period', '-cp', default=1, type=int)
-@click.option('--clip_norm', '-cn', default=None, type=int)
-@click.option('--clip_val', '-ct', default=None, type=int)
-@click.option('--mu_g', '-m', default=1.0, type=float)
-@click.option('--delta_switch', '-ds', default=1e-4, type=float)
-@click.option('--shuffle', '-sh', default=1, type=int)
-@click.option('--timeout', '-t', default=15, type=int)
-@click.option('--send_gradients', '-sg', default=1, type=int)
-def run(data_dir, n_workers, n_iterations, learning_rate, verbose, strategy, scenario, remap, quantize, 
-n_most_rep, comm_period, clip_norm, clip_val, mu_g, delta_switch, shuffle, timeout, send_gradients):
+def run(data_dir, verbose):
     """Controller function which creates the master and starts off the training
 
     Args:
