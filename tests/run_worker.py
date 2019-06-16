@@ -33,7 +33,11 @@ def run(n_workers, verbose, id, tmux, add):
             identity += 1000
 
     # Load model config - this is an assumption that config is in root code directory
-    cfg = file_io.load_model_config('config.yml')
+    config_path = 'config.yml'
+    if 'PROJECT_DIR' in os.environ:
+        config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
+        
+    cfg = file_io.load_model_config(config_path)
 
     model_cfg = cfg['model']
     opt_cfg = cfg['optimizer']
