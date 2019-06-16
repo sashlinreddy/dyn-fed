@@ -10,6 +10,7 @@ import uuid
 import logging
 import click
 import os
+import json
 # from dotenv import find_dotenv, load_dotenv
 
 # Local
@@ -29,7 +30,7 @@ class Worker(object):
         subscriber (zmq.Socket): zmq.SUB socket which subscribes to all master published messages
         connected (bool): Whether or not the worker is connected successfully to the master
     """
-    def __init__(self, model, cfg, verbose, id=None):
+    def __init__(self, strategy, n_workers, verbose, id=None):
 
         self.worker_id = str(uuid.uuid4()) if id is None else f"worker-{id}"
         self.subscriber = None
@@ -39,17 +40,23 @@ class Worker(object):
         # self.hypothesis = hypotheses.log_hypothesis
         # self.gradient = loss_fns.cross_entropy_gradient
 
-        self.model = model
+        self.strategy = strategy
+        self.model = self.strategy.model
 
-        self.n_workers = cfg['n_workers']
-        self.scenario = cfg['scenario']
-        self.remap = cfg['remap']
-        self.quantize = cfg['quantize']
-        self.n_most_rep = cfg['n_most_rep']
-        self.learning_rate = cfg['learning_rate']
-        self.comm_period = cfg['comm_period']
-        self.mu_g = cfg['mu_g']
-        self.send_gradients = cfg['send_gradients']
+        self.n_workers = n_workers
+        self.scenario = self.strategy.scenario
+        self.remap = self.strategy.remap
+        self.quantize = self.strategy.quantize
+        self.n_most_rep = self.strategy.n_most_rep
+        self.learning_rate = self.model.optimizer.learning_rate
+        self.comm_period = self.strategy.comm_period
+        self.mu_g = self.strategy.model.optimizer.mu_g
+        self.send_gradients = self.strategy.send_gradients
+
+        with open(os.path.join(self.strategy.shared_folder, "ip_config.json"), "r") as f:
+            ip_config = json.load(f)
+
+        self.master_ip_address = ip_config["ipAddress"]
 
         self.encoded_name = \
         f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}-{self.comm_period}-{self.mu_g}-{self.send_gradients}"
@@ -63,25 +70,25 @@ class Worker(object):
         self._tf_logger = None
         self.distributor = Distributor()
 
-    def connect(self, ip_address="localhost"):
+    def connect(self):
         """Prepare our context, push socket and publisher
         """
-        self.context    = zmq.Context()
+        self.context = zmq.Context()
         self.subscriber = self.context.socket(zmq.SUB)
         # self.subscriber.connect("tcp://localhost:5563")
-        self.subscriber.connect(f"tcp://{ip_address}:5563")
+        self.subscriber.connect(f"tcp://{self.master_ip_address}:5563")
         self.subscriber.setsockopt(zmq.SUBSCRIBE, b"")
 
         self.push_socket = self.context.socket(zmq.PUSH)
         # self.push_socket.connect("tcp://localhost:5562")
-        self.push_socket.connect(f"tcp://{ip_address}:5562")
+        self.push_socket.connect(f"tcp://{self.master_ip_address}:5562")
 
         self.ctrl_socket = self.context.socket(zmq.DEALER)
         self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
         # self.ctrl_socket.connect("tcp://localhost:5565")
-        self.ctrl_socket.connect(f"tcp://{ip_address}:5565")
+        self.ctrl_socket.connect(f"tcp://{self.master_ip_address}:5565")
 
-        self._logger.info(f"Connected to ip address {ip_address}, on ports 5563, 5562 & 5565")
+        self._logger.info(f"Connected to ip address {self.master_ip_address}, on ports 5563, 5562 & 5565")
 
     def setup_poller(self):
         """Register necessary sockets for poller

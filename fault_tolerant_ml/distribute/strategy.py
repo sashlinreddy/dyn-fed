@@ -11,39 +11,27 @@ class DistributionStrategy(object):
         comm_period (int): Communicate every comm_period iteration(s)
         delta_switch (float): The delta threshold we reach before switching back to communication every iteration
     """
-    def __init__(self, strategy, scenario, model, n_workers):
-        self.strategy = strategy
-        self.scenario = scenario
+    def __init__(self, model, n_workers, config):
         self.model = model
         self.n_workers = n_workers
+        assert config
+        self.strategy = config['strategy']
+        self.scenario = config['scenario']
 
-class MasterStrategy(DistributionStrategy):
+class MasterWorkerStrategy(DistributionStrategy):
 
-    def __init__(
-        self, 
-        strategy, 
-        scenario, 
-        model,
-        n_workers, 
-        remap=0, 
-        quantize=0, 
-        n_most_rep=100, 
-        comm_period=1, 
-        delta_switch=1e-4, 
-        worker_timeout=10,
-        mu_g=1.0,
-        send_gradients=True
-        ):
+    def __init__(self, model, n_workers, config):
 
-        super().__init__(strategy, scenario, model, n_workers)
-        self.remap = remap
-        self.quantize = quantize
-        self.n_most_rep = n_most_rep
-        self.comm_period = comm_period
-        self.delta_switch = delta_switch
-        self.worker_timeout = worker_timeout
-        self.mu_g = mu_g
-        self.send_gradients = send_gradients
+        super().__init__(model, n_workers, config)
+        self.remap = config['remap']
+        self.quantize = config['quantize']
+        self.n_most_rep = self.model.optimizer.n_most_rep
+        self.comm_period = config['comm_period']
+        self.delta_switch = config['delta_switch']
+        self.worker_timeout = config['timeout']
+        self.mu_g = self.model.optimizer.mu_g
+        self.send_gradients = config['send_gradients']
+        self.shared_folder = config['shared_folder']
 
     def encode(self):
         return f"{self.n_workers}-{self.scenario}-{self.remap}-{self.quantize}-{self.n_most_rep}"

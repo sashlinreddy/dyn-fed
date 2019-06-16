@@ -63,6 +63,10 @@ class SGDOptimizer(Optimizer):
         return self._most_rep
 
     @property
+    def n_most_rep(self):
+        return self._n_most_rep
+
+    @property
     def mu_g(self):
         return self._mu_g
 

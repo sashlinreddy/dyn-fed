@@ -13,28 +13,6 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
         self.shuffle = shuffle
         self.iter = 0
 
-    def iterate(self, X=None, y=None, **kwargs):
-        if self.optimizer.role == "master":
-            assert "d_theta" in kwargs, "D_theta is expected for master role"
-            d_theta = kwargs["d_theta"]
-            theta = self.optimizer.minimize(
-                X=X, 
-                y=X, 
-                y_pred=None, 
-                theta=self.theta, 
-                precomputed_gradients=d_theta
-            )
-            return theta
-        else:
-            assert "theta" in kwargs, "Theta is expected for worker role"
-            self.theta = kwargs["theta"]
-            theta, batch_loss = self.optimizer.minimize(
-                X=X, 
-                y=y,
-                y_pred=self.predict(X), 
-                theta=self.theta)
-            return theta, batch_loss
-
     def fit(self, X, y):
         
         n_samples, n_features = X.shape

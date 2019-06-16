@@ -2,11 +2,9 @@ import click
 import os
 import time 
 import numpy as np
-import socket
-import json
 
 from fault_tolerant_ml.distribute import Master
-from fault_tolerant_ml.distribute import MasterStrategy
+from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
 from fault_tolerant_ml.ml.optimizer import SGDOptimizer
 from fault_tolerant_ml.ml.loss_fns import cross_entropy_loss, cross_entropy_gradient
@@ -16,9 +14,9 @@ from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.lib.io import file_io
 
 @click.command()
-@click.argument('data_dir', type=click.Path(exists=True))
+@click.argument('n_workers', type=int)
 @click.option('--verbose', '-v', default=10, type=int)
-def run(data_dir, verbose):
+def run(n_workers, verbose):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -49,21 +47,32 @@ def run(data_dir, verbose):
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
     # Load model config
-    cfg = file_io.load_model_config('config.yml')['model']
+    cfg = file_io.load_model_config('config.yml')
+    
+    model_cfg = cfg['model']
+    opt_cfg = cfg['optimizer']
+    executor_cfg = cfg['executor']
 
+    data_dir = executor_cfg['shared_folder']
+
+    # Create optimizer
     loss = cross_entropy_loss
     grad = cross_entropy_gradient
     optimizer = SGDOptimizer(
         loss=loss, 
         grad=grad, 
-        learning_rate=cfg['learning_rate'], 
+        learning_rate=opt_cfg['learning_rate'], 
         role="master", 
-        n_most_rep=cfg['n_most_rep'], 
-        clip_norm=cfg['clip_norm'], 
-        clip_val=cfg['clip_val'],
-        mu_g=cfg['mu_g']
+        n_most_rep=opt_cfg['n_most_rep'], 
+        clip_norm=opt_cfg['clip_norm'], 
+        clip_val=opt_cfg['clip_val'],
+        mu_g=opt_cfg['mu_g']
     )
-    model = LogisticRegression(optimizer, max_iter=cfg['n_iterations'], shuffle=cfg['shuffle'])
+
+    # Create model
+    model = LogisticRegression(optimizer, max_iter=model_cfg['n_iterations'], shuffle=model_cfg['shuffle'])
+
+    # Get data
     filepaths = {
         "train": {
             "images": os.path.join(data_dir, "train-images-idx3-ubyte.gz"), "labels": os.path.join(data_dir, "train-labels-idx1-ubyte.gz")
@@ -80,21 +89,14 @@ def run(data_dir, verbose):
     # data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
     # data.transform()
 
-    dist_strategy = MasterStrategy(
-        n_workers=cfg['n_workers'],
-        strategy=cfg['strategy'],
-        scenario=cfg['scenario'],
+    # Decide on distribution strategy
+    dist_strategy = MasterWorkerStrategy(
         model=model,
-        remap=cfg['remap'],
-        quantize=cfg['quantize'],
-        n_most_rep=cfg['n_most_rep'], 
-        comm_period=cfg['comm_period'],
-        delta_switch=cfg['delta_switch'],
-        worker_timeout=cfg['timeout'],
-        mu_g=cfg['mu_g'],
-        send_gradients=cfg['send_gradients']
+        n_workers=n_workers,
+        config=executor_cfg
     )
 
+    # Setup logger
     if "LOGDIR" in os.environ:
         logdir = os.path.join(os.environ["LOGDIR"], dist_strategy.encode())
         if not os.path.exists(logdir):
@@ -103,19 +105,11 @@ def run(data_dir, verbose):
         
     logger = setup_logger(level=verbose)
 
+    # Setup master
     master = Master(
         dist_strategy=dist_strategy,
         verbose=verbose,
     )
-
-    hostname = socket.gethostname()
-    ip_address = socket.gethostbyname(hostname)
-    ip_config = {"ipAddress" : ip_address}
-
-    logger.info(f"Master on ip={ip_address}")
-
-    with open(os.path.join(data_dir, "ip_config.json"), "w") as f:
-        json.dump(ip_config, f)
 
     # time.sleep(2)
 
@@ -139,4 +133,4 @@ def run(data_dir, verbose):
     logger.info("DONE!")
 
 if __name__ == "__main__":
-    run()
+    run() # pylint: disable=no-value-for-parameter

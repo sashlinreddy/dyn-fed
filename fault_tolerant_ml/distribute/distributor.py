@@ -123,7 +123,7 @@ class Distributor(object):
                 # beta = samples_for_worker
 
                 # Decode gradient matrix
-                self._logger.debug(f"theta.dtype={dist_strategy.model.theta.dtype}")
+                # self._logger.debug(f"theta.dtype={dist_strategy.model.theta.dtype}")
 
                 if quantize:
                     self._logger.debug(f"Reconstructing gradients")

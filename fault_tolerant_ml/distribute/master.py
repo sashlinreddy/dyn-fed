@@ -14,6 +14,8 @@ import click
 import gevent
 import signal
 import os
+import socket
+import json
 # from dotenv import find_dotenv, load_dotenv
 
 # Local
@@ -50,6 +52,10 @@ class Master(object):
         self.dist_strategy = dist_strategy
         self.delay_change = False
 
+        # Get ipaddress for workers to connect to
+        self.hostname = socket.gethostname()
+        self.ip_address = socket.gethostbyname(self.hostname)
+
         # Model variables
         self.n_iterations = int(np.ceil(self.dist_strategy.model.max_iter / self.dist_strategy.comm_period))
         self.learning_rate = self.dist_strategy.model.optimizer.learning_rate
@@ -67,6 +73,13 @@ class Master(object):
         # Setup logger
         # self.logger = setup_logger(level=verbose)
         self.logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
+
+        data_dir = self.dist_strategy.shared_folder
+        self.logger.info(f"Master on ip={self.ip_address}")
+
+        ip_config = {"ipAddress" : self.ip_address}
+        with open(os.path.join(data_dir, "ip_config.json"), "w") as f:
+            json.dump(ip_config, f)
 
     def connect(self):
         """Connects to necessary sockets

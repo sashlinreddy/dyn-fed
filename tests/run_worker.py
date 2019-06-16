@@ -1,21 +1,21 @@
 import click
 import os
-import json
 import time
 
 from fault_tolerant_ml.distribute import Worker
+from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.lib.io import file_io
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
 from fault_tolerant_ml.ml.optimizer import SGDOptimizer
 from fault_tolerant_ml.ml import loss_fns
 
 @click.command()
-@click.argument('config_dir', type=click.Path(exists=True))
+@click.argument('n_workers', type=int)
 @click.option('--verbose', '-v', default=10, type=int)
 @click.option('--id', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
 @click.option('--add', '-a', default=0, type=int)
-def run(config_dir, verbose, id, tmux, add):
+def run(n_workers, verbose, id, tmux, add):
     """Run worker
 
     Args:
@@ -23,6 +23,7 @@ def run(config_dir, verbose, id, tmux, add):
     """
     # load_dotenv(find_dotenv())
 
+    # Create worker identity
     identity: int = 0
 
     if tmux:
@@ -32,39 +33,48 @@ def run(config_dir, verbose, id, tmux, add):
         if add:
             identity += 1000
 
-    cfg = file_io.load_model_config('config.yml')['model']
+    # Load model config - this is an assumption that config is in root code directory
+    cfg = file_io.load_model_config('config.yml')
 
-    # self.hypothesis = hypotheses.log_hypothesis
+    model_cfg = cfg['model']
+    opt_cfg = cfg['optimizer']
+    executor_cfg = cfg['executor']
+
+    
+    # Setup optimizer
     gradient = loss_fns.cross_entropy_gradient
-
     optimizer = SGDOptimizer(
         loss=loss_fns.single_cross_entropy_loss, 
         grad=gradient, 
         role="worker", 
-        learning_rate=cfg['learning_rate'], 
-        n_most_rep=cfg['n_most_rep'], 
+        learning_rate=opt_cfg['learning_rate'], 
+        n_most_rep=opt_cfg['n_most_rep'], 
         clip_norm=None,
-        mu_g=cfg['mu_g']
+        mu_g=opt_cfg['mu_g']
     )
 
-    model = LogisticRegression(optimizer, max_iter=cfg['n_iterations'], shuffle=cfg['shuffle'])
+    # Create model
+    model = LogisticRegression(optimizer, max_iter=model_cfg['n_iterations'], shuffle=model_cfg['shuffle'])
+
+    # Setup distribution strategy
+    strategy = MasterWorkerStrategy(
+        model=model,
+        n_workers=n_workers,
+        config=executor_cfg
+    )
 
     worker = Worker(
-        model=model,
-        cfg=cfg,
+        strategy=strategy,
+        n_workers=n_workers,
         verbose=verbose,
         id=identity
     )
 
     time.sleep(1)
 
-    with open(os.path.join(config_dir, "ip_config.json"), "r") as f:
-        ip_config = json.load(f)
-
-    ip_address = ip_config["ipAddress"]
-    worker.connect(ip_address)
+    worker.connect()
     # time.sleep(1)
     worker.start()
 
 if __name__ == "__main__":
-    run()
+    run() # pylint: disable=no-value-for-parameter
