@@ -134,26 +134,6 @@ def run(data_dir, verbose):
     logger.info("COMPLETED TRAINING")
     logger.info("*******************************")
 
-    # Plot class balances
-    # if "FIGDIR" in os.environ:
-
-    #     import pandas as pd
-    #     from fault_tolerant_ml.viz.target import ClassBalance
-
-    #     figdir = os.environ["FIGDIR"]
-
-    #     try:
-    #         logger.debug("Saving class balances distribution plot...")
-    #         worker_ids = [s.identity.decode() for s in master.watch_dog.states if s.state]
-    #         fname = os.path.join(figdir, f"mnist-class-balance.png")
-    #         class_bal = [v[1] for (k, v) in master.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
-    #         class_names = master.data.class_names
-
-    #         class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
-    #         class_balance.fit(y=class_bal)
-    #         class_balance.poof()
-    #     except Exception as e:
-    #         logger.exception(e)
     master.plot_metrics()
 
     logger.info("DONE!")
