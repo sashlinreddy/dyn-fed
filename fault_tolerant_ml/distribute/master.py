@@ -457,9 +457,7 @@ class Master(object):
             params=params
         )
 
-        if not self.strategy.send_gradients:
-            self.model.theta = d_theta
-        else:
+        if self.strategy.send_gradients:
             # Update the global parameters with weighted error
             self.model.theta = \
             self.optimizer.minimize(
@@ -469,6 +467,8 @@ class Master(object):
                 theta=self.model.theta, 
                 precomputed_gradients=d_theta
             )
+        else:
+            self.model.theta = d_theta
 
         y_pred = self.model.predict(self.data.X_test)
         y_train_pred = self.model.predict(self.data.X_train)

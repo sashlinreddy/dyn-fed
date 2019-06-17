@@ -289,6 +289,7 @@ class Worker(object):
                                 d_theta = linspace_quantization(d_theta, interval=100)
                                 self.model.theta = linspace_quantization(self.model.theta, interval=100)
 
+                            self._logger.debug(f"Send gradients flag={self.send_gradients}")
                             msg = self.model.theta.tostring()
                             if self.send_gradients:
                                 msg = d_theta.tostring()

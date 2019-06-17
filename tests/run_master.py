@@ -93,8 +93,6 @@ def run(n_workers, verbose):
         learning_rate=opt_cfg['learning_rate'], 
         role="master", 
         n_most_rep=opt_cfg['n_most_rep'], 
-        clip_norm=opt_cfg['clip_norm'], 
-        clip_val=opt_cfg['clip_val'],
         mu_g=opt_cfg['mu_g']
     )
 

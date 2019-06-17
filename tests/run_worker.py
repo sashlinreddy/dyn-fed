@@ -58,7 +58,6 @@ def run(n_workers, verbose, id, tmux, add):
         role="worker", 
         learning_rate=opt_cfg['learning_rate'], 
         n_most_rep=opt_cfg['n_most_rep'], 
-        clip_norm=None,
         mu_g=opt_cfg['mu_g']
     )
 
