@@ -110,10 +110,9 @@ def run(n_workers, verbose):
         strategy, 
         max_iter=model_cfg['n_iterations'], 
         shuffle=model_cfg['shuffle'], 
-        verbose=verbose
+        verbose=verbose,
+        encode_name=encoded_run_name
     )
-
-    model.encode_name = encoded_run_name
 
     # Get data
     filepaths = {
