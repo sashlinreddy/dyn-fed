@@ -23,7 +23,7 @@ Fault tolerant framework for machine learning algorithms
 tmux
 export LOGDIR=${PWD}/logs
 pythonw tests/run_master.py $n_workers # Run in separate window
-pythonw tests/run_worker.py 7 -i $TMUX_PANE -t 1 # Set "setw synchronize-panes on" as a tmux setting. Use Ctrl+B,: for insert mode
+pythonw tests/run_worker.py $n_workers -i $TMUX_PANE -t 1 # Set "setw synchronize-panes on" as a tmux setting. Use Ctrl+B,: for insert mode
 ```
 
 To view the results on tensorboard assuming you are in the parent directory:
