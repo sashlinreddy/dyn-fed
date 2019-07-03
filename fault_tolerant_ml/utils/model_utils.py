@@ -4,8 +4,8 @@ from fault_tolerant_ml.utils import string_utils
 
 def encode_run_name(n_workers, config):
     encode_vars = [
-        "n_workers", "scenario", "remap", "quantize" , "n_most_rep",
-        "comm_period", "mu_g", "send_gradients"
+        "n_workers", "scenario", "remap", "quantize",
+        "comm_period", "send_gradients", "mu_g", "n_most_rep"
     ]
 
     global_cfg = {"n_workers": n_workers}

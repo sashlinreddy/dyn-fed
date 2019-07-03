@@ -36,15 +36,16 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
                 self._logger.info("Connecting master sockets")
                 self._master.connect()
                 # setattr(master, "train_iter", train_iter)
-                time.sleep(1)
+                # time.sleep(1)
             else:
+
+                time.sleep(2)
+
                 self._worker = Worker(
                     model=self,
                     verbose=self.verbose,
                     id=self.strategy.identity
                 )
-
-                time.sleep(1)
 
                 self._worker.connect()
 

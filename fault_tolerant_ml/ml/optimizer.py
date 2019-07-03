@@ -154,6 +154,7 @@ class SGDOptimizer(Optimizer):
             if self._clip_norm is not None:
                 d_theta = d_theta * self._clip_norm / np.linalg.norm(d_theta)
 
+            self._logger.info(f'n_samples={N}')
             # Apply them
             theta = self.apply_gradients(d_theta, theta, N, theta_g=theta_g)
             # theta = self.apply_gradients(d_theta, theta, X.shape[0])
