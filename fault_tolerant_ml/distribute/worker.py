@@ -117,7 +117,8 @@ class Worker(object):
             self.y, 
             y_pred, 
             self.model.theta, 
-            N=self.n_samples, 
+            # N=self.n_samples,
+            N=self.X.shape[0],
             theta_g=theta_g)
         most_representative = self.model.optimizer.most_rep
         

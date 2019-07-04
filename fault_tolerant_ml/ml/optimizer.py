@@ -118,7 +118,7 @@ class SGDOptimizer(Optimizer):
             theta (numpy.ndarray): Updated parameter matrix
         """
 
-        if self.role != "worker1":
+        if self.role != "worker":
             theta = theta - self.learning_rate * 1 / N * d_theta
         else:
             theta = (
