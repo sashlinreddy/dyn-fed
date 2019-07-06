@@ -109,7 +109,6 @@ class Worker(object):
         """
 
         # Get predictions
-        # y_pred = self.hypothesis(X, theta)
         y_pred = self.model.predict(self.X)
 
         self.model.theta, d_theta, batch_loss = self.model.optimizer.minimize(
@@ -177,7 +176,6 @@ class Worker(object):
 
         try:
             start = time.time()
-            i = 0
             self.scenario = 0
             self.n_samples = 0
             self.n_features = 0
@@ -262,7 +260,7 @@ class Worker(object):
                                 self.do_work( 
                                     theta_g=theta_g
                                 )
-                                self._logger.info(f"iteration = {i}, Loss = {batch_loss:7.4f}")
+                                self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}")
 
                                 # Let global theta influence local theta
                                 # for k in np.arange(self.n_classes):
@@ -272,12 +270,11 @@ class Worker(object):
 
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
-                                    self._tf_logger.histogram(f"theta={self.worker_id}", theta, i, bins=400)
-                                    self._tf_logger.histogram(f"d_theta={self.worker_id}", d_theta, i, bins=400)
-                                    self._tf_logger.scalar(f"loss-{self.worker_id}", batch_loss, i)
+                                    self._tf_logger.histogram(f"theta={self.worker_id}", theta, self.model.iter, bins=400)
+                                    self._tf_logger.histogram(f"d_theta={self.worker_id}", d_theta, self.model.iter, bins=400)
+                                    self._tf_logger.scalar(f"loss-{self.worker_id}", batch_loss, self.model.iter)
 
-                                # theta = theta_l
-                                i += 1
+                                self.model.iter += 1
                                 if count == self.comm_period:
                                     break
                                 count += 1
@@ -314,7 +311,7 @@ class Worker(object):
 
             end = time.time()
 
-            self._logger.info("Time taken for %d iterations is %7.6fs" % (i-1, end-start))
+            self._logger.info("Time taken for %d iterations is %7.6fs" % (self.model.iter-1, end-start))
         except KeyboardInterrupt:
             self._logger.info("Keyboard quit")
         except zmq.ZMQError:
