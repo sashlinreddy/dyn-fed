@@ -228,18 +228,11 @@ class Worker(object):
 
                                 # Reconstruct numpy array
                                 buf = memoryview(data)
-                                # if theta is None:
-                                #     theta_l = np.frombuffer(buf, dtype=dtype)
-                                #     theta_l = theta_l.reshape(eval(shape))
-                                #     theta_l = theta_l.copy()
-                                #     theta = theta_l.copy()
-                                # else:
+                                
                                 theta = np.frombuffer(buf, dtype=dtype)
                                 theta = theta.reshape(eval(shape))
                                 theta = theta.copy()
-                                # self._logger.info(f"theta.shape {theta.shape}")
                                 
-                                # theta = theta.copy()
                             elif self.quantize == 1:
 
                                 # Receive numpy struct array
@@ -262,12 +255,6 @@ class Worker(object):
                                 )
                                 self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}")
 
-                                # Let global theta influence local theta
-                                # for k in np.arange(self.n_classes):
-                                #     theta_l[:, k] = (self.learning_rate) * theta[:, k] - (1 - self.learning_rate) * theta_g[:, k]
-
-                                # theta = (self.learning_rate) * theta - (1 - self.learning_rate) * theta_g
-
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
                                     self._tf_logger.histogram(f"theta={self.worker_id}", theta, self.model.iter, bins=400)
@@ -278,7 +265,6 @@ class Worker(object):
                                 if count == self.comm_period:
                                     break
                                 count += 1
-                                # theta = None
 
                             # Get messages ready to send by converting them to bytes format. We do not
                             # need to send the shape since the gradients have the same shape as theta which
