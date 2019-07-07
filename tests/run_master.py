@@ -5,7 +5,7 @@ import numpy as np
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
-from fault_tolerant_ml.ml.optimizer import SGDOptimizer
+from fault_tolerant_ml.ml.optimizer import SGDOptimizer, AdamOptimizer
 from fault_tolerant_ml.ml.loss_fns import cross_entropy_loss, cross_entropy_gradient
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
@@ -87,11 +87,20 @@ def run(n_workers, verbose):
     # Create optimizer
     loss = cross_entropy_loss
     grad = cross_entropy_gradient
-    optimizer = SGDOptimizer(
+    # optimizer = SGDOptimizer(
+    #     loss=loss, 
+    #     grad=grad, 
+    #     learning_rate=opt_cfg['learning_rate'], 
+    #     role="master", 
+    #     n_most_rep=opt_cfg['n_most_rep'], 
+    #     mu_g=opt_cfg['mu_g']
+    # )
+
+    optimizer = AdamOptimizer(
         loss=loss, 
         grad=grad, 
-        learning_rate=opt_cfg['learning_rate'], 
-        role="master", 
+        learning_rate=opt_cfg['learning_rate'],
+        role="master",
         n_most_rep=opt_cfg['n_most_rep'], 
         mu_g=opt_cfg['mu_g']
     )

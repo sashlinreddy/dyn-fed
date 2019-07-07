@@ -5,7 +5,7 @@ import time
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.lib.io import file_io
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
-from fault_tolerant_ml.ml.optimizer import SGDOptimizer
+from fault_tolerant_ml.ml.optimizer import SGDOptimizer, AdamOptimizer
 from fault_tolerant_ml.ml import loss_fns
 from fault_tolerant_ml.utils import model_utils
 
@@ -52,7 +52,16 @@ def run(n_workers, verbose, id, tmux, add):
     
     # Setup optimizer
     gradient = loss_fns.cross_entropy_gradient
-    optimizer = SGDOptimizer(
+    # optimizer = SGDOptimizer(
+    #     loss=loss_fns.single_cross_entropy_loss, 
+    #     grad=gradient, 
+    #     role="worker", 
+    #     learning_rate=opt_cfg['learning_rate'], 
+    #     n_most_rep=opt_cfg['n_most_rep'], 
+    #     mu_g=opt_cfg['mu_g']
+    # )
+
+    optimizer = AdamOptimizer(
         loss=loss_fns.single_cross_entropy_loss, 
         grad=gradient, 
         role="worker", 
