@@ -585,10 +585,6 @@ class Master(object):
         """
         # For reproducibility
         np.random.seed(42)
-
-        # self.data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
-        # self.data.transform()
-        # self.X_train, self.y_train = self.data.X_train, self.data.y_train
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 

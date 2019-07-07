@@ -84,6 +84,8 @@ def run(n_workers, verbose):
 
     logger = setup_logger(level=verbose)
 
+    logger.info(f"Starting run: {encoded_run_name}")
+
     # Create optimizer
     loss = cross_entropy_loss
     grad = cross_entropy_gradient
