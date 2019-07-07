@@ -25,6 +25,10 @@ class MNist(Dataset):
         self.n_samples, self.n_features = self.X_train.shape
         self.n_classes = len(self.class_names)
 
+    
+    def __repr__(self):
+        return f'<{self.__class__.__name__} X_train={self.X_train.shape}, y_train={self.y_train.shape}, X_test={self.X_test.shape}, y_test={self.y_test.shape}>'
+
     def read_data(self, filepath):
 
         with gzip.open(filepath) as f:
