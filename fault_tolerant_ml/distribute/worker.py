@@ -11,7 +11,6 @@ import logging
 import click
 import os
 import json
-# from dotenv import find_dotenv, load_dotenv
 
 # Local
 from fault_tolerant_ml.utils import setup_logger
