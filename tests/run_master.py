@@ -28,7 +28,9 @@ def run(n_workers, verbose):
         quantize (int): Whether or not to quantize parameters
             0: No quantization
             1: Min theta value, max theta value, interval, bins sent across the network to reconstruct the parameters on the worker side
-        scenario (int): The scenario we would like to run. Default 1: Normal run, Scenario 2: Kill worker. Scenario 3: Kill     worker and reintroduce another worker. Scenario 4: Communicate every 10 iterations, Scenario 5: Every 5             iterations and gradient clipping?
+        scenario (int): The scenario we would like to run. Default 1: Normal run, Scenario 2: Kill worker. Scenario 3: Kill     
+            worker and reintroduce another worker. Scenario 4: Communicate every 10 iterations, Scenario 5: Every 5             
+            iterations and gradient clipping?
         n_most_rep (int): No. of most representative data points to keep track of for redistributing
         comm_period (int): Communicate parameters back to master every so often depending on this number
         delta_switch (float): Delta threshold to let us know when we switch back to communicating every ith iteration
