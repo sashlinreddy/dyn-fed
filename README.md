@@ -61,6 +61,12 @@ ssh username@$clusterIP -L $localPort:$clusterNodeip:$clusterNodePort
 
 View tensorboard on http://localhost:6006 :)
 
+To pull results for log files run the following:
+
+```bash
+python fault-tolerant-ml/fault_tolerant_ml/utils/logger_parser.py logs/slurm/[fashion-mnist|mnist]/ fault-tolerant-ml/data/[fashion_mnist|mnist]_results.csv
+```
+
 ## Run tests
 
 ```bash
