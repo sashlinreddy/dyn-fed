@@ -77,8 +77,13 @@ class Master(object):
         data_dir = self.strategy.shared_folder
         self.logger.info(f"Master on ip={self.ip_address}")
 
+        ip_filename = "ip_config.json"
+        if "SLURM_JOBID" in os.environ:
+            slurm_job_id = os.environ["SLURM_JOBID"]
+            ip_filename = f"ip_config_{slurm_job_id}.json"
+
         ip_config = {"ipAddress" : self.ip_address}
-        with open(os.path.join(data_dir, "ip_config.json"), "w") as f:
+        with open(os.path.join(data_dir, ip_filename), "w") as f:
             json.dump(ip_config, f)
 
     def connect(self):

@@ -52,7 +52,12 @@ class Worker(object):
         self.mu_g = self.model.optimizer.mu_g
         self.send_gradients = self.model.strategy.send_gradients
 
-        with open(os.path.join(self.model.strategy.shared_folder, "ip_config.json"), "r") as f:
+        ip_filename = "ip_config.json"
+        if "SLURM_JOBID" in os.environ:
+            slurm_job_id = os.environ["SLURM_JOBID"]
+            ip_filename = f"ip_config_{slurm_job_id}.json"
+
+        with open(os.path.join(self.model.strategy.shared_folder, ip_filename), "r") as f:
             ip_config = json.load(f)
 
         self.master_ip_address = ip_config["ipAddress"]
