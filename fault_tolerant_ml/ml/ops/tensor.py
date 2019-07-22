@@ -1,147 +1,220 @@
-from typing import List, NamedTuple, Callable, Optional, Union
+"""This module contains all tensor ops to build the computation graph
+"""
+
 import numpy as np
 
-class Dependency(NamedTuple):
-    tensor: 'Tensor'
-    grad_fn: Callable[[np.ndarray], np.ndarray]
+# -----------------------------------------------------------------------------
+# Graph
+# -----------------------------------------------------------------------------
 
-Arrayable = Union[float, list, np.ndarray]
-
-def ensure_array(arrayable: Arrayable) -> np.ndarray:
-    if isinstance(arrayable, np.ndarray):
-        return arrayable
-    else:
-        return np.array(arrayable)
-
-Tensorable = Union['Tensor', 'float', np.ndarray]
-
-def ensure_tensor(tensorable: Tensorable) -> 'Tensor':
-    if isinstance(tensorable, Tensorable):
-        return tensorable
-    else:
-        return Tensor(tensorable)
-
-class Tensor(object):
-
-    def __init__(
-        self, 
-        data: Arrayable,
-        requires_grad: bool=False,
-        depends_on: List[Dependency] = None) -> None:
-        self.data = ensure_array(data)
-        self.requires_grad = requires_grad
-        self.depends_on = depends_on or []
-        self.shape = data.shape
-        self.grad: Optional['Tensor'] = None
-
-        if self.requires_grad:
-            self.zero_grad()
-
-    def __repr__(self) -> str:
-        return f"Tensor({self.data}, requires_grad={self.requires_grad})"
-
-    def __add__(self, other) -> 'Tensor':
-        """Gets called if t + other
-        """
-
-        data = self.data + other.data
-        requires_grad = self.requires_grad or other.requires_grad
-
-        if requires_grad:
-            def grad_fn(grad: np.ndarray) -> np.ndarray:
-                pass
-
-            depends_on = Dependency(self, grad_fn)
-        else:
-            depends_on = []
-
-
-        return 
-
-    def __radd__(self, other) -> 'Tensor':
-        """Gets called if + t
-        """
-        pass
-
-    def __iadd__(self, other) -> 'Tensor':
-        """Gets called if t += other
-        """
-
-    def __sub__(self, other) -> 'Tensor':
-        """Gets called if t - other
-        """
-
-        data = self.data - other.data
-
-    def __rsub__(self, other) -> 'Tensor':
-        """Gets called if - t
-        """
-
-    def __isub__(self, other) -> 'Tensor':
-        """Gets called if t -= other
-        """
-
-    def __mul__(self, other) -> 'Tensor':
-        pass
-
-    def __rmul__(self, other) -> 'Tensor':
-        pass
-
-    def __imul__(self, other) -> 'Tensor':
-        pass
-
-    def __matmul__(self, other) -> 'Tensor':
-        pass
-
-    def __truediv__(self, other) -> 'Tensor':
-        pass
-
-    def __neg__(self) -> 'Tensor':
+class Graph():
+    
+    
+    def __init__(self):
         
-        data = -self.data
-        requires_grad = self.requires_grad
-
-        if requires_grad:
-            def grad_fn(grad: np.ndarray) -> np.ndarray:
-                pass
-
-    def __pow__(self) -> 'Tensor':
-        pass
-
-    def sum(self) -> 'Tensor':
-        data = self.data.sum()
-        requires_grad = self.requires_grad
-
-        if requires_grad:
-            def grad_fn(grad: np.ndarray) -> np.ndarray:
-                return grad * np.ones_like(self.data)
-
-            depends_on = [Dependency(self, grad_fn)]
-        else:
-            depends_on = []
-
-        return Tensor(
-            data,
-            requires_grad,
-            depends_on
-        )
-
-    def mean(self) -> 'Tensor':
-        pass
-
-    def zero_grad(self) -> None:
-        self.grad = Tensor(np.zeros_like(self.data, dtype=np.float64))
-
-    def backward(self, grad: 'Tensor' = None) -> None:
+        self.operations = []
+        self.variables = []
         
-        if grad is None:
-            if self.shape == ():
-                # Seed tensor since we are using reverse automatic differentiation
-                grad = Tensor(1.0)
-            else:
-                raise RuntimeError("grad must be specified for non-0-tensor")
+    def set_as_default(self):
+        """
+        Sets this Graph instance as the Global Default Graph
+        """
+        global _default_graph
+        _default_graph = self
 
-        self.grad.data = self.grad.data + grad.data
+# -----------------------------------------------------------------------------
+# Tensor
+# -----------------------------------------------------------------------------
 
-        for dependency in self.depends_on:
-            backward_grad = dependency.grad_fn(grad.data)
+class Tensor():
+    """
+    This variable is a changeable parameter of the Graph.
+    """
+    
+    def __init__(self, initial_value = None):
+        
+        self.value = initial_value
+        self.output_nodes = []
+         
+        _default_graph.variables.append(self)
+        
+    def __repr__(self):
+        return f"Tensor({self.value}, dtype={self.value.dtype})"
+    
+    def __str__(self):
+        return f"Tensor({self.value}, dtype={self.value.dtype})"
+
+    @property
+    def T(self):
+        return self.value.T
+    
+    def __add__(self, other):
+        return add(self, other)
+
+    def __radd__(self, other):
+        return self.value + other.value
+
+    def __iadd__(self, other):
+        return self.value + other.value
+
+    def __sub__(self, other):
+        return self.value - other.value
+
+    def __rsub(self, other):
+        return self.value - other.value
+
+    def __isub__(self, other):
+        return self.value - other.value
+
+    def __mul__(self, other):
+        return self.value * other.value
+
+    def __rmul__(self, other):
+        return self.value * other.value
+
+    def __imul__(self, other):
+        return self.value * other.value
+
+    def __matmul__(self, other):
+        return self.value @ other.value
+
+    def __truediv__(self, other):
+        return self.value / other.value
+
+    def __neg__(self):
+        return -self.value
+
+
+
+# -----------------------------------------------------------------------------
+# Ops
+# -----------------------------------------------------------------------------
+
+class Operation(object):
+    """
+    An Operation is a node in a "Graph". TensorFlow will also use this concept of a Graph.
+    
+    This Operation class will be inherited by other classes that actually compute the specific
+    operation, such as adding or matrix multiplication.
+    """
+    
+    def __init__(self, input_nodes = []):
+        """
+        Intialize an Operation
+        """
+        self.input_nodes = input_nodes # The list of input nodes
+        self.output_nodes = [] # List of nodes consuming this node's output
+        
+        # For every node in the input, we append this operation (self) to the list of
+        # the consumers of the input nodes
+        for node in input_nodes:
+            node.output_nodes.append(self)
+        
+        # There will be a global default graph (TensorFlow works this way)
+        # We will then append this particular operation
+        # Append this operation to the list of operations in the currently active default graph
+        _default_graph.operations.append(self)
+        
+    def __repr__(self):
+        return f"{self.__class__.__name__}()"
+  
+    def compute(self):
+        """ 
+        This is a placeholder function. It will be overwritten by the actual specific operation
+        that inherits from this class.
+        
+        """
+        
+        raise NotImplementedError
+
+# -----------------------------------------------------------------------------
+# Ops child classes
+# -----------------------------------------------------------------------------
+
+class add(Operation):
+    
+    def __init__(self, a, b):
+         
+        super().__init__([a, b])
+
+    def compute(self, a, b):
+         
+        self.inputs = [a, b]
+        return a.value + b.value
+
+class subtract(Operation):
+    
+    def __init__(self, a, b):
+         
+        super().__init__([a, b])
+
+    def compute(self, a, b):
+         
+        self.inputs = [a, b]
+        return a.value - b.value
+
+class multiply(Operation):
+     
+    def __init__(self, a, b):
+        
+        super().__init__([a, b])
+    
+    def compute(self, a, b):
+         
+        self.inputs = [a, b]
+        return a.value * b.value
+
+class divide(Operation):
+     
+    def __init__(self, a, b):
+        
+        super().__init__([a, b])
+    
+    def compute(self, a, b):
+         
+        self.inputs = [a, b]
+        return a.value / b.value
+
+class matmul(Operation):
+     
+    def __init__(self, a, b):
+        
+        super().__init__([a, b])
+    
+    def compute(self, a, b):
+         
+        self.inputs = [a, b]
+        return a.value.dot(b.value)
+
+class neg(Operation):
+     
+    def __init__(self, a):
+        
+        super().__init__([a])
+    
+    def compute(self, a):
+         
+        self.inputs = [a]
+        return -a.value
+
+class square(Operation):
+     
+    def __init__(self, a):
+        
+        super().__init__([a])
+    
+    def compute(self, a):
+         
+        self.inputs = [a]
+        return a.value * a.value
+
+class pow(Operation):
+     
+    def __init__(self, a, p):
+        
+        super().__init__([a, p])
+    
+    def compute(self, a, p):
+         
+        self.inputs = [a, p]
+        return np.power(a.value, p)
