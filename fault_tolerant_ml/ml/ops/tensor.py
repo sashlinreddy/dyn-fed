@@ -1,220 +1,345 @@
-"""This module contains all tensor ops to build the computation graph
-"""
-
+from typing import List, NamedTuple, Callable, Optional, Union
 import numpy as np
 
-# -----------------------------------------------------------------------------
-# Graph
-# -----------------------------------------------------------------------------
+class Dependency(NamedTuple):
+    tensor: 'Tensor'
+    grad_fn: Callable[[np.ndarray], np.ndarray]
 
-class Graph():
-    
-    
-    def __init__(self):
-        
-        self.operations = []
-        self.variables = []
-        
-    def set_as_default(self):
+Arrayable = Union[float, list, np.ndarray]
+
+def ensure_array(arrayable: Arrayable) -> np.ndarray:
+    if isinstance(arrayable, np.ndarray):
+        return arrayable
+    else:
+        return np.array(arrayable)
+
+Tensorable = Union['Tensor', 'float', np.ndarray]
+
+def ensure_tensor(tensorable: Tensorable) -> 'Tensor':
+    if isinstance(tensorable, Tensor):
+        return tensorable
+    else:
+        return Tensor(tensorable)
+
+class Tensor(object):
+
+    def __init__(
+        self, 
+        data: Arrayable,
+        requires_grad: bool=False,
+        depends_on: List[Dependency] = None) -> None:
+        self._data = ensure_array(data)
+        self.requires_grad = requires_grad
+        self.depends_on = depends_on or []
+        self.shape = self.data.shape
+        self.grad: Optional['Tensor'] = None
+
+        if self.requires_grad:
+            self.zero_grad()
+
+    def __repr__(self) -> str:
+        return f"Tensor({self.data}, requires_grad={self.requires_grad})"
+
+    def __add__(self, other) -> 'Tensor':
+        """Gets called if t + other
         """
-        Sets this Graph instance as the Global Default Graph
+
+        return _add(self, ensure_tensor(other))
+
+    def __radd__(self, other) -> 'Tensor':
+        """Gets called if + t
         """
-        global _default_graph
-        _default_graph = self
+        return _add(self, ensure_tensor(other))
 
-# -----------------------------------------------------------------------------
-# Tensor
-# -----------------------------------------------------------------------------
+    def __iadd__(self, other) -> 'Tensor':
+        """Gets called if t += other
+        """
+        self.data = self.data + ensure_tensor(other).data
+        
+        return self
 
-class Tensor():
-    """
-    This variable is a changeable parameter of the Graph.
-    """
-    
-    def __init__(self, initial_value = None):
-        
-        self.value = initial_value
-        self.output_nodes = []
-         
-        _default_graph.variables.append(self)
-        
-    def __repr__(self):
-        return f"Tensor({self.value}, dtype={self.value.dtype})"
-    
-    def __str__(self):
-        return f"Tensor({self.value}, dtype={self.value.dtype})"
+    def __sub__(self, other) -> 'Tensor':
+        """Gets called if t - other
+        """
+        return _sub(self, ensure_tensor(other))
+
+    def __rsub__(self, other) -> 'Tensor':
+        """Gets called if - t
+        """
+        return _sub(self, ensure_tensor(other))
+
+    def __isub__(self, other) -> 'Tensor':
+        """Gets called if t -= other
+        """
+
+        self.data = self.data - ensure_tensor(other).data
+
+        return self
+
+    def __mul__(self, other) -> 'Tensor':
+        return _mul(self, ensure_tensor(other))
+
+    def __rmul__(self, other) -> 'Tensor':
+        return _mul(self, ensure_tensor(other))
+
+    def __imul__(self, other) -> 'Tensor':
+        self.data = self.data * ensure_tensor(other).data
+
+        return self
+
+    def __matmul__(self, other) -> 'Tensor':
+        return _matmul(self, other)
+
+    def __truediv__(self, other) -> 'Tensor':
+        pass
+
+    def __neg__(self) -> 'Tensor':
+        return _neg(self)
+
+    def __pow__(self) -> 'Tensor':
+        pass
+
+    def __getitem__(self, idxs) -> 'Tensor':
+        return _slice(self, idxs)
+
+    def sum(self) -> 'Tensor':
+        return tensor_sum(self)
+
+    def mean(self) -> 'Tensor':
+        pass
 
     @property
-    def T(self):
-        return self.value.T
-    
-    def __add__(self, other):
-        return add(self, other)
+    def data(self) -> np.ndarray:
+        return self._data
 
-    def __radd__(self, other):
-        return self.value + other.value
+    @data.setter
+    def data(self, new_data: np.ndarray) -> None:
+        self._data = new_data
+        # Setting the data manually means we invalidate the gradient
+        self.grad = None
 
-    def __iadd__(self, other):
-        return self.value + other.value
+    def zero_grad(self) -> None:
+        self.grad = Tensor(np.zeros_like(self.data, dtype=np.float64))
 
-    def __sub__(self, other):
-        return self.value - other.value
+    def backward(self, grad: 'Tensor' = None) -> None:
+        
+        assert self.requires_grad, "called backwards on non-requires-grad tensor"
+        if grad is None:
+            if self.shape == ():
+                # Seed tensor since we are using reverse automatic differentiation
+                grad = Tensor(1.0)
+            else:
+                raise RuntimeError("grad must be specified for non-0-tensor")
 
-    def __rsub(self, other):
-        return self.value - other.value
+        self.grad.data = self.grad.data + grad.data
 
-    def __isub__(self, other):
-        return self.value - other.value
-
-    def __mul__(self, other):
-        return self.value * other.value
-
-    def __rmul__(self, other):
-        return self.value * other.value
-
-    def __imul__(self, other):
-        return self.value * other.value
-
-    def __matmul__(self, other):
-        return self.value @ other.value
-
-    def __truediv__(self, other):
-        return self.value / other.value
-
-    def __neg__(self):
-        return -self.value
+        for dependency in self.depends_on:
+            backward_grad = dependency.grad_fn(grad.data)
+            dependency.tensor.backward(Tensor(backward_grad))
 
 
-
-# -----------------------------------------------------------------------------
-# Ops
-# -----------------------------------------------------------------------------
-
-class Operation(object):
+def tensor_sum(t: Tensor) -> Tensor:
+    """Takes a tensor and returns the 0-tensor that's the sum of all it's elements
     """
-    An Operation is a node in a "Graph". TensorFlow will also use this concept of a Graph.
+
+    data = t.data.sum()
+    requires_grad = t.requires_grad
+
+    if requires_grad:
+
+        def grad_fn(grad: np.ndarray) -> np.ndarray:
+            """Grad is necessarily a 0-tensor, so each input element contributes that much
+            """
+
+            return grad * np.ones_like(t.data)
+
+        depends_on = [Dependency(t, grad_fn)]
+
+    else:
+
+        depends_on = []
     
-    This Operation class will be inherited by other classes that actually compute the specific
-    operation, such as adding or matrix multiplication.
+    return Tensor(
+        data,
+        requires_grad,
+        depends_on
+    )
+
+def _add(t1: Tensor, t2: Tensor) -> Tensor:
+    """Takes a tensor and returns the 0-tensor that's the sum of all it's elements
     """
+
+    data = t1.data + t2.data
+    requires_grad = t1.requires_grad or t2.requires_grad
+
+    depends_on: List[Dependency] = []
+
+    if t1.requires_grad:
+
+        def grad_fn1(grad: np.ndarray) -> np.ndarray:
+            # Sum out added dims
+            ndims_added = grad.ndim - t1.data.ndim
+
+            for _ in np.arange(ndims_added):
+                grad = grad.sum(axis=0)
+
+            # Sum across broadcasted (but non-added dims)
+            for i, dim in enumerate(t1.shape):
+                if dim == 1:
+                    grad = grad.sum(axis=i, keepdims=True)
+
+            return grad
+
+        depends_on.append(Dependency(t1, grad_fn1))
+
+    if t2.requires_grad:
+
+        def grad_fn2(grad: np.ndarray) -> np.ndarray:
+
+            # Handle broacasting properly
+            ndims_added = grad.ndim - t2.data.ndim
+
+            for _ in np.arange(ndims_added):
+                grad = grad.sum(axis=0)
+
+            # Sum across broadcasted (but non-added dims)
+            for i, dim in enumerate(t2.shape):
+                if dim == 1:
+                    grad = grad.sum(axis=i, keepdims=True)
+                
+            return grad
+
+        depends_on.append(Dependency(t2, grad_fn2))
     
-    def __init__(self, input_nodes = []):
-        """
-        Intialize an Operation
-        """
-        self.input_nodes = input_nodes # The list of input nodes
-        self.output_nodes = [] # List of nodes consuming this node's output
-        
-        # For every node in the input, we append this operation (self) to the list of
-        # the consumers of the input nodes
-        for node in input_nodes:
-            node.output_nodes.append(self)
-        
-        # There will be a global default graph (TensorFlow works this way)
-        # We will then append this particular operation
-        # Append this operation to the list of operations in the currently active default graph
-        _default_graph.operations.append(self)
-        
-    def __repr__(self):
-        return f"{self.__class__.__name__}()"
-  
-    def compute(self):
-        """ 
-        This is a placeholder function. It will be overwritten by the actual specific operation
-        that inherits from this class.
-        
-        """
-        
-        raise NotImplementedError
+    return Tensor(
+        data,
+        requires_grad,
+        depends_on
+    )
 
-# -----------------------------------------------------------------------------
-# Ops child classes
-# -----------------------------------------------------------------------------
+def _mul(t1: Tensor, t2: Tensor) -> Tensor:
+    """
+    """
 
-class add(Operation):
+    data = t1.data * t2.data
+    requires_grad = t1.requires_grad or t2.requires_grad
+
+    depends_on: List[Dependency] = []
+
+    if t1.requires_grad:
+
+        def grad_fn1(grad: np.ndarray) -> np.ndarray:
+
+            grad = grad * t2.data
+
+            # Sum out added dims
+            ndims_added = grad.ndim - t1.data.ndim
+
+            for _ in np.arange(ndims_added):
+                grad = grad.sum(axis=0)
+
+            # Sum across broadcasted (but non-added dims)
+            for i, dim in enumerate(t1.shape):
+                if dim == 1:
+                    grad = grad.sum(axis=i, keepdims=True)
+
+            return grad
+
+        depends_on.append(Dependency(t1, grad_fn1))
+
+    if t2.requires_grad:
+
+        def grad_fn2(grad: np.ndarray) -> np.ndarray:
+
+            grad = grad * t1.data
+
+            # Handle broacasting properly
+            ndims_added = grad.ndim - t2.data.ndim
+
+            for _ in np.arange(ndims_added):
+                grad = grad.sum(axis=0)
+
+            # Sum across broadcasted (but non-added dims)
+            for i, dim in enumerate(t2.shape):
+                if dim == 1:
+                    grad = grad.sum(axis=i, keepdims=True)
+                
+            return grad
+
+        depends_on.append(Dependency(t2, grad_fn2))
     
-    def __init__(self, a, b):
-         
-        super().__init__([a, b])
+    return Tensor(
+        data,
+        requires_grad,
+        depends_on
+    )
 
-    def compute(self, a, b):
-         
-        self.inputs = [a, b]
-        return a.value + b.value
+def _neg(t: Tensor) -> Tensor:
+    data = -t.data
+    requires_grad = t.requires_grad
+    if requires_grad:
+        depends_on = [Dependency(t, lambda x: -x)]
+    else:
+        depends_on = []
 
-class subtract(Operation):
+    return Tensor(
+        data,
+        requires_grad,
+        depends_on
+    )
+
+def _sub(t1: Tensor, t2: Tensor) -> Tensor:
+    return _add(t1, _neg(t2))
+
+def _matmul(t1: Tensor, t2: Tensor) -> Tensor:
+
+    data = t1.data @ t2.data
+    requires_grad = t1.requires_grad or t2.requires_grad
+
+    depends_on: List[Dependency] = []
+
+    if t1.requires_grad:
+
+        def grad_fn1(grad: np.ndarray) -> np.ndarray:
+
+            grad = grad @ t2.data.T
+
+            return grad
+
+        depends_on.append(Dependency(t1, grad_fn1))
+
+    if t2.requires_grad:
+
+        def grad_fn2(grad: np.ndarray) -> np.ndarray:
+
+            grad = t1.data.T @ grad
+                
+            return grad
+
+        depends_on.append(Dependency(t2, grad_fn2))
     
-    def __init__(self, a, b):
-         
-        super().__init__([a, b])
+    return Tensor(
+        data,
+        requires_grad,
+        depends_on
+    )
 
-    def compute(self, a, b):
-         
-        self.inputs = [a, b]
-        return a.value - b.value
+def _slice(t: Tensor, *idxs) -> Tensor:
+    """
+    """
+    data = t.data[idxs]
+    requires_grad = t.requires_grad
 
-class multiply(Operation):
-     
-    def __init__(self, a, b):
-        
-        super().__init__([a, b])
-    
-    def compute(self, a, b):
-         
-        self.inputs = [a, b]
-        return a.value * b.value
+    if requires_grad:
 
-class divide(Operation):
-     
-    def __init__(self, a, b):
-        
-        super().__init__([a, b])
-    
-    def compute(self, a, b):
-         
-        self.inputs = [a, b]
-        return a.value / b.value
+        def grad_fn(grad: np.ndarray) -> np.ndarray:
+            bigger_grad = np.zeros_like(data)
+            bigger_grad[idxs] = grad
+            return bigger_grad
 
-class matmul(Operation):
-     
-    def __init__(self, a, b):
-        
-        super().__init__([a, b])
-    
-    def compute(self, a, b):
-         
-        self.inputs = [a, b]
-        return a.value.dot(b.value)
+        depends_on = Dependency(t, grad_fn)
+    else:
 
-class neg(Operation):
-     
-    def __init__(self, a):
-        
-        super().__init__([a])
-    
-    def compute(self, a):
-         
-        self.inputs = [a]
-        return -a.value
+        depends_on = []
 
-class square(Operation):
-     
-    def __init__(self, a):
-        
-        super().__init__([a])
-    
-    def compute(self, a):
-         
-        self.inputs = [a]
-        return a.value * a.value
-
-class pow(Operation):
-     
-    def __init__(self, a, p):
-        
-        super().__init__([a, p])
-    
-    def compute(self, a, p):
-         
-        self.inputs = [a, p]
-        return np.power(a.value, p)
+    return Tensor(data, requires_grad, depends_on)

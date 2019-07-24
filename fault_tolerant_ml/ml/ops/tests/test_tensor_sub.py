@@ -1,5 +1,5 @@
 import unittest
-from fault_tolerant_ml.ml.ops.tensorpy import Tensor
+from fault_tolerant_ml.ml.ops.tensor import Tensor
 
 class TestTensorSub(unittest.TestCase):
     
@@ -17,6 +17,11 @@ class TestTensorSub(unittest.TestCase):
 
         assert t1.grad.data.tolist() == [-1, -2, -3]
         assert t2.grad.data.tolist() == [1, 2, 3]
+
+        t1 -= 0.1
+
+        assert t1.grad is None
+        assert t1.data.tolist() == [0.9, 1.9, 2.9]
 
     def test_broadcast_sub(self):
         """Test broadcast add
@@ -44,7 +49,7 @@ class TestTensorSub(unittest.TestCase):
         t3 = t1 - t2
 
         assert t3.data.tolist() == [[-6, -6, -6], [-3, -3, -3]]
-        
+
         t3.backward(Tensor([[1, 1, 1], [1, 1, 1]]))
 
         assert t1.grad.data.tolist() == [[1, 1, 1], [1, 1, 1]]

@@ -1,5 +1,5 @@
 import unittest
-from fault_tolerant_ml.ml.ops.tensorpy import Tensor
+from fault_tolerant_ml.ml.ops.tensor import Tensor
 
 class TestTensorAdd(unittest.TestCase):
     
@@ -17,6 +17,11 @@ class TestTensorAdd(unittest.TestCase):
 
         assert t1.grad.data.tolist() == [-1, -2, -3]
         assert t2.grad.data.tolist() == [-1, -2, -3]
+
+        t1 += 0.1
+
+        assert t1.grad is None
+        assert t1.data.tolist() == [1.1, 2.1, 3.1]
 
     def test_broadcast_add(self):
         """Test broadcast add
