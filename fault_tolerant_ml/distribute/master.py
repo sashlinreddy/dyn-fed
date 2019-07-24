@@ -22,7 +22,7 @@ from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData, MNist
 from fault_tolerant_ml.ml import hypotheses
-from fault_tolerant_ml.metrics import test_hypothesis, accuracy_scorev2
+from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
 from fault_tolerant_ml.utils.maths import linspace_quantization
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
@@ -59,7 +59,6 @@ class Master(object):
         self.n_iterations = int(np.ceil(self.model.max_iter / self.strategy.comm_period))
         self.learning_rate = self.model.optimizer.learning_rate
         self.mu_g = self.model.optimizer.mu_g
-        self.hypothesis = hypotheses.log_hypothesis
         self.optimizer = self.model.optimizer
 
         # Tracking variables
@@ -542,13 +541,12 @@ class Master(object):
         self.logger.debug(f"Times={diff.mean():7.6f}s")
 
         # Print confusion matrix
-        confusion_matrix = test_hypothesis(self.data.X_test, self.data.y_test, self.model.theta)
-        self.logger.info(f"Confusion matrix=\n{confusion_matrix}")
+        y_pred = self.model.predict(self.data.X_test)
+        conf_matrix = confusion_matrix(self.data.y_test, y_pred)
+        self.logger.info(f"Confusion matrix=\n{conf_matrix}")
 
         # Accuracy
-        y_pred = self.model.predict(self.data.X_test)
         acc = accuracy_scorev2(self.data.y_test, y_pred)
-        # acc = accuracy(self.data.X_test, self.data.y_test, self.model.theta, self.hypothesis)
         self.logger.info(f"Accuracy={acc * 100:7.4f}%")
 
     def plot_metrics(self):
