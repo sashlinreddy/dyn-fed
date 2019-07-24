@@ -5,7 +5,7 @@ from dotenv import load_dotenv, find_dotenv
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.lib.io import file_io
-from fault_tolerant_ml.ml.linear_model import LogisticRegression
+from fault_tolerant_ml.models.linear_model import LogisticRegression
 from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer
 from fault_tolerant_ml import losses as loss_fns
 from fault_tolerant_ml.utils import model_utils

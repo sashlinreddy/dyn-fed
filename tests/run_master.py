@@ -5,7 +5,7 @@ import numpy as np
 from dotenv import load_dotenv, find_dotenv
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
-from fault_tolerant_ml.ml.linear_model import LogisticRegression
+from fault_tolerant_ml.models.linear_model import LogisticRegression
 from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer
 from fault_tolerant_ml.losses import cross_entropy_loss, cross_entropy_gradient
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
