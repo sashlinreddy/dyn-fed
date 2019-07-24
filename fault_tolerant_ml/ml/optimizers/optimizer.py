@@ -113,8 +113,8 @@ class SGDOptimizer(Optimizer):
         """
         # Calculate error/residuals
         e = (y_pred - y)
-
-        d_theta = 1 / X.shape[0] * self.grad(X, e)
+        d = y_pred * (1 - y_pred) * e
+        d_theta = 1 / X.shape[0] * self.grad(X, d)
 
         # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
         # assert np.all(d_theta == 0.0)

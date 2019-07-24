@@ -15,8 +15,6 @@ import json
 # Local
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
-from fault_tolerant_ml.ml import hypotheses, loss_fns
-from fault_tolerant_ml.ml.optimizer import SGDOptimizer
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.ml.ops.maths_utils import reconstruct_approximation, linspace_quantization
 from fault_tolerant_ml.distribute.distributor import Distributor
@@ -34,10 +32,6 @@ class Worker(object):
         self.worker_id = str(uuid.uuid4()) if id is None else f"worker-{id}"
         self.subscriber = None
         self.connected = False
-
-        # Model variables
-        # self.hypothesis = hypotheses.log_hypothesis
-        # self.gradient = loss_fns.cross_entropy_gradient
 
         self.model = model
         self.strategy = self.model.strategy

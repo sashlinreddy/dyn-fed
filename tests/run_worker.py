@@ -1,12 +1,13 @@
 import click
 import os
 import time
+from dotenv import load_dotenv, find_dotenv
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.lib.io import file_io
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
-from fault_tolerant_ml.ml.optimizer import SGDOptimizer, AdamOptimizer
-from fault_tolerant_ml.ml import loss_fns
+from fault_tolerant_ml.ml.optimizers import SGDOptimizer, AdamOptimizer
+from fault_tolerant_ml.ml import losses as loss_fns
 from fault_tolerant_ml.utils import model_utils
 
 @click.command()

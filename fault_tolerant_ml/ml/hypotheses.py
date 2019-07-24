@@ -1,5 +1,5 @@
 import numpy as np
-from . import act_fns as af
+from fault_tolerant_ml.ml.activations import act_fns as af
 
 # Logistic regression
 def log_hypothesis(X, theta):

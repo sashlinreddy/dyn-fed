@@ -2,11 +2,12 @@ import click
 import os
 import time 
 import numpy as np
+from dotenv import load_dotenv, find_dotenv
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.ml.linear_model import LogisticRegression
-from fault_tolerant_ml.ml.optimizer import SGDOptimizer, AdamOptimizer
-from fault_tolerant_ml.ml.loss_fns import cross_entropy_loss, cross_entropy_gradient
+from fault_tolerant_ml.ml.optimizers import SGDOptimizer, AdamOptimizer
+from fault_tolerant_ml.ml.losses import cross_entropy_loss, cross_entropy_gradient
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
 from fault_tolerant_ml.utils import setup_logger, model_utils
@@ -39,7 +40,7 @@ def run(n_workers, verbose):
         send_gradients (bool): Whether or not to send gradients or parameters back
     """
 
-    # # load_dotenv(find_dotenv())
+    # load_dotenv(find_dotenv())
 
     if "LOGDIR" in os.environ:
         from fault_tolerant_ml.lib.io.file_io import flush_dir
