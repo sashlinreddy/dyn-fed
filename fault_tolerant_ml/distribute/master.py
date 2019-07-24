@@ -23,7 +23,7 @@ from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData, MNist
 from fault_tolerant_ml.ml import hypotheses
 from fault_tolerant_ml.metrics import test_hypothesis, accuracy_scorev2
-from fault_tolerant_ml.ml.ops.maths_utils import linspace_quantization
+from fault_tolerant_ml.utils.maths import linspace_quantization
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.distributor import Distributor

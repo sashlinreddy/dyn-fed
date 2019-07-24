@@ -16,7 +16,7 @@ import json
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.tools import TFLogger
-from fault_tolerant_ml.ml.ops.maths_utils import reconstruct_approximation, linspace_quantization
+from fault_tolerant_ml.utils.maths import reconstruct_approximation, linspace_quantization
 from fault_tolerant_ml.distribute.distributor import Distributor
 
 class Worker(object):

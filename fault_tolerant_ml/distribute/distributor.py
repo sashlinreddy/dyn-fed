@@ -3,7 +3,7 @@ import zmq.green as zmq
 import numpy as np
 import time
 from fault_tolerant_ml.distribute.states import *
-from fault_tolerant_ml.ml.ops.maths_utils import reconstruct_approximation
+from fault_tolerant_ml.utils.maths import reconstruct_approximation
 class Distributor(object):
     """Responsible for distributing data
     """
