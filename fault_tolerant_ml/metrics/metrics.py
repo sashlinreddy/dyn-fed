@@ -1,6 +1,6 @@
 import numpy as np
 import sys
-from . import hypotheses as hyp
+from fault_tolerant_ml.ml import hypotheses as hyp
 
 def print_confusion_matrix(confusion_matrix, targets):
     """This function performs formatted printing of the confusion matrix.

@@ -22,8 +22,7 @@ from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.data import DummyData, OccupancyData, MNist
 from fault_tolerant_ml.ml import hypotheses
-from fault_tolerant_ml.ml.metrics import test_hypothesis, accuracy
-from fault_tolerant_ml.ml.metrics_temp import accuracy_scorev2
+from fault_tolerant_ml.metrics import test_hypothesis, accuracy_scorev2
 from fault_tolerant_ml.ml.ops.maths_utils import linspace_quantization
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
