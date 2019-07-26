@@ -37,8 +37,8 @@ class CrossEntropyLoss(Loss):
         loss = -y * np.log(y_pred) - (1 - y) * np.log(1 - y_pred)
         if reduce:
             loss = np.mean(loss)
-        else:
-            return loss
+        
+        return loss
 
     @staticmethod
     def grad(y, y_pred):
@@ -74,8 +74,8 @@ class MSELoss(Loss):
         loss = (1 / 2) * np.linalg.norm(y_pred - y) ** 2
         if reduce:
             loss = np.mean(loss)
-        else:
-            return loss
+        
+        return loss
 
     @staticmethod
     def grad(y, y_pred, z, act_fn):
