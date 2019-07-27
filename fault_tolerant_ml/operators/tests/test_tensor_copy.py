@@ -43,3 +43,12 @@ class TestTensorAdd(unittest.TestCase):
         
         logger.info(f"t3={t3}, t1={t1}")
         assert t1.data.tolist() == [2, 3, 4]
+
+    def test_parameter_copy(self):
+        """Test if parameter variable is copied
+        """
+        t1 = Tensor([2, 3, 4], is_param=True)
+        t3 = t1.copy()
+        
+        logger.info(f"t3={t3}")
+        assert t3.is_param
