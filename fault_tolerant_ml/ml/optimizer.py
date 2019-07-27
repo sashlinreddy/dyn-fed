@@ -257,8 +257,8 @@ class AdamOptimizer(Optimizer):
         """
         # Calculate error/residuals
         e = (y_pred - y)
-
-        d_theta = 1 / X.shape[0] * self.grad(X, e)
+        d = y_pred * (1 - y_pred) * e
+        d_theta = 1 / X.shape[0] * self.grad(X, d)
 
         return d_theta
 
