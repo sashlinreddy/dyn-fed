@@ -34,7 +34,7 @@ def run(n_workers, verbose, id, tmux, add):
         if add:
             identity += 1000
 
-    # Load model config - this is an assumption that config is in root code directory
+     # Load in config to setup model
     config_path = 'config.yml'
     if 'PROJECT_DIR' in os.environ:
         config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
@@ -49,29 +49,32 @@ def run(n_workers, verbose, id, tmux, add):
     if 'PROJECT_DIR' in os.environ:
         executor_cfg['shared_folder'] = os.path.join(os.environ['PROJECT_DIR'], executor_cfg['shared_folder'])
 
+    # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
     
     # Setup optimizer
     gradient = loss_fns.cross_entropy_gradient
-    optimizer = SGDOptimizer(
-        loss=loss_fns.single_cross_entropy_loss, 
-        grad=gradient, 
-        role="worker", 
-        learning_rate=opt_cfg['learning_rate'], 
-        n_most_rep=opt_cfg['n_most_rep'], 
-        mu_g=opt_cfg['mu_g']
-    )
 
-    # optimizer = AdamOptimizer(
-    #     loss=loss_fns.single_cross_entropy_loss, 
-    #     grad=gradient, 
-    #     role="worker", 
-    #     learning_rate=opt_cfg['learning_rate'], 
-    #     n_most_rep=opt_cfg['n_most_rep'], 
-    #     mu_g=opt_cfg['mu_g']
-    # )
+    if opt_cfg["name"] == "sgd":
+        optimizer = SGDOptimizer(
+            loss=loss_fns.single_cross_entropy_loss, 
+            grad=gradient, 
+            role="worker", 
+            learning_rate=opt_cfg['learning_rate'], 
+            n_most_rep=opt_cfg['n_most_rep'], 
+            mu_g=opt_cfg['mu_g']
+        )
+    elif opt_cfg["name"] == "adam":
+        optimizer = AdamOptimizer(
+            loss=loss_fns.single_cross_entropy_loss, 
+            grad=gradient, 
+            role="worker", 
+            learning_rate=opt_cfg['learning_rate'], 
+            n_most_rep=opt_cfg['n_most_rep'], 
+            mu_g=opt_cfg['mu_g']
+        )
 
-       # Setup distribution strategy
+    # Setup distribution strategy
     strategy = MasterWorkerStrategy(
         n_workers=n_workers,
         config=executor_cfg,
@@ -88,6 +91,7 @@ def run(n_workers, verbose, id, tmux, add):
         encode_name=encoded_run_name)
     
     # time.sleep(1)
+    # Train model
     model.fit()
 
 if __name__ == "__main__":
