@@ -74,6 +74,8 @@ def run(n_workers, verbose, id, tmux, add):
             mu_g=opt_cfg['mu_g']
         )
 
+    logger.info(f"Optimizer={optimizer}")
+
     # Setup distribution strategy
     strategy = MasterWorkerStrategy(
         n_workers=n_workers,

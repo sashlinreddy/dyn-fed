@@ -14,6 +14,9 @@ class Optimizer(object):
 
         self._logger = logging.getLogger("ftml")
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}(learning_rate={self.learning_rate})"
+
     @property
     def name(self):
         """Name of optimizer
@@ -100,6 +103,9 @@ class SGDOptimizer(Optimizer):
         if "mu_g" in kwargs:
             self._mu_g = kwargs["mu_g"]
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}(learning_rate={self.learning_rate}, mu_g={self.mu_g})"
+
     @property
     def name(self):
         return "sgd"
@@ -149,7 +155,8 @@ class SGDOptimizer(Optimizer):
         """
         # Calculate error/residuals
         e = (y_pred - y)
-        d = y_pred * (1 - y_pred) * e
+        # d = y_pred * (1 - y_pred) * e
+        d = e
         d_theta = 1 / X.shape[0] * self.grad(X, d)
 
         # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
@@ -243,6 +250,9 @@ class AdamOptimizer(Optimizer):
             self._role = kwargs["role"]
         if "mu_g" in kwargs:
             self._mu_g = kwargs["mu_g"]
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(learning_rate={self.learning_rate}, mu_g={self.mu_g})"
 
     @property
     def name(self):
