@@ -2,6 +2,7 @@ import click
 import os
 import time 
 import numpy as np
+import logging
 from dotenv import load_dotenv, find_dotenv
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
@@ -40,7 +41,7 @@ def run(n_workers, verbose):
         send_gradients (bool): Whether or not to send gradients or parameters back
     """
 
-    # load_dotenv(find_dotenv())
+    load_dotenv(find_dotenv())
 
     if "LOGDIR" in os.environ:
         from fault_tolerant_ml.lib.io.file_io import flush_dir
@@ -68,8 +69,8 @@ def run(n_workers, verbose):
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
 
     # Setup logger
-    logger = setup_logger(level=verbose)
-
+    setup_logger(level=verbose)
+    logger = logging.getLogger("ftml.scripts.run_master")
     logger.info(f"Starting run: {encoded_run_name}")
 
     # Create optimizer

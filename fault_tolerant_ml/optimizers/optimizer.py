@@ -7,12 +7,11 @@ class Optimizer(object):
     Attributes:
         learning_rate (float): The rate at which the machine learning algorithm will learn      and how fast our descent method will go down the slope to find it's global minima
     """
-    def __init__(self, loss, grad, learning_rate):
+    def __init__(self, loss, learning_rate):
         self.learning_rate = learning_rate
         self.loss = loss
-        self.grad = grad
 
-        self._logger = logging.getLogger("ftml")
+        self._logger = logging.getLogger(f"ftml.optimizers.{self.__class__.__name__}")
 
     def __repr__(self):
         return f"{self.__class__.__name__}(learning_rate={self.learning_rate})"
@@ -84,8 +83,8 @@ class SGD():
 class SGDOptimizer(Optimizer):
     """Stochastic gradient descent optimizer
     """
-    def __init__(self, loss, grad, learning_rate=0.1, **kwargs):
-        super().__init__(loss, grad, learning_rate)
+    def __init__(self, loss, learning_rate=0.1, **kwargs):
+        super().__init__(loss, learning_rate)
         self._role = None
         self._most_rep = None
         self._clip_norm = None
@@ -128,9 +127,9 @@ class SGDOptimizer(Optimizer):
 
     def compute_loss(self, y, y_pred):
         # Calculate loss between predicted and actual using selected loss function
-        batch_loss = self.loss(y_pred, y)
+        batch_loss = self.loss(y, y_pred, reduce=False)
 
-        if self._role is not None:
+        if self._role != "master":
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
             if batch_loss.shape[1] > 1:
@@ -154,9 +153,10 @@ class SGDOptimizer(Optimizer):
             d_theta (numpy.ndarray): Gradient parameter matrix
         """
         # Calculate error/residuals
-        e = (y_pred - y)
-        d = y_pred * (1 - y_pred) * e
-        d_theta = 1 / X.shape[0] * self.grad(X, d)
+        cost_prime = self.loss.grad(y, y_pred)
+        # Calculate error term
+        delta = y_pred * (1 - y_pred) * cost_prime
+        d_theta = 1 / X.shape[0] * np.dot(X.T, delta)
 
         # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
         # assert np.all(d_theta == 0.0)
@@ -229,8 +229,8 @@ class AdamOptimizer(Optimizer):
         beta2 (float): Second moment hyperparameter (default: 0.999)
         epsilon (float): Some arbritrary epsilon so we do not divide by 0 (default: 1e-8)
     """
-    def __init__(self, loss, grad, learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, **kwargs):
-        super().__init__(loss, grad, learning_rate)
+    def __init__(self, loss, learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, **kwargs):
+        super().__init__(loss, learning_rate)
 
         self.beta_1 = beta_1
         self.beta_2 = beta_2
@@ -275,9 +275,9 @@ class AdamOptimizer(Optimizer):
 
     def compute_loss(self, y, y_pred):
         # Calculate loss between predicted and actual using selected loss function
-        batch_loss = self.loss(y_pred, y)
+        batch_loss = self.loss(y, y_pred, reduce=False)
 
-        if self._role is not None:
+        if self._role != "master":
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
             if batch_loss.shape[1] > 1:
@@ -301,9 +301,10 @@ class AdamOptimizer(Optimizer):
             d_theta (numpy.ndarray): Gradient parameter matrix
         """
         # Calculate error/residuals
-        e = (y_pred - y)
-        d = y_pred * (1 - y_pred) * e
-        d_theta = 1 / X.shape[0] * self.grad(X, d)
+        cost_prime = self.loss.grad(y, y_pred)
+        # Calculate error term
+        delta = y_pred * (1 - y_pred) * cost_prime
+        d_theta = 1 / X.shape[0] * np.dot(X.T, delta)
 
         return d_theta
 
