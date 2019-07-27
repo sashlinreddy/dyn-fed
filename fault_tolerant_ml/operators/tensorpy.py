@@ -63,6 +63,9 @@ class Tensor():
     
     def __neg__(self):
         return Tensor(-self.data)
+
+    def __abs__(self):
+        return Tensor(abs(self.data))
     
     def __getitem__(self, idxs):
         return Tensor(self.data[idxs])
