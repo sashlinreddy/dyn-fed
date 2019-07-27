@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -n 1
+#SBATCH -n 2
 #SBATCH -t 04:00:00               # max runtime is 4 hours
 #SBATCH -J tensorboard_server    # name
 #SBATCH -o /home-mscluster/sreddy/logs/tensorflow/tb-%J.out
@@ -17,7 +17,7 @@ ipnip=$(hostname -i)
 echo ipnip=$ipnip
 
 source /home-mscluster/sreddy/.bashrc
-LOGDIR=/home-mscluster/sreddy/logs
+LOGDIR=/home-mscluster/sreddy/logs/tf/
 
 conda activate ftml
 tensorboard --logdir="${LOGDIR}" --port=$ipnport

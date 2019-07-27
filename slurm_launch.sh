@@ -21,11 +21,11 @@ while [ "$1" != "" ]; do
 done
 
 export PYTHON_EXE=/home-mscluster/sreddy/miniconda3/envs/ftml/bin/python3
-export MASTER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/scripts/run_master.py
-export WORKER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/scripts/run_worker.py
+export MASTER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/scripts/train.py
+export WORKER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/scripts/train.py
 export DATA_DIR=/home-mscluster/sreddy/fault-tolerant-ml/data/fashion-mnist
 
-echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS $verbose > /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
-echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS $verbose -i %t >> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
+echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r master $verbose > /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
+echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r worker $verbose -i %t >> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
 
 srun --multi-prog /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
