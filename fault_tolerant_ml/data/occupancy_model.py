@@ -4,7 +4,7 @@ import numpy as np
 from imblearn.over_sampling import SMOTE
 from sklearn import datasets
 
-from fault_tolerant_ml.ml import preprocessor as pre
+from fault_tolerant_ml.preprocessing import preprocessor as pre
 class OccupancyData(Dataset):
 
     def __init__(self, filepath, n_stacks=1):

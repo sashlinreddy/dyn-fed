@@ -3,7 +3,7 @@ import zmq.green as zmq
 import numpy as np
 import time
 from fault_tolerant_ml.distribute.states import *
-from fault_tolerant_ml.ml.ops.maths_utils import reconstruct_approximation
+from fault_tolerant_ml.utils.maths import reconstruct_approximation
 class Distributor(object):
     """Responsible for distributing data
     """
@@ -148,7 +148,7 @@ class Distributor(object):
                 epoch_loss_temp = float(epoch_loss_temp.decode())
 
                 # # Weight parameters and loss
-                d_theta += beta * d_theta_temp              
+                d_theta += beta * d_theta_temp           
                 epoch_loss += beta * epoch_loss_temp
                 # epoch_loss += epoch_loss_temp
                 errs.append(np.exp(-epoch_loss_temp))
@@ -224,18 +224,6 @@ class Distributor(object):
             batch_gen = gen_func(X_train, y_train, batch_size, shuffle=False)
 
             # Encode to bytes
-            # n_workers = str(params["n_workers"]).encode()
-            # n_samples = str(params["n_samples"]).encode()
-            # n_features = str(params["n_features"]).encode()
-            # n_classes = str(params["n_classes"]).encode()
-            # scenario = str(params["scenario"]).encode()
-            # remap = str(params["remap"]).encode()
-            # quantize = str(params["quantize"]).encode()
-            # n_most_rep = str(params["n_most_rep"]).encode()
-            # learning_rate = str(params["learning_rate"]).encode()
-            # delay = str(params["comm_period"]).encode()
-            # mu_g = str(params["mu_g"]).encode()
-
             enc_vars = [
                 "n_samples", "n_features", "n_classes"
             ]

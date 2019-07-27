@@ -1,4 +1,4 @@
-from .metrics_temp import accuracy_score
+from fault_tolerant_ml.metrics import accuracy_score
 from fault_tolerant_ml.distribute.strategy import LocalStrategy
 
 class BaseEstimator(object):

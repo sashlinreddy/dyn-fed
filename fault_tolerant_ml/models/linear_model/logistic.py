@@ -5,7 +5,7 @@ import time
 # Local
 from ..base import BaseEstimator
 from .base import LinearClassifierMixin
-from ..metrics_temp import accuracy_scorev2
+from fault_tolerant_ml.metrics import accuracy_scorev2
 from fault_tolerant_ml.distribute import Master, Worker
 
 class LogisticRegression(BaseEstimator, LinearClassifierMixin):

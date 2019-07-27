@@ -2,6 +2,8 @@
 
 Fault tolerant framework for machine learning algorithms
 
+____
+
 * Free software: MIT license
 * Documentation: https://fault-tolerant-ml.readthedocs.io.
 
@@ -40,11 +42,40 @@ Go to http://localhost:6006.
 sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh
 ```
 
-The [slurm launch](slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [master execution script](tests/run_master.py). However, arguments can be passed to the job submission as below:
+The [slurm launch](slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [master execution script](scripts/run_master.py). However, arguments can be passed to the job submission as below:
 
 ```bash
 sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh -v 20
 ```
+
+### Setup config
+
+The config of the model can be set in the [config file](config.yml). The dataset can be configured in this file as well as the following parameters:
+
+* model
+    * n_iterations:  No. of iterations
+    * shuffle: Whether or not to shuffle the data in each iteration
+
+* optimizer
+    * learning_rate: Rate at which model learns
+        * Mnist: SGD: 0.99, Adam: 0.1
+        * Fashion Mnist: SGD: 0.1, Adam: 0.001
+    * mu_g: Weighting given to global theta when workers updating local parameters. 0.0 for normal local update.
+    * n_most_rep: No. of most representative data points to keep track of when worker goes down
+    * name: Name of optimizer (Currently supports sgd and adam)
+
+* executor:
+    * strategy: Name of distribution strategy
+    * scenario: Scenario type, see code for more details.
+    * remap: Redistribution strategy
+    * quantize: Whether or not to use quantization when communicating parameters
+    * comm_period: How often to communicate parameters
+    * delta_switch: When to switch to every iteration communication
+    * timeout: Time given for any workers to join
+    * send_gradients: Whether or not to send gradients back to master
+    * shared_folder: Dataset to be used
+
+### View Results
 
 To view the results on tensorboard:
 
@@ -70,7 +101,7 @@ python fault-tolerant-ml/fault_tolerant_ml/utils/logger_parser.py logs/slurm/[fa
 ## Run tests
 
 ```bash
-nosetests --exe
+nosetests -vv
 ```
 
 ## Future

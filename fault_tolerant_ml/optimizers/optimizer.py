@@ -14,6 +14,9 @@ class Optimizer(object):
 
         self._logger = logging.getLogger("ftml")
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}(learning_rate={self.learning_rate})"
+
     @property
     def name(self):
         """Name of optimizer
@@ -42,6 +45,42 @@ class Optimizer(object):
         """
         raise NotImplementedError("Child must override this method")
 
+class SGD():
+    
+    def __init__(self, loss, learning_rate=0.1):
+        self.learning_rate = learning_rate
+        self.loss = loss
+        
+    def compute_gradients(self, model, y, y_pred):
+        
+        n_layers = len(model.layers)
+        output_layer = model.layers[-1]
+        m = model.layers[0].x.shape[0]
+        # For each output unit, calculate it's error term
+        delta = self.loss.grad(y, y_pred) * output_layer.activation_fn.grad(output_layer.z)
+        output_layer.W.grad = (1 / m) * output_layer.x.T @ delta
+        output_layer.b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
+
+        # For hidden units, calculate error term
+        for i in np.arange(n_layers - 2, -1, -1):
+            delta = (delta @ model.layers[i+1].W.T) * model.layers[i].activation_fn.grad(model.layers[i].z)
+            model.layers[i].W.grad = (1 / m) * (model.layers[i].x.T @ delta)
+            model.layers[i].b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
+            
+    def apply_gradients(self, model):
+        
+        for layer in model.layers:
+            layer.W = layer.W - self.learning_rate * layer.W.grad
+            layer.b = layer.b - self.learning_rate * layer.b.grad
+
+    def minimize(self, model, y, y_pred):
+
+        # Backprop
+        self.compute_gradients(model, y, y_pred)
+
+        # Update gradients
+        self.apply_gradients(model)
+
 class SGDOptimizer(Optimizer):
     """Stochastic gradient descent optimizer
     """
@@ -63,6 +102,9 @@ class SGDOptimizer(Optimizer):
             self._clip_val = kwargs["clip_val"]
         if "mu_g" in kwargs:
             self._mu_g = kwargs["mu_g"]
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(learning_rate={self.learning_rate}, mu_g={self.mu_g})"
 
     @property
     def name(self):
@@ -113,8 +155,9 @@ class SGDOptimizer(Optimizer):
         """
         # Calculate error/residuals
         e = (y_pred - y)
-
-        d_theta = 1 / X.shape[0] * self.grad(X, e)
+        # d = y_pred * (1 - y_pred) * e
+        d = e
+        d_theta = 1 / X.shape[0] * self.grad(X, d)
 
         # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
         # assert np.all(d_theta == 0.0)
@@ -207,6 +250,9 @@ class AdamOptimizer(Optimizer):
             self._role = kwargs["role"]
         if "mu_g" in kwargs:
             self._mu_g = kwargs["mu_g"]
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(learning_rate={self.learning_rate}, mu_g={self.mu_g})"
 
     @property
     def name(self):

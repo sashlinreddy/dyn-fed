@@ -2,11 +2,12 @@ import click
 import os
 import time 
 import numpy as np
+from dotenv import load_dotenv, find_dotenv
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
-from fault_tolerant_ml.ml.linear_model import LogisticRegression
-from fault_tolerant_ml.ml.optimizer import SGDOptimizer, AdamOptimizer
-from fault_tolerant_ml.ml.loss_fns import cross_entropy_loss, cross_entropy_gradient
+from fault_tolerant_ml.models.linear_model import LogisticRegression
+from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer
+from fault_tolerant_ml.losses import cross_entropy_loss, cross_entropy_gradient
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
 from fault_tolerant_ml.utils import setup_logger, model_utils
@@ -39,7 +40,7 @@ def run(n_workers, verbose):
         send_gradients (bool): Whether or not to send gradients or parameters back
     """
 
-    # # load_dotenv(find_dotenv())
+    # load_dotenv(find_dotenv())
 
     if "LOGDIR" in os.environ:
         from fault_tolerant_ml.lib.io.file_io import flush_dir
@@ -47,7 +48,7 @@ def run(n_workers, verbose):
         # ignore_dir = []
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
-    # Load model config
+     # Load in config to setup model
     config_path = 'config.yml'
     if 'PROJECT_DIR' in os.environ:
         config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
@@ -63,27 +64,10 @@ def run(n_workers, verbose):
         data_dir = os.path.join(os.environ['PROJECT_DIR'], data_dir)
         executor_cfg['shared_folder'] = data_dir
 
-    # encode_vars = [
-    #     "n_workers", "scenario", "remap", "quantize" , "n_most_rep",
-    #     "comm_period", "mu_g", "send_gradients"
-    # ]
-
-    # global_cfg = {"n_workers": n_workers}
-    # global_cfg.update(executor_cfg)
-    # global_cfg.update(opt_cfg)
-    # encode_name = string_utils.dict_to_str(global_cfg, choose=encode_vars)
-
-    # if "LOGDIR" in os.environ:
-    #     logdir = os.path.join(os.environ["LOGDIR"], encode_name)
-    #     if not os.path.exists(logdir):
-    #         try:
-    #             os.mkdir(logdir)
-    #         except FileExistsError:
-    #             pass
-    #     os.environ["LOGDIR"] = logdir
-
+    # Encode run name
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
 
+    # Setup logger
     logger = setup_logger(level=verbose)
 
     logger.info(f"Starting run: {encoded_run_name}")
@@ -91,23 +75,29 @@ def run(n_workers, verbose):
     # Create optimizer
     loss = cross_entropy_loss
     grad = cross_entropy_gradient
-    # optimizer = SGDOptimizer(
-    #     loss=loss, 
-    #     grad=grad, 
-    #     learning_rate=opt_cfg['learning_rate'], 
-    #     role="master", 
-    #     n_most_rep=opt_cfg['n_most_rep'], 
-    #     mu_g=opt_cfg['mu_g']
-    # )
 
-    optimizer = AdamOptimizer(
-        loss=loss, 
-        grad=grad, 
-        learning_rate=opt_cfg['learning_rate'],
-        role="master",
-        n_most_rep=opt_cfg['n_most_rep'], 
-        mu_g=opt_cfg['mu_g']
-    )
+    optimizer = None
+
+    if opt_cfg["name"] == "sgd":
+        optimizer = SGDOptimizer(
+            loss=loss, 
+            grad=grad, 
+            learning_rate=opt_cfg['learning_rate'], 
+            role="master", 
+            n_most_rep=opt_cfg['n_most_rep'], 
+            mu_g=opt_cfg['mu_g']
+        )
+    elif opt_cfg["name"] == "adam":
+        optimizer = AdamOptimizer(
+            loss=loss, 
+            grad=grad, 
+            learning_rate=opt_cfg['learning_rate'],
+            role="master",
+            n_most_rep=opt_cfg['n_most_rep'], 
+            mu_g=opt_cfg['mu_g']
+        )
+
+    logger.info(f"Optimizer={optimizer}")
 
     # Decide on distribution strategy
     strategy = MasterWorkerStrategy(
@@ -140,7 +130,7 @@ def run(n_workers, verbose):
     np.random.seed(42)
 
     # data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
-    # data.transform()    
+    # data.transform() 
 
     # time.sleep(2)
 
@@ -148,13 +138,14 @@ def run(n_workers, verbose):
     logger.info("STARTING TRAINING")
     logger.info("*******************************")
 
-    # master.train(mnist)
+    # Train model
     model.fit(mnist)
 
     logger.info("*******************************")
     logger.info("COMPLETED TRAINING")
     logger.info("*******************************")
 
+    # Plot metrics
     model.plot_metrics()
 
     logger.info("DONE!")

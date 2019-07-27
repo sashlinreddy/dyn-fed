@@ -49,7 +49,7 @@ class ftml_trainv2(ftml_wrapper):
             if not self.obj.watch_dog.states:
                 self.obj.logger.info("No workers found")
                 raise KeyboardInterrupt
-            self.obj.model.iter = 0
+            # self.obj.model.iter = 0
             # i = 0
             delta = 1.0
             start = time.time()

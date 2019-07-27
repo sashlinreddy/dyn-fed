@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from fault_tolerant_ml.ml.ops.maths_utils import linspace_quantization, reconstruct_approximation
+from fault_tolerant_ml.utils.maths import linspace_quantization, reconstruct_approximation
 
 class TestMatrixOps(unittest.TestCase):
 

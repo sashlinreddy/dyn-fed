@@ -2,7 +2,7 @@ import numpy as np
 
 # Local
 from ..base import BaseEstimator, ClassifierMixin
-from ..ops import maths_utils
+from fault_tolerant_ml.utils import maths
 
 class LinearModel(BaseEstimator):
     """Base class for Linear Models
@@ -34,7 +34,7 @@ class LinearClassifierMixin(ClassifierMixin):
 
     def _hypothesis(self, X):
         s = np.dot(X, self.theta)
-        return maths_utils.sigmoid(s)
+        return maths.sigmoid(s)
 
     def predict(self, X):
         scores = self._hypothesis(X)
