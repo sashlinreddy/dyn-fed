@@ -1,4 +1,5 @@
 import numpy as np
+from copy import deepcopy
 from typing import Union
 
 def ensure_array(arrayable):
@@ -28,6 +29,9 @@ class Tensor():
             self.zero_grad()
         
     def __repr__(self):
+        return f"Tensor({self.data}, parameter={self.is_param})"
+
+    def __str__(self):
         return f"Tensor({self.data}, parameter={self.is_param})"
     
     def __matmul__(self, other):
@@ -64,22 +68,44 @@ class Tensor():
         return Tensor(self.data[idxs])
     
     def exp(self):
+        """Return new tensor with exp transformation
+        """
         return Tensor(np.exp(self.data))
     
     def log(self):
+        """Return new tensor with log transformation
+        """
         return Tensor(np.log(self.data))
     
     def mean(self, axis=None, dtype=None, out=None):
+        """Return a new tensor with mean along some axis
+        """
         if dtype is None:
             dtype = self.data.dtype
         return Tensor(np.mean(self.data, axis=axis, dtype=dtype, out=out))
     
     def sum(self, axis=None, out=None, **passkwargs):
+        """Return new tensor with numpy sum along an axis
+        """
         return Tensor(np.sum(self.data, axis=axis, out=out, **passkwargs))
+
+    def tostring(self):
+        """Return numpy array as byte string
+        """
+        return self.data.tostring()
+
+    def copy(self):
+        """Performs deepcopy
+        """
+        return deepcopy(self)
     
     @property
     def T(self):
         return Tensor(self.data.T)
+
+    @property
+    def dtype(self):
+        return self.data.dtype
     
     @property
     def is_param(self):
