@@ -555,7 +555,9 @@ class Master(object):
             import pandas as pd
             from fault_tolerant_ml.viz.target import ClassBalance
 
-            figdir = os.environ["FIGDIR"]
+            figdir = os.path.join(os.environ["FIGDIR"], self.model.encode_name)
+            if not os.path.exists(figdir):
+                os.mkdir(figdir)
 
             try:
                 self.logger.debug("Saving class balances distribution plot...")
@@ -564,7 +566,7 @@ class Master(object):
                 class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
                 class_names = self.data.class_names
 
-                class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=None, stacked=True, percentage=True)
+                class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
                 class_balance.fit(y=class_bal)
                 class_balance.poof()
 

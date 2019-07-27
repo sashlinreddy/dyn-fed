@@ -97,6 +97,15 @@ def run(n_workers, verbose):
             mu_g=opt_cfg['mu_g']
         )
 
+    # optimizer = AdamOptimizer(
+    #     loss=loss, 
+    #     grad=grad, 
+    #     learning_rate=opt_cfg['learning_rate'],
+    #     role="master",
+    #     n_most_rep=opt_cfg['n_most_rep'], 
+    #     mu_g=opt_cfg['mu_g']
+    # )
+
     # Decide on distribution strategy
     strategy = MasterWorkerStrategy(
         n_workers=n_workers,
