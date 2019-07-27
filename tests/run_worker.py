@@ -52,16 +52,7 @@ def run(n_workers, verbose, id, tmux, add):
     
     # Setup optimizer
     gradient = loss_fns.cross_entropy_gradient
-    # optimizer = SGDOptimizer(
-    #     loss=loss_fns.single_cross_entropy_loss, 
-    #     grad=gradient, 
-    #     role="worker", 
-    #     learning_rate=opt_cfg['learning_rate'], 
-    #     n_most_rep=opt_cfg['n_most_rep'], 
-    #     mu_g=opt_cfg['mu_g']
-    # )
-
-    optimizer = AdamOptimizer(
+    optimizer = SGDOptimizer(
         loss=loss_fns.single_cross_entropy_loss, 
         grad=gradient, 
         role="worker", 
@@ -69,6 +60,15 @@ def run(n_workers, verbose, id, tmux, add):
         n_most_rep=opt_cfg['n_most_rep'], 
         mu_g=opt_cfg['mu_g']
     )
+
+    # optimizer = AdamOptimizer(
+    #     loss=loss_fns.single_cross_entropy_loss, 
+    #     grad=gradient, 
+    #     role="worker", 
+    #     learning_rate=opt_cfg['learning_rate'], 
+    #     n_most_rep=opt_cfg['n_most_rep'], 
+    #     mu_g=opt_cfg['mu_g']
+    # )
 
        # Setup distribution strategy
     strategy = MasterWorkerStrategy(
