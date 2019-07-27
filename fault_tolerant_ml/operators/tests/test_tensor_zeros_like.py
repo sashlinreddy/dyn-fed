@@ -29,4 +29,4 @@ class TestTensorZerosLike(unittest.TestCase):
         logger.info(f"t1.data.zeros_like={np.zeros_like(t1.data)}")
         logger.info(f"t3={t3}")
 
-        assert t3.data.tolist() == np.zeros_like(t1.data).tolist()
+        assert t3.data.tolist() == np.zeros_like(t1.data).tolist() # pylint: disable=no-member
