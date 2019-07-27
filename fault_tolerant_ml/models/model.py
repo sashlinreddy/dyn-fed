@@ -54,7 +54,7 @@ class Model():
             
     def zero_grad(self):
         for layer in self.layers:
-            for k, v in layer.__dict__.items():
+            for _, v in layer.__dict__.items():
                 if isinstance(v, Tensor):
                     if v.is_param:
                         v.zero_grad()

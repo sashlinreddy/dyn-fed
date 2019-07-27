@@ -17,7 +17,8 @@ from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.utils.maths import reconstruct_approximation, linspace_quantization
-from fault_tolerant_ml.distribute.distributor import Distributor
+from fault_tolerant_ml.distribute import Distributor
+from fault_tolerant_ml.operators import Tensor
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -66,17 +67,17 @@ class Worker(object):
         """Prepare our context, push socket and publisher
         """
         self.context = zmq.Context()
-        self.subscriber = self.context.socket(zmq.SUB)
+        self.subscriber = self.context.socket(zmq.SUB) # pylint: disable=no-member
         # self.subscriber.connect("tcp://localhost:5563")
         self.subscriber.connect(f"tcp://{self.master_ip_address}:5563")
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, b"")
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, b"") # pylint: disable=no-member
 
-        self.push_socket = self.context.socket(zmq.PUSH)
+        self.push_socket = self.context.socket(zmq.PUSH) # pylint: disable=no-member
         # self.push_socket.connect("tcp://localhost:5562")
         self.push_socket.connect(f"tcp://{self.master_ip_address}:5562")
 
-        self.ctrl_socket = self.context.socket(zmq.DEALER)
-        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id)
+        self.ctrl_socket = self.context.socket(zmq.DEALER) # pylint: disable=no-member
+        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id) # pylint: disable=no-member
         # self.ctrl_socket.connect("tcp://localhost:5565")
         self.ctrl_socket.connect(f"tcp://{self.master_ip_address}:5565")
 
@@ -135,13 +136,13 @@ class Worker(object):
             n_features (int): No. of features in the dataset
             n_classes (int): No. of classes/labels
         """
-        data, dtype, shape = self.ctrl_socket.recv_multipart()
+        data, dtype, shape = self.ctrl_socket.recv_multipart() # pylint: disable=unbalanced-tuple-unpacking
         shape = shape.decode()
         data = np.frombuffer(data, dtype=dtype)
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes = self.ctrl_socket.recv_multipart()
+        _, n_samples, n_features, n_classes = self.ctrl_socket.recv_multipart() # pylint: disable=unbalanced-tuple-unpacking
         self.n_samples = int(n_samples.decode())
         self.n_features = int(n_features.decode())
         self.n_classes = int(n_classes.decode())
@@ -159,6 +160,11 @@ class Worker(object):
         # Check if we need to add a new axis if the dimension of y is not 2d
         if len(self.y.shape) < 2:
             self.y = self.y[:, np.newaxis]
+
+        # Tensorize the retrieved data
+        self.X = Tensor(self.X)
+        self.y = Tensor(self.y)
+
         self._logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
         self.have_work = True
                     
@@ -222,7 +228,7 @@ class Worker(object):
                                 # Receive parameter matrix on the subscriber socket
                                 if cmd == b"WORKNODELAY":
                                     self.comm_period = 1
-                                data, dtype, shape = msg
+                                data, dtype, shape = msg # pylint: disable=unbalanced-tuple-unpacking
                                 shape = shape.decode()
 
                                 # Reconstruct numpy array
@@ -242,6 +248,7 @@ class Worker(object):
                                 shape = (self.n_features, self.n_classes)
                                 theta = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
 
+                            theta = Tensor(theta, is_param=True)
                             theta_g = theta.copy()
                             self.model.theta = theta
                             
@@ -252,7 +259,8 @@ class Worker(object):
                                 self.do_work( 
                                     theta_g=theta_g
                                 )
-                                self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}")
+                                # self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}")
+                                self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss.data:7.4f}")
 
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
@@ -269,15 +277,18 @@ class Worker(object):
                             # need to send the shape since the gradients have the same shape as theta which
                             # the master already owns
                             if self.quantize:
-                                d_theta = linspace_quantization(d_theta, interval=100)
-                                self.model.theta = linspace_quantization(self.model.theta, interval=100)
+                                # d_theta = linspace_quantization(d_theta, interval=100)
+                                # self.model.theta = linspace_quantization(self.model.theta, interval=100)
+                                d_theta.data = linspace_quantization(d_theta.data, interval=100)
+                                self.model.theta.data = linspace_quantization(self.model.theta.data, interval=100)
 
                             self._logger.debug(f"Send gradients flag={self.send_gradients}")
                             msg = self.model.theta.tostring()
                             if self.send_gradients:
                                 msg = d_theta.tostring()
                                 
-                            loss = str(batch_loss).encode()
+                            # loss = str(batch_loss).encode()
+                            loss = str(batch_loss.data).encode()
                             mr = most_representative.tostring()
                             self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
 

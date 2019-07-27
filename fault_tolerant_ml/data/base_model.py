@@ -1,11 +1,16 @@
 import numpy as np
 from sklearn.model_selection import train_test_split
 class Dataset(object):
-
+    """Base class for all datasets for fault_tolerant_ml
+    """
     def __init__(self, filepath):
         self.filepath = filepath
         self.X = None
         self.y = None
+        self.X_train = None
+        self.y_train = None
+        self.X_test= None
+        self.y_test = None
 
     @staticmethod
     def one_hot(labels):

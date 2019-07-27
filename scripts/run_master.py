@@ -45,7 +45,7 @@ def run(n_workers, verbose):
 
     if "LOGDIR" in os.environ:
         from fault_tolerant_ml.lib.io.file_io import flush_dir
-        ignore_dir = [os.path.join(os.environ["LOGDIR"], "tf/")]
+        _ = [os.path.join(os.environ["LOGDIR"], "tf/")]
         # ignore_dir = []
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 

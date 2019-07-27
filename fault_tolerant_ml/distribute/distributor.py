@@ -10,7 +10,7 @@ class Distributor(object):
     
     def __init__(self):
         
-        self._logger = logging.getLogger("ftml")
+        self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
         self.labels_per_worker = {}
 
     def _encode(self, params, vars):
@@ -55,7 +55,7 @@ class Distributor(object):
         quantize: bool = params["quantize"]
         theta: np.ndarray = params["theta"]
         
-        d_theta: np.ndarray = np.zeros_like(theta)
+        parameters: np.ndarray = np.zeros_like(theta)
         epoch_loss: int = 0.0
 
         self._logger.debug(f"Receiving gradients")
@@ -80,9 +80,9 @@ class Distributor(object):
 
             if (socket in events) and (events.get(socket) == zmq.POLLIN):
                 try:
-                    msg = socket.recv_multipart(zmq.NOBLOCK)
+                    msg = socket.recv_multipart(zmq.NOBLOCK) # pylint: disable=no-member
                 except zmq.ZMQError as e:
-                    if e.errno == zmq.EAGAIN:
+                    if e.errno == zmq.EAGAIN: # pylint: disable=no-member
                         # state changed since poll event
                         running_time += time.time() - start_i
                         if running_time > timeout:
@@ -103,12 +103,12 @@ class Distributor(object):
 
                 # self._logger.debug(f"Alive workers={n_alive_workers}")
                 if i == 0:
-                    worker, d_theta_temp, epoch_loss_temp, mr = msg
+                    worker, parameter_temp, epoch_loss_temp, mr = msg
                 else:
                     # Receive multipart including command message
                     cmd = msg[0]
                     if cmd == b"WORK":
-                        worker, d_theta_temp, epoch_loss_temp, mr = msg[1:]
+                        worker, parameter_temp, epoch_loss_temp, mr = msg[1:]
                     elif cmd == b"CONNECT":
                         # self.register_workers(msg[1])
                         watch_dog.add_worker(msg[1])
@@ -129,10 +129,10 @@ class Distributor(object):
                 if quantize:
                     self._logger.debug(f"Reconstructing gradients")
                     shape = theta.shape
-                    d_theta_temp = reconstruct_approximation(d_theta_temp, shape, r_dtype=theta.dtype)
+                    parameter_temp = reconstruct_approximation(parameter_temp, shape, r_dtype=theta.dtype)
                 else:
-                    d_theta_temp = np.frombuffer(d_theta_temp, dtype=theta.dtype)
-                    d_theta_temp = d_theta_temp.reshape(theta.shape)
+                    parameter_temp = np.frombuffer(parameter_temp, dtype=theta.dtype)
+                    parameter_temp = parameter_temp.reshape(theta.shape)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
@@ -148,11 +148,12 @@ class Distributor(object):
                 epoch_loss_temp = float(epoch_loss_temp.decode())
 
                 # # Weight parameters and loss
-                d_theta += beta * d_theta_temp           
+                # parameters += beta * parameter_temp
+                parameters = parameters + (beta * parameter_temp)
                 epoch_loss += beta * epoch_loss_temp
                 # epoch_loss += epoch_loss_temp
                 errs.append(np.exp(-epoch_loss_temp))
-                d_thetas.append(d_theta_temp)
+                d_thetas.append(parameter_temp)
 
                 workers_received.add(worker)
 
@@ -174,12 +175,12 @@ class Distributor(object):
         assert i > 0
         assert i > 0
         i -= n_connected
-        d_theta /= i
+        parameters /= i
         epoch_loss /= i
 
         self._logger.debug("Calculated gradients")
         
-        return d_theta, epoch_loss
+        return parameters, epoch_loss
 
     def map(self, socket, data, workers, params, gen_func=None):
         """Sends the data to the necessary destination
@@ -247,6 +248,8 @@ class Distributor(object):
                     worker.mr_idxs_used = False
                     # Get next batch to send
                     X_batch, y_batch = next(batch_gen)
+                    X_batch = X_batch.data
+                    y_batch = y_batch.data
                     self._logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
                     batch_data = np.hstack((X_batch, y_batch))
 

@@ -133,7 +133,8 @@ class SGDOptimizer(Optimizer):
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
             if batch_loss.shape[1] > 1:
-                temp = np.mean(batch_loss, axis=1)
+                # temp = np.mean(batch_loss, axis=1)
+                temp = np.mean(batch_loss, axis=1).data
                 self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
             else:
                 self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
@@ -156,7 +157,8 @@ class SGDOptimizer(Optimizer):
         cost_prime = self.loss.grad(y, y_pred)
         # Calculate error term
         delta = y_pred * (1 - y_pred) * cost_prime
-        d_theta = 1 / X.shape[0] * np.dot(X.T, delta)
+        # d_theta = 1 / X.shape[0] * np.dot(X.T, delta)
+        d_theta = 1 / X.shape[0] * (X.T @ delta)
 
         # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
         # assert np.all(d_theta == 0.0)
@@ -281,7 +283,8 @@ class AdamOptimizer(Optimizer):
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
             if batch_loss.shape[1] > 1:
-                temp = np.mean(batch_loss, axis=1)
+                # temp = np.mean(batch_loss, axis=1)
+                temp = np.mean(batch_loss, axis=1).data
                 self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
             else:
                 self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
@@ -304,7 +307,8 @@ class AdamOptimizer(Optimizer):
         cost_prime = self.loss.grad(y, y_pred)
         # Calculate error term
         delta = y_pred * (1 - y_pred) * cost_prime
-        d_theta = 1 / X.shape[0] * np.dot(X.T, delta)
+        # d_theta = 1 / X.shape[0] * np.dot(X.T, delta)
+        d_theta = 1 / X.shape[0] * (X.T @ delta)
 
         return d_theta
 
@@ -328,9 +332,11 @@ class AdamOptimizer(Optimizer):
         #     )
 
         if self.m_t is None:
-            self.m_t = np.zeros_like(d_theta)
+            # self.m_t = np.zeros_like(d_theta)
+            self.m_t = d_theta.zeros_like()
         if self.v_t is None:
-            self.v_t = np.zeros_like(d_theta)
+            # self.v_t = np.zeros_like(d_theta)
+            self.v_t = d_theta.zeros_like()
 
         # Update biased first moment estimate
         self.m_t = self.beta_1 * self.m_t + (1. - self.beta_1) * d_theta

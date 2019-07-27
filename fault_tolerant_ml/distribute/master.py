@@ -24,9 +24,10 @@ from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
 from fault_tolerant_ml.utils.maths import linspace_quantization
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
-from fault_tolerant_ml.distribute.distributor import Distributor
+from fault_tolerant_ml.distribute import Distributor
 from fault_tolerant_ml.distribute.wrappers import ftml_train, ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.distribute.states import *
+from fault_tolerant_ml.operators import Tensor
 
 class Master(object):
     """Master class for distributed machine learning system
@@ -67,7 +68,7 @@ class Master(object):
             self._tf_logger = TFLogger(logdir)
 
         # Setup logger
-        self.logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
+        self.logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
         data_dir = self.strategy.shared_folder
         self.logger.info(f"Master on ip={self.ip_address}")
@@ -93,9 +94,10 @@ class Master(object):
             "n_samples": self.data.n_samples,
             "timeout": 10,
             "quantize": self.strategy.quantize,
-            "theta": self.model.theta
+            # "theta": self.model.theta
+            "theta": self.model.theta.data
         }
-        d_theta, epoch_loss = self.distributor.collect(
+        parameters, epoch_loss = self.distributor.collect(
             events=events, 
             socket=self.pull_socket,
             params=params
@@ -109,25 +111,30 @@ class Master(object):
                 y=None, 
                 y_pred=None, 
                 theta=self.model.theta, 
-                precomputed_gradients=d_theta
+                precomputed_gradients=parameters
             )
         else:
-            self.model.theta = d_theta
+            self.logger.info(f"parameters.dtype={parameters.dtype}")
+            self.model.theta.data = parameters
+            self.logger.info(f"type(self.model.theta.data)={self.model.theta.data.dtype}")
 
         y_pred = self.model.predict(self.data.X_test)
         y_train_pred = self.model.predict(self.data.X_train)
-        train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
-        test_acc = accuracy_scorev2(self.data.y_test, y_pred)
+        # train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
+        # test_acc = accuracy_scorev2(self.data.y_test, y_pred)
+        train_acc = accuracy_scorev2(self.data.y_train.data, y_train_pred.data)
+        test_acc = accuracy_scorev2(self.data.y_test.data, y_pred.data)
 
         if self._tf_logger is not None:
-            self._tf_logger.histogram("theta-master", self.model.theta, self.model.iter, bins=self.n_iterations)
+            self._tf_logger.histogram("theta-master", self.model.theta.data, self.model.iter, bins=self.n_iterations)
             self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
             self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
             self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
-            grad_l2_norm = np.linalg.norm(d_theta)
+            grad_l2_norm = np.linalg.norm(parameters)
             self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.model.iter)
 
-        delta = np.max(np.abs(theta_p - self.model.theta))
+        # delta = np.max(np.abs(theta_p - self.model.theta))
+        delta = np.max(np.abs(theta_p.data - self.model.theta.data))
 
         # self.logger.info(f"iteration = {self.strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
         self.logger.info(f"iteration = {self.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
@@ -185,14 +192,14 @@ class Master(object):
         """Connects to necessary sockets
         """
         # Prepare our context and publisher
-        self.publisher = self.context.socket(zmq.PUB)
+        self.publisher = self.context.socket(zmq.PUB) # pylint: disable=no-member
         self.publisher.bind("tcp://*:5563")
 
-        self.pull_socket = self.context.socket(zmq.PULL)
+        self.pull_socket = self.context.socket(zmq.PULL) # pylint: disable=no-member
         self.pull_socket.bind("tcp://*:5562")
 
-        self.ctrl_socket = self.context.socket(zmq.ROUTER)
-        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
+        self.ctrl_socket = self.context.socket(zmq.ROUTER) # pylint: disable=no-member
+        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, 'MASTER') # pylint: disable=no-member
         self.ctrl_socket.bind("tcp://*:5565")
     
     def setup_poller(self):
@@ -418,11 +425,13 @@ class Master(object):
 
         # Print confusion matrix
         y_pred = self.model.predict(self.data.X_test)
-        conf_matrix = confusion_matrix(self.data.y_test, y_pred)
+        # conf_matrix = confusion_matrix(self.data.y_test, y_pred)
+        conf_matrix = confusion_matrix(self.data.y_test.data, y_pred.data)
         self.logger.info(f"Confusion matrix=\n{conf_matrix}")
 
         # Accuracy
-        acc = accuracy_scorev2(self.data.y_test, y_pred)
+        # acc = accuracy_scorev2(self.data.y_test, y_pred)
+        acc = accuracy_scorev2(self.data.y_test.data, y_pred.data)
         self.logger.info(f"Accuracy={acc * 100:7.4f}%")
 
     def plot_metrics(self):
@@ -467,14 +476,16 @@ class Master(object):
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
+        # self.model.theta = \
+        # np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
         self.model.theta = \
-        np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
+        Tensor(np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01, is_param=True)
         self.logger.debug(f"Init theta={self.model.theta}")
         
         self.poller = self.setup_poller()
 
         # self.training_loop()
-        self._train()
+        self._train() # pylint: disable=no-value-for-parameter
         # self.train_iter()
 
         self.print_metrics()

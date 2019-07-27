@@ -11,7 +11,8 @@ class LinearModel(BaseEstimator):
         self.theta = None
 
     def _hypothesis(self, X):
-        return np.dot(X, self.theta)
+        # return np.dot(X, self.theta)
+        return X @ self.theta
 
     def fit(self, X, y):
         raise NotImplementedError("Child must override")
@@ -33,7 +34,10 @@ class LinearClassifierMixin(ClassifierMixin):
         pass
 
     def _hypothesis(self, X):
-        s = np.dot(X, self.theta)
+        # s = np.dot(X, self.theta)
+        self._logger.debug(f"type(X)={type(X)}, type(self.theta)={type(self.theta)}")
+        self._logger.debug(f"X.dtype={X.dtype}, self.theta.dtype={self.theta.dtype}")
+        s = X @ self.theta
         return maths.sigmoid(s)
 
     def predict(self, X):

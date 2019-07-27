@@ -4,6 +4,7 @@ import numpy as np
 
 # Local
 from .base_model import Dataset
+from fault_tolerant_ml.operators import Tensor
 
 class MNist(Dataset):
 
@@ -60,6 +61,10 @@ class MNist(Dataset):
         # self.y_train[self.y_train==1] = 0.99
         # self.y_test[self.y_test==0] = 0.01
         # self.y_test[self.y_test==1] = 0.99
+        self.X_train = Tensor(self.X_train)
+        self.y_train = Tensor(self.y_train)
+        self.X_test = Tensor(self.X_test)
+        self.y_test = Tensor(self.y_test)
 
     def prepare_data(self):
         """Reads in, reshapes, scales and one-hot encodes data
