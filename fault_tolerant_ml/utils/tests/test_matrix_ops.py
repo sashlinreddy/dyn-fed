@@ -1,6 +1,9 @@
 import unittest
 import numpy as np
+import logging
 from fault_tolerant_ml.utils.maths import linspace_quantization, reconstruct_approximation
+
+logger = logging.getLogger("ftml.utils.tests.test_matrix_ops")
 
 class TestMatrixOps(unittest.TestCase):
 
@@ -15,13 +18,14 @@ class TestMatrixOps(unittest.TestCase):
         pass
 
     def test_quantization(self):
-        """Test quantization
+        """Test quantization size
         """
         interval = 100
         theta = np.random.randn(784, 10)
 
         msg = linspace_quantization(theta, interval=interval)
 
+        # Check if desired no. of bytes
         assert msg.nbytes == 7852
 
     def test_reconstruct_approx(self):
@@ -31,20 +35,34 @@ class TestMatrixOps(unittest.TestCase):
         interval = 100
         theta = np.random.randn(784, 10).astype(np.float32)
 
+        # Quantize the parameters
         msg = linspace_quantization(theta, interval=interval)
 
         buf = memoryview(msg.tostring())
-        # struct_field_names = ["min_val", "max_val", "interval", "bins"]
-        # struct_field_types = [np.float32, np.float32, np.int32, 'b']
-        # struct_field_shapes = [1, 1, 1, (theta.shape)]
-        # dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
 
-        # data = np.frombuffer(buf, dtype=dtype)
-        # min_theta_val, max_theta_val, interval, theta_bins = data[0]
-
-        # # Generate lineared space vector
-        # bins = np.linspace(min_theta_val, max_theta_val, interval, dtype=np.float32)
-        # theta = bins[theta_bins].reshape(theta.shape)
+        # Reconstruct the parameters
         r_theta = reconstruct_approximation(buf, theta.shape, r_dtype=np.float32)
-        print(f"Reconstructed dtype={r_theta.dtype}")
+        logger.info(f"Reconstructed dtype={r_theta.dtype}")
+        # Check data type
         assert r_theta.dtype == np.float32
+
+    def test_reconstruct_error(self):
+        """Test reconstruct error
+        """
+
+        # Reconstruct error should be small enough for us to be comfortable with approximating the parameters
+        eps = 0.2
+        interval = 100
+        theta = np.random.randn(784, 10).astype(np.float32)
+
+        msg = linspace_quantization(theta, interval=interval)
+
+        buf = memoryview(msg.tostring())
+
+        r_theta = reconstruct_approximation(buf, theta.shape, r_dtype=np.float32)
+
+        delta = np.max(abs(theta - r_theta))
+        logger.info(f"Delta={delta}")
+
+        assert delta < eps, "Reconstruct error is too large, consider a different interval for np.linspace"
+
