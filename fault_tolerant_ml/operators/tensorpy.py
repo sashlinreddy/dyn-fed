@@ -38,6 +38,11 @@ class Tensor():
         other = ensure_tensor(other)
         is_param = self.is_param or other.is_param
         return Tensor(self.data @ other.data, is_param=is_param)
+
+    def __rmatmul__(self, other):
+        other = ensure_tensor(other)
+        is_param = self.is_param or other.is_param
+        return Tensor(other.data @ self.data, is_param=is_param)
     
     def __add__(self, other):
         other = ensure_tensor(other)
