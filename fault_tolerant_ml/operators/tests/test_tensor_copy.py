@@ -5,7 +5,7 @@ from fault_tolerant_ml.operators import Tensor
 
 logger = logging.getLogger("ftml.operators.tests.test_tensor_copy")
 
-class TestTensorAdd(unittest.TestCase):
+class TestTensorCopy(unittest.TestCase):
 
     def setUp(self):
         """Set up

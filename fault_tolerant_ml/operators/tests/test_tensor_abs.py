@@ -5,7 +5,7 @@ from fault_tolerant_ml.operators import Tensor
 
 logger = logging.getLogger("ftml.operators.tests.test_tensor_abs")
 
-class TestTensorAdd(unittest.TestCase):
+class TestTensorAbs(unittest.TestCase):
 
     def setUp(self):
         """Set up
