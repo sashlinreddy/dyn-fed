@@ -59,7 +59,7 @@ The config of the model can be set in the [config file](config.yml). The dataset
 * optimizer
     * learning_rate: Rate at which model learns
         * Mnist: SGD: 0.99, Adam: 0.1
-        * Fashion Mnist: SGD: 0.1, Adam: 0.001
+        * Fashion Mnist: SGD: 0.25, Adam: 0.001
     * mu_g: Weighting given to global theta when workers updating local parameters. 0.0 for normal local update.
     * n_most_rep: No. of most representative data points to keep track of when worker goes down
     * name: Name of optimizer (Currently supports sgd and adam)

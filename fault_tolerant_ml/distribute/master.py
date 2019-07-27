@@ -67,7 +67,6 @@ class Master(object):
             self._tf_logger = TFLogger(logdir)
 
         # Setup logger
-        # self.logger = setup_logger(level=verbose)
         self.logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
 
         data_dir = self.strategy.shared_folder
