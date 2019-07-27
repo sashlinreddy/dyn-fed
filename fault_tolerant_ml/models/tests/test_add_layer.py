@@ -1,6 +1,6 @@
 import unittest
 
-from fault_tolerant_ml.models import Model
+import fault_tolerant_ml as ft
 from fault_tolerant_ml.layers import Layer
 
 class TestFault_tolerant_ml(unittest.TestCase):
@@ -15,7 +15,7 @@ class TestFault_tolerant_ml(unittest.TestCase):
     def test_valid_add_layer(self):
         """Test valid add layer
         """
-        model = Model()
+        model = ft.Model()
         model.add(Layer(784, 32))
 
         # This should assert an invalid layer exception

@@ -1,3 +1,7 @@
+"""This file contains all logic for the base class of models. For implementation of logistic regression or neural networks,
+you should inherit from this class.
+"""
+
 from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.layers import Layer
 
@@ -22,7 +26,15 @@ def _check_layers(layers):
 
 class Model():
     """
-    Base class for tensor models
+    Base class for tensor models.
+
+    To create your own model, use as follows:
+
+    Example:
+        class LogisticRegression(fault_tolerant.Model)
+
+    Attributes:
+        layers (list): List of fault_tolerant_ml.layers.Layer objects
     """
     def __init__(self):
         self.layers = []
