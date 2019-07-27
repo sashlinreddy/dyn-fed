@@ -1,3 +1,6 @@
+import numpy as np
+from typing import Union
+
 def ensure_array(arrayable):
     if isinstance(arrayable, np.ndarray):
         return arrayable
