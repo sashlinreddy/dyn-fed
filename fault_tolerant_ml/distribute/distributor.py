@@ -148,7 +148,7 @@ class Distributor(object):
                 epoch_loss_temp = float(epoch_loss_temp.decode())
 
                 # # Weight parameters and loss
-                # d_theta += beta * d_theta_temp              
+                d_theta += beta * d_theta_temp           
                 epoch_loss += beta * epoch_loss_temp
                 # epoch_loss += epoch_loss_temp
                 errs.append(np.exp(-epoch_loss_temp))
@@ -159,13 +159,13 @@ class Distributor(object):
                 i += 1
                 running_time = 0
 
-        sum_es = np.sum(errs)
-        epsilon = 1e-8
-        for j in np.arange(len(errs)):
-            weight = errs[j] / sum_es
-            # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
-            d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
-            d_theta += d_thetas[j]
+        # sum_es = np.sum(errs)
+        # epsilon = 1e-8
+        # for j in np.arange(len(errs)):
+        #     weight = errs[j] / sum_es
+        #     # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
+        #     d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
+        #     d_theta += d_thetas[j]
 
         # Average parameters
         # d_theta /= len(self.workers)
