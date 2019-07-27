@@ -1,6 +1,7 @@
 import click
 import os
 import time
+import logging
 from dotenv import load_dotenv, find_dotenv
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
@@ -22,7 +23,7 @@ def run(n_workers, verbose, id, tmux, add):
     Args:
         verbose (int): The debug level for the logging module
     """
-    # load_dotenv(find_dotenv())
+    load_dotenv(find_dotenv())
 
     # Create worker identity
     identity: int = 0
@@ -74,8 +75,6 @@ def run(n_workers, verbose, id, tmux, add):
             mu_g=opt_cfg['mu_g']
         )
 
-    logger.info(f"Optimizer={optimizer}")
-
     # Setup distribution strategy
     strategy = MasterWorkerStrategy(
         n_workers=n_workers,
@@ -91,9 +90,14 @@ def run(n_workers, verbose, id, tmux, add):
         shuffle=model_cfg['shuffle'], 
         verbose=verbose,
         encode_name=encoded_run_name)
+
+    logger = logging.getLogger("ftml.scripts.run_worker")
+    logger.info(f"Starting run: {encoded_run_name}")
+    logger.info(f"Optimizer={optimizer}")
     
     # time.sleep(1)
     # Train model
+    logger.info("Starting training")
     model.fit()
 
 if __name__ == "__main__":

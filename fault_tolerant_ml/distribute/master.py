@@ -81,6 +81,106 @@ class Master(object):
         with open(os.path.join(data_dir, ip_filename), "w") as f:
             json.dump(ip_config, f)
 
+    @ftml_train_collect
+    def _train_iteration(self, events):
+        theta_p = self.model.theta.copy()
+        # Receive updated parameters from workers
+        # d_theta, epoch_loss = self.gather(events, timeout=10)
+        params = {
+            "watch_dog": self.watch_dog,
+            "strategy": self.strategy,
+            "state": self.state,
+            "n_samples": self.data.n_samples,
+            "timeout": 10,
+            "quantize": self.strategy.quantize,
+            "theta": self.model.theta
+        }
+        d_theta, epoch_loss = self.distributor.collect(
+            events=events, 
+            socket=self.pull_socket,
+            params=params
+        )
+
+        if self.strategy.send_gradients:
+            # Update the global parameters with weighted error
+            self.model.theta = \
+            self.optimizer.minimize(
+                X=self.X_train, 
+                y=None, 
+                y_pred=None, 
+                theta=self.model.theta, 
+                precomputed_gradients=d_theta
+            )
+        else:
+            self.model.theta = d_theta
+
+        y_pred = self.model.predict(self.data.X_test)
+        y_train_pred = self.model.predict(self.data.X_train)
+        train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
+        test_acc = accuracy_scorev2(self.data.y_test, y_pred)
+
+        if self._tf_logger is not None:
+            self._tf_logger.histogram("theta-master", self.model.theta, self.model.iter, bins=self.n_iterations)
+            self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
+            self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
+            self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
+            grad_l2_norm = np.linalg.norm(d_theta)
+            self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.model.iter)
+
+        delta = np.max(np.abs(theta_p - self.model.theta))
+
+        # self.logger.info(f"iteration = {self.strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+        self.logger.info(f"iteration = {self.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
+
+        return delta
+        
+    @ftml_trainv2
+    def _train(self, events):
+        """Function that kicks off distribution strategy
+
+        Args:
+            events (dict): Dictionary of zmq.events to know what and when messages are received
+        """
+        # Map tasks
+        self.map()
+
+        # Gather and apply gradients
+        self._train_iteration(events)
+
+    @ftml_train
+    def _training_loop(self):
+        """Not being used at the moment
+        """
+        delta = 1.0
+        start = time.time()
+
+        while self.model.iter < self.n_iterations:
+
+            # Poll events
+            events = dict(self.poller.poll())
+
+            # If we have more than 1 worker
+            if len(self.watch_dog.states) > 0:
+                # Map tasks
+                self.map()
+
+                # Gather and apply gradients
+                self._train_iteration(events)
+
+            else:
+                if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
+                    # Don't use the results if they've already been counted
+                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
+
+                    if command == b"CONNECT":
+                        self.register_workers()
+
+        # Tell workers to exit
+        self.done()
+        self.state = COMPLETE
+        end = time.time()
+        self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
+
     def connect(self):
         """Connects to necessary sockets
         """
@@ -309,106 +409,6 @@ class Master(object):
             )
 
             self.state = REDUCE
-
-    @ftml_train_collect
-    def _train_iteration(self, events):
-        theta_p = self.model.theta.copy()
-        # Receive updated parameters from workers
-        # d_theta, epoch_loss = self.gather(events, timeout=10)
-        params = {
-            "watch_dog": self.watch_dog,
-            "strategy": self.strategy,
-            "state": self.state,
-            "n_samples": self.data.n_samples,
-            "timeout": 10,
-            "quantize": self.strategy.quantize,
-            "theta": self.model.theta
-        }
-        d_theta, epoch_loss = self.distributor.collect(
-            events=events, 
-            socket=self.pull_socket,
-            params=params
-        )
-
-        if self.strategy.send_gradients:
-            # Update the global parameters with weighted error
-            self.model.theta = \
-            self.optimizer.minimize(
-                X=self.X_train, 
-                y=None, 
-                y_pred=None, 
-                theta=self.model.theta, 
-                precomputed_gradients=d_theta
-            )
-        else:
-            self.model.theta = d_theta
-
-        y_pred = self.model.predict(self.data.X_test)
-        y_train_pred = self.model.predict(self.data.X_train)
-        train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
-        test_acc = accuracy_scorev2(self.data.y_test, y_pred)
-
-        if self._tf_logger is not None:
-            self._tf_logger.histogram("theta-master", self.model.theta, self.model.iter, bins=self.n_iterations)
-            self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
-            self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
-            self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
-            grad_l2_norm = np.linalg.norm(d_theta)
-            self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.model.iter)
-
-        delta = np.max(np.abs(theta_p - self.model.theta))
-
-        # self.logger.info(f"iteration = {self.strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-        self.logger.info(f"iteration = {self.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
-
-        return delta
-        
-    @ftml_trainv2
-    def _train(self, events):
-        """Function that kicks off distribution strategy
-
-        Args:
-            events (dict): Dictionary of zmq.events to know what and when messages are received
-        """
-        # Map tasks
-        self.map()
-
-        # Gather and apply gradients
-        self._train_iteration(events)
-
-    @ftml_train
-    def _training_loop(self):
-        """Not being used at the moment
-        """
-        delta = 1.0
-        start = time.time()
-
-        while self.model.iter < self.n_iterations:
-
-            # Poll events
-            events = dict(self.poller.poll())
-
-            # If we have more than 1 worker
-            if len(self.watch_dog.states) > 0:
-                # Map tasks
-                self.map()
-
-                # Gather and apply gradients
-                self._train_iteration(events)
-
-            else:
-                if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
-                    # Don't use the results if they've already been counted
-                    command = self.pull_socket.recv(flags=zmq.SNDMORE)
-
-                    if command == b"CONNECT":
-                        self.register_workers()
-
-        # Tell workers to exit
-        self.done()
-        self.state = COMPLETE
-        end = time.time()
-        self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
 
     def print_metrics(self):
         

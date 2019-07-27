@@ -23,6 +23,9 @@ class CrossEntropyLoss(Loss):
     def __init__(self):
         super().__init__()
 
+    def __call__(self, y, y_pred, reduce=True):
+        return self.loss(y, y_pred, reduce=reduce)
+
     @staticmethod
     def loss(y, y_pred, reduce=True):
         """Returns cross entropy loss for each sample or across batch
@@ -59,6 +62,9 @@ class MSELoss(Loss):
     """
     def __init__(self):
         super().__init__()
+
+    def __call__(self, y, y_pred, reduce=True):
+        return self.loss(y, y_pred, reduce=reduce)
 
     @staticmethod
     def loss(y, y_pred, reduce=True):
