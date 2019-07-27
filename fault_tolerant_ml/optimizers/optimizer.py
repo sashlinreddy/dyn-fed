@@ -42,6 +42,42 @@ class Optimizer(object):
         """
         raise NotImplementedError("Child must override this method")
 
+class SGD():
+    
+    def __init__(self, loss, learning_rate=0.1):
+        self.learning_rate = learning_rate
+        self.loss = loss
+        
+    def compute_gradients(self, model, y, y_pred):
+        
+        n_layers = len(model.layers)
+        output_layer = model.layers[-1]
+        m = model.layers[0].x.shape[0]
+        # For each output unit, calculate it's error term
+        delta = self.loss.grad(y, y_pred) * output_layer.activation_fn.grad(output_layer.z)
+        output_layer.W.grad = (1 / m) * output_layer.x.T @ delta
+        output_layer.b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
+
+        # For hidden units, calculate error term
+        for i in np.arange(n_layers - 2, -1, -1):
+            delta = (delta @ model.layers[i+1].W.T) * model.layers[i].activation_fn.grad(model.layers[i].z)
+            model.layers[i].W.grad = (1 / m) * (model.layers[i].x.T @ delta)
+            model.layers[i].b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
+            
+    def apply_gradients(self, model):
+        
+        for layer in model.layers:
+            layer.W = layer.W - self.learning_rate * layer.W.grad
+            layer.b = layer.b - self.learning_rate * layer.b.grad
+
+    def minimize(self, model, y, y_pred):
+
+        # Backprop
+        self.compute_gradients(model, y, y_pred)
+
+        # Update gradients
+        self.apply_gradients(model)
+
 class SGDOptimizer(Optimizer):
     """Stochastic gradient descent optimizer
     """
