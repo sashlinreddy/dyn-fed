@@ -74,10 +74,10 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             # Get predictions for current theta
             y_pred = self.predict(X)
             # Calculate and apply gradients
-            self.theta, d_theta, epoch_loss = self.optimizer.minimize(X, y, y_pred, self.theta)
+            self.theta, epoch_loss = self.optimizer.minimize(X, y, y_pred, self.theta)
             # Calculate change in theta
             delta = np.max(np.abs(theta_p - self.theta))
-            acc = accuracy_scorev2(y, y_pred)
+            acc = accuracy_scorev2(y.data, y_pred.data)
 
             if i % 100 == 0:
                 print(f"Iteration={i}, delta={delta:.3f}, loss={epoch_loss:.3f}, train acc={acc:.3f}")

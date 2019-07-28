@@ -19,9 +19,6 @@ class BaseEstimator(object):
 
         self._logger = logging.getLogger(f"ftml.models.{self.__class__.__name__}")
 
-    def encode(self):
-        return f"{self.strategy.n_workers}-{self.strategy.scenario}-{self.strategy.remap}-{self.strategy.quantize}-{self.optimizer.n_most_rep}-{self.strategy.comm_period}-{self.optimizer.mu_g}-{self.strategy.send_gradients}"
-
 class ClassifierMixin(object):
 
     def __init__(self):
