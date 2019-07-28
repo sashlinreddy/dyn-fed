@@ -1,1 +1,1 @@
-from .optimizer import SGDOptimizer, AdamOptimizer
+from .optimizer import SGDOptimizer, AdamOptimizer, SGD

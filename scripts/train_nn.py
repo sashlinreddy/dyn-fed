@@ -1,3 +1,6 @@
+"""This file will train multilayer perceptrons
+"""
+
 import click
 import os
 import time 
@@ -9,11 +12,12 @@ from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
 from fault_tolerant_ml.losses import cross_entropy_loss, cross_entropy_gradient, CrossEntropyLoss
-from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer
+from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer, SGD
 from fault_tolerant_ml.models.linear_model import LogisticRegression
 from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
 from fault_tolerant_ml.utils import setup_logger, model_utils
 from fault_tolerant_ml.lib.io import file_io
+from .ft_models import MLP
 
 @click.command()
 @click.argument('n_workers', type=int)
@@ -104,7 +108,7 @@ def run(n_workers, role, verbose, id, tmux, add):
     optimizer = None
 
     if opt_cfg["name"] == "sgd":
-        optimizer = SGDOptimizer(
+        optimizer = SGD(
             loss=loss, 
             learning_rate=opt_cfg['learning_rate'], 
             role=role, 
@@ -112,13 +116,8 @@ def run(n_workers, role, verbose, id, tmux, add):
             mu_g=opt_cfg['mu_g']
         )
     elif opt_cfg["name"] == "adam":
-        optimizer = AdamOptimizer(
-            loss=loss, 
-            learning_rate=opt_cfg['learning_rate'],
-            role=role,
-            n_most_rep=opt_cfg['n_most_rep'], 
-            mu_g=opt_cfg['mu_g']
-        )
+        # TODO: Adapt adam optimizer to multiple weights
+        pass
 
     # Decide on distribution strategy
     strategy = MasterWorkerStrategy(
@@ -128,14 +127,22 @@ def run(n_workers, role, verbose, id, tmux, add):
     )
 
     # Create model
-    model = LogisticRegression(
-        optimizer, 
-        strategy, 
+    model = MLP(
+        strategy=strategy, 
         max_iter=model_cfg['n_iterations'], 
         shuffle=model_cfg['shuffle'], 
         verbose=verbose,
         encode_name=encoded_run_name
     )
+
+    # model = LogisticRegression(
+    #     optimizer, 
+    #     strategy, 
+    #     max_iter=model_cfg['n_iterations'], 
+    #     shuffle=model_cfg['shuffle'], 
+    #     verbose=verbose,
+    #     encode_name=encoded_run_name
+    # )
 
     try:
         logger = logging.getLogger("ftml.scripts.train")
@@ -156,7 +163,7 @@ def run(n_workers, role, verbose, id, tmux, add):
         if role == "master":
             
             # Print confusion matrix
-            y_pred = model.predict(data.X_test)
+            y_pred = model.forward(data.X_test)
             # conf_matrix = confusion_matrix(self.data.y_test, y_pred)
             conf_matrix = confusion_matrix(data.y_test.data, y_pred.data)
             logger.info(f"Confusion matrix=\n{conf_matrix}")
@@ -167,7 +174,7 @@ def run(n_workers, role, verbose, id, tmux, add):
             logger.info(f"Accuracy={acc * 100:7.4f}%")
 
             # Plot metrics
-            model.plot_metrics()
+            # model.plot_metrics()
 
     except Exception as e:
         logger.exception(e)

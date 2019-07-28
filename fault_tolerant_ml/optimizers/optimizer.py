@@ -46,12 +46,28 @@ class Optimizer(object):
 
 class SGD():
     
-    def __init__(self, loss, learning_rate=0.1):
+    def __init__(self, loss, learning_rate=0.1, **kwargs):
         self.learning_rate = learning_rate
         self.loss = loss
+
+        self._role = None
+        self._most_rep = None
+        self._n_most_rep = 0
+        self._mu_g = 1.0 / self.learning_rate
+        if "n_most_rep" in kwargs:
+            self._n_most_rep = kwargs["n_most_rep"]
+        if "role" in kwargs:
+            self._role = kwargs["role"]
+        if "mu_g" in kwargs:
+            self._mu_g = kwargs["mu_g"]
         
     def compute_gradients(self, model, y, y_pred):
-        
+        """Compute gradients for each layer of the model and updates gradients for the parameters
+
+        Args:
+            y (fault_tolerant_ml.operators.Tensor): Actual labels
+            y_pred (fault_tolerant_ml.operators.Tensor): Predicted labels
+        """
         n_layers = len(model.layers)
         output_layer = model.layers[-1]
         m = model.layers[0].x.shape[0]
@@ -67,7 +83,11 @@ class SGD():
             model.layers[i].b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
             
     def apply_gradients(self, model):
-        
+        """Apply gradients to the parameters in each layer
+
+        Args:
+            model (fault_tolerant_ml.Model): Tensor model containing multiple layers
+        """
         for layer in model.layers:
             layer.W = layer.W - self.learning_rate * layer.W.grad
             layer.b = layer.b - self.learning_rate * layer.b.grad
@@ -133,7 +153,6 @@ class SGDOptimizer(Optimizer):
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
             if batch_loss.shape[1] > 1:
-                # temp = np.mean(batch_loss, axis=1)
                 temp = np.mean(batch_loss, axis=1).data
                 self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
             else:
@@ -157,7 +176,6 @@ class SGDOptimizer(Optimizer):
         cost_prime = self.loss.grad(y, y_pred)
         # Calculate error term
         delta = y_pred * (1 - y_pred) * cost_prime
-        # d_theta = 1 / X.shape[0] * (X.T @ delta)
         d_theta = 1 / X.shape[0] * (X.T @ delta)
 
         # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
@@ -176,14 +194,8 @@ class SGDOptimizer(Optimizer):
         """
 
         if self.role != "worker":
-            # theta = theta - self.learning_rate * d_theta
             theta = theta - self.learning_rate * theta.grad
         else:
-            # theta = (
-            #     (1 - self._mu_g * self.learning_rate) * theta - 
-            #     (self.learning_rate * d_theta) + 
-            #     (self._mu_g * theta_g * self.learning_rate)
-            # )
             theta = (
                 (1 - self._mu_g * self.learning_rate) * theta - 
                 (self.learning_rate * theta.grad) + 
@@ -211,16 +223,13 @@ class SGDOptimizer(Optimizer):
             batch_loss = self.compute_loss(y, y_pred)
 
             # Get gradients
-            # d_theta = self.compute_gradients(X, y, y_pred, theta)
             theta.grad = self.compute_gradients(X, y, y_pred, theta)
 
             self._logger.info(f'n_samples={N}')
             # Apply them
             theta = self.apply_gradients(theta, N, theta_g=theta_g)
-            # theta = self.apply_gradients(d_theta, theta, X.shape[0])
             return theta, batch_loss
         else:
-            # d_theta = precomputed_gradients
             theta.grad = precomputed_gradients
             # Apply them
             theta = self.apply_gradients(theta, X.shape[0])
@@ -287,7 +296,6 @@ class AdamOptimizer(Optimizer):
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
             if batch_loss.shape[1] > 1:
-                # temp = np.mean(batch_loss, axis=1)
                 temp = np.mean(batch_loss, axis=1).data
                 self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
             else:
@@ -311,7 +319,6 @@ class AdamOptimizer(Optimizer):
         cost_prime = self.loss.grad(y, y_pred)
         # Calculate error term
         delta = y_pred * (1 - y_pred) * cost_prime
-        # d_theta = 1 / X.shape[0] * np.dot(X.T, delta)
         d_theta = 1 / X.shape[0] * (X.T @ delta)
 
         return d_theta
@@ -326,20 +333,9 @@ class AdamOptimizer(Optimizer):
             theta (numpy.ndarray): Updated parameter matrix
         """
 
-        # if self.role != "worker":
-        #     theta = theta - self.learning_rate * 1 / N * d_theta
-        # else:
-        #     theta = (
-        #         (1 - self._mu_g * self.learning_rate) * theta - 
-        #         (self.learning_rate * 1 / N * d_theta) + 
-        #         (self._mu_g * theta_g * self.learning_rate)
-        #     )
-
         if self.m_t is None:
-            # self.m_t = np.zeros_like(d_theta)
             self.m_t = theta.grad.zeros_like()
         if self.v_t is None:
-            # self.v_t = np.zeros_like(d_theta)
             self.v_t = theta.grad.zeros_like()
 
         # Update biased first moment estimate
@@ -383,7 +379,6 @@ class AdamOptimizer(Optimizer):
             self._logger.info(f'n_samples={N}')
             # Apply them
             theta = self.apply_gradients(theta, iteration)
-            # theta = self.apply_gradients(d_theta, theta, X.shape[0])
             return theta, batch_loss
         else:
             theta.grad = precomputed_gradients
