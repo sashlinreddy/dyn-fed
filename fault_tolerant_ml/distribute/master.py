@@ -20,7 +20,7 @@ import json
 # Local
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.utils import setup_logger
-from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
+from fault_tolerant_ml.metrics import accuracy_scorev2
 from fault_tolerant_ml.utils.maths import linspace_quantization
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
@@ -418,21 +418,11 @@ class Master(object):
             self.state = REDUCE
 
     def print_metrics(self):
-        
+        """Print metrics relating to communication times
+        """
         # Print avg loop iteration time
         diff = np.diff(self.times)
         self.logger.debug(f"Times={diff.mean():7.6f}s")
-
-        # Print confusion matrix
-        y_pred = self.model.predict(self.data.X_test)
-        # conf_matrix = confusion_matrix(self.data.y_test, y_pred)
-        conf_matrix = confusion_matrix(self.data.y_test.data, y_pred.data)
-        self.logger.info(f"Confusion matrix=\n{conf_matrix}")
-
-        # Accuracy
-        # acc = accuracy_scorev2(self.data.y_test, y_pred)
-        acc = accuracy_scorev2(self.data.y_test.data, y_pred.data)
-        self.logger.info(f"Accuracy={acc * 100:7.4f}%")
 
     def plot_metrics(self):
 

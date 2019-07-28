@@ -6,11 +6,12 @@ import logging
 from dotenv import load_dotenv, find_dotenv
 
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
-from fault_tolerant_ml.models.linear_model import LogisticRegression
-from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer
-from fault_tolerant_ml.losses import cross_entropy_loss, cross_entropy_gradient, CrossEntropyLoss
 from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.data import MNist, OccupancyData
+from fault_tolerant_ml.losses import cross_entropy_loss, cross_entropy_gradient, CrossEntropyLoss
+from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer
+from fault_tolerant_ml.models.linear_model import LogisticRegression
+from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
 from fault_tolerant_ml.utils import setup_logger, model_utils
 from fault_tolerant_ml.lib.io import file_io
 
@@ -154,6 +155,19 @@ def run(n_workers, role, verbose, id, tmux, add):
         logger.info("*******************************")
 
         if role == "master":
+            
+            # Print confusion matrix
+            y_pred = model.predict(data.X_test)
+            # conf_matrix = confusion_matrix(self.data.y_test, y_pred)
+            conf_matrix = confusion_matrix(data.y_test.data, y_pred.data)
+            logger.info(f"Confusion matrix=\n{conf_matrix}")
+
+            # Accuracy
+            # acc = accuracy_scorev2(self.data.y_test, y_pred)
+            acc = accuracy_scorev2(data.y_test.data, y_pred.data)
+            logger.info(f"Accuracy={acc * 100:7.4f}%")
+
+            # Plot metrics
             model.plot_metrics()
 
     except Exception as e:
