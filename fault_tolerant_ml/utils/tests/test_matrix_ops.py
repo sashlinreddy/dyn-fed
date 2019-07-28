@@ -51,7 +51,7 @@ class TestMatrixOps(unittest.TestCase):
         """
 
         # Reconstruct error should be small enough for us to be comfortable with approximating the parameters
-        eps = 0.2
+        eps = 0.1
         interval = 100
         theta = np.random.randn(784, 10).astype(np.float32)
 

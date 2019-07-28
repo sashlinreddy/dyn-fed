@@ -404,7 +404,7 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.model.theta if self.strategy.quantize != 1 else linspace_quantization(self.model.theta, interval=100)
+            data = self.model.theta.data if self.strategy.quantize != 1 else linspace_quantization(self.model.theta.data, interval=200)
             workers = None
             params = self.set_params()
 

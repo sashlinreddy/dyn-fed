@@ -128,8 +128,10 @@ class Distributor(object):
 
                 if quantize:
                     self._logger.debug(f"Reconstructing gradients")
-                    shape = theta.shape
-                    parameter_temp = reconstruct_approximation(parameter_temp, shape, r_dtype=theta.dtype)
+                    # shape = theta.shape
+                    # parameter_temp = reconstruct_approximation(parameter_temp, shape, r_dtype=theta.dtype)
+                    parameter_temp = np.frombuffer(parameter_temp, dtype=theta.dtype)
+                    parameter_temp = parameter_temp.reshape(theta.shape)
                 else:
                     parameter_temp = np.frombuffer(parameter_temp, dtype=theta.dtype)
                     parameter_temp = parameter_temp.reshape(theta.shape)

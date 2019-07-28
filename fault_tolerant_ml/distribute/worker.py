@@ -59,7 +59,8 @@ class Worker(object):
 
         self.encoded_name = self.model.encode_name
 
-        self._logger = setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
+        setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
+        self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
         self._tf_logger = None
         self.distributor = Distributor()
 
@@ -91,37 +92,6 @@ class Worker(object):
         poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
 
         return poller
-
-    def do_work(self, theta_g=None):
-        """Worker doing the heavy lifting of calculating gradients and calculating loss
-
-        Args:
-            X (numpy.ndarray): Feature matrix
-            y (numpy.ndarray): Label vector
-            theta (numpy.ndarray): Parameter matrix
-            theta_g (numpy.ndarray): Global parameters
-
-        Returns:
-            d_theta (numpy.ndarray): Gradient matrix for parameters
-            batch_loss (float): Loss for this iteration
-            most_representative (numpy.ndarray): Vector of most representative data samples     for a particular iteration. Most representative is determined by the data         points that have the highest loss.
-        """
-
-        # Get predictions
-        y_pred = self.model.predict(self.X)
-
-        self.model.theta, d_theta, batch_loss = self.model.optimizer.minimize(
-            self.X, 
-            self.y, 
-            y_pred, 
-            self.model.theta, 
-            # N=self.n_samples,
-            iteration=self.model.iter + 1,
-            N=self.X.shape[0],
-            theta_g=theta_g)
-        most_representative = self.model.optimizer.most_rep
-        
-        return d_theta, batch_loss, most_representative
 
     def receive_data(self, start=True):
         """Receives data from worker
@@ -167,7 +137,36 @@ class Worker(object):
 
         self._logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
         self.have_work = True
-                    
+
+    def do_work(self, theta_g=None):
+        """Worker doing the heavy lifting of calculating gradients and calculating loss
+
+        Args:
+            X (numpy.ndarray): Feature matrix
+            y (numpy.ndarray): Label vector
+            theta (numpy.ndarray): Parameter matrix
+            theta_g (numpy.ndarray): Global parameters
+
+        Returns:
+            batch_loss (float): Loss for this iteration
+            most_representative (numpy.ndarray): Vector of most representative data samples     for a particular iteration. Most representative is determined by the data         points that have the highest loss.
+        """
+
+        # Get predictions
+        y_pred = self.model.predict(self.X)
+
+        self.model.theta, batch_loss = self.model.optimizer.minimize(
+            self.X, 
+            self.y, 
+            y_pred, 
+            self.model.theta, 
+            # N=self.n_samples,
+            iteration=self.model.iter + 1,
+            N=self.X.shape[0],
+            theta_g=theta_g)
+        most_representative = self.model.optimizer.most_rep
+        
+        return batch_loss, most_representative
 
     def train(self):
         """Training for the worker
@@ -255,7 +254,7 @@ class Worker(object):
                             count = 1
                             while True:
                             # Each worker does work and we get the resulting gradients
-                                d_theta, batch_loss, most_representative = \
+                                batch_loss, most_representative = \
                                 self.do_work( 
                                     theta_g=theta_g
                                 )
@@ -264,8 +263,8 @@ class Worker(object):
 
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
-                                    self._tf_logger.histogram(f"theta={self.worker_id}", theta, self.model.iter, bins=400)
-                                    self._tf_logger.histogram(f"d_theta={self.worker_id}", d_theta, self.model.iter, bins=400)
+                                    self._tf_logger.histogram(f"theta={self.worker_id}", self.model.theta.data, self.model.iter, bins=400)
+                                    self._tf_logger.histogram(f"d_theta={self.worker_id}", self.model.theta.grad.data, self.model.iter, bins=400)
                                     self._tf_logger.scalar(f"loss-{self.worker_id}", batch_loss, self.model.iter)
 
                                 self.model.iter += 1
@@ -279,13 +278,16 @@ class Worker(object):
                             if self.quantize:
                                 # d_theta = linspace_quantization(d_theta, interval=100)
                                 # self.model.theta = linspace_quantization(self.model.theta, interval=100)
-                                d_theta.data = linspace_quantization(d_theta.data, interval=100)
-                                self.model.theta.data = linspace_quantization(self.model.theta.data, interval=100)
+                                # d_theta.data = linspace_quantization(d_theta.data, interval=100)
+                                pass
+                                # self.model.theta.grad.data = linspace_quantization(self.model.theta.grad.data, interval=100)
+                                # self.model.theta.data = linspace_quantization(self.model.theta.data, interval=100)
 
                             self._logger.debug(f"Send gradients flag={self.send_gradients}")
                             msg = self.model.theta.tostring()
                             if self.send_gradients:
-                                msg = d_theta.tostring()
+                                # msg = d_theta.tostring()
+                                msg = self.model.theta.grad.tostring()
                                 
                             # loss = str(batch_loss).encode()
                             loss = str(batch_loss.data).encode()

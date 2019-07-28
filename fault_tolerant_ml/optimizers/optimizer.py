@@ -157,15 +157,15 @@ class SGDOptimizer(Optimizer):
         cost_prime = self.loss.grad(y, y_pred)
         # Calculate error term
         delta = y_pred * (1 - y_pred) * cost_prime
-        # d_theta = 1 / X.shape[0] * np.dot(X.T, delta)
-        d_theta = 1 / X.shape[0] * (X.T @ delta)
+        # d_theta = 1 / X.shape[0] * (X.T @ delta)
+        theta.grad = 1 / X.shape[0] * (X.T @ delta)
 
         # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
         # assert np.all(d_theta == 0.0)
 
-        return d_theta
+        return theta
 
-    def apply_gradients(self, d_theta, theta, N, theta_g=None):
+    def apply_gradients(self, theta, N, theta_g=None):
         """Applies gradients by updating parameter matrix
         
         Args:
@@ -176,11 +176,17 @@ class SGDOptimizer(Optimizer):
         """
 
         if self.role != "worker":
-            theta = theta - self.learning_rate * d_theta
+            # theta = theta - self.learning_rate * d_theta
+            theta = theta - self.learning_rate * theta.grad
         else:
+            # theta = (
+            #     (1 - self._mu_g * self.learning_rate) * theta - 
+            #     (self.learning_rate * d_theta) + 
+            #     (self._mu_g * theta_g * self.learning_rate)
+            # )
             theta = (
                 (1 - self._mu_g * self.learning_rate) * theta - 
-                (self.learning_rate * d_theta) + 
+                (self.learning_rate * theta.grad) + 
                 (self._mu_g * theta_g * self.learning_rate)
             )
 
@@ -205,21 +211,19 @@ class SGDOptimizer(Optimizer):
             batch_loss = self.compute_loss(y, y_pred)
 
             # Get gradients
-            d_theta = self.compute_gradients(X, y, y_pred, theta)
-
-            # Clip gradients to prevent getting too large
-            if self._clip_norm is not None:
-                d_theta = d_theta * self._clip_norm / np.linalg.norm(d_theta)
+            # d_theta = self.compute_gradients(X, y, y_pred, theta)
+            self.compute_gradients(X, y, y_pred, theta)
 
             self._logger.info(f'n_samples={N}')
             # Apply them
-            theta = self.apply_gradients(d_theta, theta, N, theta_g=theta_g)
+            theta = self.apply_gradients(theta, N, theta_g=theta_g)
             # theta = self.apply_gradients(d_theta, theta, X.shape[0])
-            return theta, d_theta, batch_loss
+            return theta, batch_loss
         else:
-            d_theta = precomputed_gradients
+            # d_theta = precomputed_gradients
+            theta.grad = precomputed_gradients
             # Apply them
-            theta = self.apply_gradients(d_theta, theta, X.shape[0])
+            theta = self.apply_gradients(theta, X.shape[0])
             return theta
 
 class AdamOptimizer(Optimizer):
