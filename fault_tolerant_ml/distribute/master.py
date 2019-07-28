@@ -56,8 +56,6 @@ class Master(object):
 
         # Model variables
         self.n_iterations = int(np.ceil(self.model.max_iter / self.strategy.comm_period))
-        self.learning_rate = self.model.optimizer.learning_rate
-        self.mu_g = self.model.optimizer.mu_g
         self.optimizer = self.model.optimizer
 
         # Tracking variables
@@ -274,8 +272,6 @@ class Master(object):
             params["n_features"] = self.data.n_features
             params["n_classes"] = self.data.n_classes
             params["n_most_rep"] = self.optimizer.n_most_rep
-            params["learning_rate"] = self.learning_rate
-            params["mu_g"] = self.mu_g
             params["send_gradients"] = self.strategy.send_gradients
             params["comm_period"] = self.strategy.comm_period
             params["mapping"] = self.mapping
