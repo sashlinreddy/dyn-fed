@@ -158,12 +158,12 @@ class SGDOptimizer(Optimizer):
         # Calculate error term
         delta = y_pred * (1 - y_pred) * cost_prime
         # d_theta = 1 / X.shape[0] * (X.T @ delta)
-        theta.grad = 1 / X.shape[0] * (X.T @ delta)
+        d_theta = 1 / X.shape[0] * (X.T @ delta)
 
         # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
         # assert np.all(d_theta == 0.0)
 
-        return theta
+        return d_theta
 
     def apply_gradients(self, theta, N, theta_g=None):
         """Applies gradients by updating parameter matrix
@@ -212,7 +212,7 @@ class SGDOptimizer(Optimizer):
 
             # Get gradients
             # d_theta = self.compute_gradients(X, y, y_pred, theta)
-            self.compute_gradients(X, y, y_pred, theta)
+            theta.grad = self.compute_gradients(X, y, y_pred, theta)
 
             self._logger.info(f'n_samples={N}')
             # Apply them
@@ -316,7 +316,7 @@ class AdamOptimizer(Optimizer):
 
         return d_theta
 
-    def apply_gradients(self, d_theta, theta, iteration, theta_g=None):
+    def apply_gradients(self, theta, iteration, theta_g=None):
         """Applies gradients by updating parameter matrix
         
         Args:
@@ -337,15 +337,15 @@ class AdamOptimizer(Optimizer):
 
         if self.m_t is None:
             # self.m_t = np.zeros_like(d_theta)
-            self.m_t = d_theta.zeros_like()
+            self.m_t = theta.grad.zeros_like()
         if self.v_t is None:
             # self.v_t = np.zeros_like(d_theta)
-            self.v_t = d_theta.zeros_like()
+            self.v_t = theta.grad.zeros_like()
 
         # Update biased first moment estimate
-        self.m_t = self.beta_1 * self.m_t + (1. - self.beta_1) * d_theta
+        self.m_t = self.beta_1 * self.m_t + (1. - self.beta_1) * theta.grad
         # Update biased second raw moment estimate
-        self.v_t = self.beta_2 * self.v_t + (1. - self.beta_2) * d_theta**2
+        self.v_t = self.beta_2 * self.v_t + (1. - self.beta_2) * theta.grad**2
 
         # Bias correction
         m_t_corrected = self.m_t / (1. - self.beta_1**(iteration))
@@ -378,15 +378,15 @@ class AdamOptimizer(Optimizer):
             batch_loss = self.compute_loss(y, y_pred)
 
             # Get gradients
-            d_theta = self.compute_gradients(X, y, y_pred, theta)
+            theta.grad = self.compute_gradients(X, y, y_pred, theta)
 
             self._logger.info(f'n_samples={N}')
             # Apply them
-            theta = self.apply_gradients(d_theta, theta, iteration)
+            theta = self.apply_gradients(theta, iteration)
             # theta = self.apply_gradients(d_theta, theta, X.shape[0])
-            return theta, d_theta, batch_loss
+            return theta, batch_loss
         else:
-            d_theta = precomputed_gradients
+            theta.grad = precomputed_gradients
             # Apply them
-            theta = self.apply_gradients(d_theta, theta, X.shape[0])
+            theta = self.apply_gradients(theta, X.shape[0])
             return theta
