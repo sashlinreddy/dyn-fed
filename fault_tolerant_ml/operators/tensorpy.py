@@ -136,6 +136,10 @@ class Tensor():
         is_param = self.is_param
         return Tensor(np.argmax(self.data, axis=axis, out=out), is_param=is_param)
 
+    def min(self, axis=None, out=None):
+        is_param = self.is_param
+        return Tensor(np.min(self.data, axis=axis, out=out), is_param=is_param)
+
     def zeros_like(self, dtype=None, order='K', subok=True):
         is_param = self.is_param
         if dtype is None:
