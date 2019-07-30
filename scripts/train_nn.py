@@ -130,6 +130,7 @@ def run(n_workers, role, verbose, id, tmux, add):
     # model = LogisticRegression(
     #     optimizer=optimizer,
     #     strategy=strategy, 
+    #     batch_size=model_cfg["batch_size"],
     #     max_iter=model_cfg['n_iterations'], 
     #     shuffle=model_cfg['shuffle'], 
     #     verbose=verbose,
@@ -139,6 +140,7 @@ def run(n_workers, role, verbose, id, tmux, add):
     model = MLP(
         optimizer, 
         strategy, 
+        batch_size=model_cfg["batch_size"],
         max_iter=model_cfg['n_iterations'], 
         shuffle=model_cfg['shuffle'], 
         verbose=verbose,

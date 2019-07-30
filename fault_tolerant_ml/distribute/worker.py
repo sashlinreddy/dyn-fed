@@ -20,6 +20,7 @@ from fault_tolerant_ml.utils.maths import reconstruct_approximation, linspace_qu
 from fault_tolerant_ml.distribute import Distributor
 from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.utils import zhelpers
+from fault_tolerant_ml.lib.io.file_io import FileWatcher
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -43,20 +44,31 @@ class Worker(object):
         self.comm_period = self.model.strategy.comm_period
         self.send_gradients = self.model.strategy.send_gradients
 
+        setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
+        self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
+
         ip_filename = "ip_config.json"
         if "SLURM_JOBID" in os.environ:
             slurm_job_id = os.environ["SLURM_JOBID"]
             ip_filename = f"ip_config_{slurm_job_id}.json"
 
-        with open(os.path.join(self.model.strategy.shared_folder, ip_filename), "r") as f:
-            ip_config = json.load(f)
+        full_path = os.path.join(self.model.strategy.shared_folder, ip_filename)
+        if os.path.exists(full_path):
+            with open(full_path, "r") as f:
+                ip_config = json.load(f)
+        else:
+            file_watcher = FileWatcher(self.model.strategy.shared_folder, full_path)
+            file_found = file_watcher.run(timeout=5)
+            if file_found:
+                with open(full_path, "r") as f:
+                    ip_config = json.load(f)
+            else:
+                raise FileNotFoundError("IP Config file not found")
 
         self.master_ip_address = ip_config["ipAddress"]
 
         self.encoded_name = self.model.encode_name
 
-        setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
-        self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
         self._tf_logger = None
         self.distributor = Distributor()
 
