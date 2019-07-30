@@ -103,12 +103,15 @@ class Distributor(object):
 
                 # self._logger.debug(f"Alive workers={n_alive_workers}")
                 if i == 0:
-                    worker, parameter_temp, epoch_loss_temp, mr = msg
+                    worker, epoch_loss_temp, mr = msg[0:3]
+                    parameter_temp = msg[3:]
                 else:
                     # Receive multipart including command message
                     cmd = msg[0]
                     if cmd == b"WORK":
-                        worker, parameter_temp, epoch_loss_temp, mr = msg[1:]
+                        # worker, epoch_loss_temp, mr, parameter_temp = msg[1:]
+                        worker, epoch_loss_temp, mr = msg[1:4]
+                        parameter_temp = msg[4:]
                     elif cmd == b"CONNECT":
                         # self.register_workers(msg[1])
                         watch_dog.add_worker(msg[1])
@@ -133,7 +136,7 @@ class Distributor(object):
                     parameter_temp = np.frombuffer(parameter_temp, dtype=W.dtype)
                     parameter_temp = parameter_temp.reshape(W.shape)
                 else:
-                    parameter_temp = np.frombuffer(parameter_temp, dtype=W.dtype)
+                    parameter_temp = np.frombuffer(parameter_temp[0], dtype=W.dtype)
                     parameter_temp = parameter_temp.reshape(W.shape)
 
                 # Store most representative points

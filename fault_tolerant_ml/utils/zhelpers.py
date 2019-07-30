@@ -110,4 +110,4 @@ def reconstruct_array(data, dtype, shape):
     arr = np.frombuffer(buf, dtype=dtype)
     arr = arr.reshape(shape)
 
-    return arr
+    return arr.copy()

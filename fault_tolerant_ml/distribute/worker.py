@@ -19,6 +19,7 @@ from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.utils.maths import reconstruct_approximation, linspace_quantization
 from fault_tolerant_ml.distribute import Distributor
 from fault_tolerant_ml.operators import Tensor
+from fault_tolerant_ml.utils import zhelpers
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -166,6 +167,11 @@ class Worker(object):
         
         return batch_loss, most_representative
 
+    def prep_multipart(self, data):
+        multipart = [b"WORK", self.worker_id.encode()]
+        multipart.extend(data)
+        return multipart
+
     def train(self):
         """Training for the worker
 
@@ -225,15 +231,29 @@ class Worker(object):
                                 # Receive parameter matrix on the subscriber socket
                                 if cmd == b"WORKNODELAY":
                                     self.comm_period = 1
-                                data, dtype, shape = msg # pylint: disable=unbalanced-tuple-unpacking
-                                shape = shape.decode()
+                                # data, dtype, shape = msg # pylint: disable=unbalanced-tuple-unpacking
+                                # shape = shape.decode()
 
-                                # Reconstruct numpy array
-                                buf = memoryview(data)
+                                # # Reconstruct numpy array
+                                # buf = memoryview(data)
                                 
-                                W = np.frombuffer(buf, dtype=dtype)
-                                W = W.reshape(eval(shape))
-                                W = W.copy()
+                                # W = np.frombuffer(buf, dtype=dtype)
+                                # W = W.reshape(eval(shape))
+                                # W = W.copy()
+                                # W = zhelpers.reconstruct_array(data, dtype, shape)
+
+                                n_items = 3
+                                # Decode multipart message
+                                for layer, i in zip(self.model.layers, np.arange(0, len(msg), n_items)):
+                                    
+                                    # Get data for correponding layer
+                                    Wdata, Wdtype, Wshape = msg[i:i+n_items]
+
+                                    W = zhelpers.reconstruct_array(Wdata, Wdtype, Wshape)
+                                    # b = reconstruct_array(bdata, bdtype, bshape)
+                                    
+                                    layer.W = Tensor(W, is_param=True)
+                                    # layer.b.data = b
                                 
                             elif self.quantize == 1:
 
@@ -245,17 +265,17 @@ class Worker(object):
                                 shape = (self.n_features, self.n_classes)
                                 W = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
 
-                            W = Tensor(W, is_param=True)
-                            W_g = W.copy()
+                            # W = Tensor(W, is_param=True)
+                            # W_g = W.copy()
                             # self.model.layers[0].W = W
-                            self.model.layers[0].W = W
+                            # self.model.layers[0].W = W
                             
                             count = 1
                             while True:
                             # Each worker does work and we get the resulting gradients
                                 batch_loss, most_representative = \
                                 self.do_work( 
-                                    W_g=W_g
+                                    W_g=None
                                 )
                                 # self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}")
                                 self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss.data:7.4f}")
@@ -283,7 +303,9 @@ class Worker(object):
                                 # self.model.layers[0].W.data = linspace_quantization(self.model.layers[0].W.data, interval=100)
 
                             self._logger.debug(f"Send gradients flag={self.send_gradients}")
-                            msg = self.model.layers[0].W.tostring()
+                            # msg = self.model.layers[0].W.tostring()
+                            msg = zhelpers.multipart_params(self.model.parameters())
+                            self._logger.debug(f"Length of msg={len(msg)}")
                             if self.send_gradients:
                                 # msg = d_W.tostring()
                                 msg = self.model.layers[0].W.grad.tostring()
@@ -291,7 +313,10 @@ class Worker(object):
                             # loss = str(batch_loss).encode()
                             loss = str(batch_loss.data).encode()
                             mr = most_representative.tostring()
-                            self.push_socket.send_multipart([b"WORK", self.worker_id.encode(), msg, loss, mr])
+                            
+                            data = [loss, mr] + msg
+                            multipart = self.prep_multipart(data)
+                            self.push_socket.send_multipart(multipart)
 
                             self._logger.debug("Sent work back to master")
                 else:
