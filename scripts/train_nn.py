@@ -136,7 +136,7 @@ def run(n_workers, role, verbose, id, tmux, add):
         encode_name=encoded_run_name
     )
 
-    # model = LogisticRegression(
+    # model = MLP(
     #     optimizer, 
     #     strategy, 
     #     max_iter=model_cfg['n_iterations'], 

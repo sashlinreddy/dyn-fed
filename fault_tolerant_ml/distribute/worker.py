@@ -153,7 +153,7 @@ class Worker(object):
         # y_pred = self.model.predict(self.X)
         y_pred = self.model.forward(self.X)
 
-        W, batch_loss = self.model.optimizer.minimize(
+        batch_loss = self.model.optimizer.minimize(
             self.model,
             self.y, 
             y_pred, 
@@ -161,7 +161,7 @@ class Worker(object):
             iteration=self.model.iter + 1,
             N=self.X.shape[0],
             W_g=W_g)
-        self.model.layers[0].W = W
+        # self.model.layers[0].W = W
         most_representative = self.model.optimizer.most_rep
         
         return batch_loss, most_representative

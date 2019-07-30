@@ -119,8 +119,6 @@ class SGD(Optimizer):
             delta = (delta @ model.layers[i+1].W.T) * model.layers[i].act_fn.grad(model.layers[i].z)
             model.layers[i].W.grad = (1 / m) * (model.layers[i].x.T @ delta)
             model.layers[i].b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
-
-        return model
             
     def apply_gradients(self, model):
         """Apply gradients to the parameters in each layer
@@ -132,20 +130,18 @@ class SGD(Optimizer):
             layer.W = layer.W - self.learning_rate * layer.W.grad
             layer.b = layer.b - self.learning_rate * layer.b.grad
 
-        return model
-
     def minimize(self, model, y, y_pred, iteration=None, N=None, W_g=None):
 
         # Compute loss
         batch_loss = self.compute_loss(y, y_pred)
 
         # Backprop
-        model = self.compute_gradients(model, y, y_pred)
+        self.compute_gradients(model, y, y_pred)
 
         # Update gradients
-        model = self.apply_gradients(model)
+        self.apply_gradients(model)
 
-        return model.layers[0].W, batch_loss
+        return batch_loss
 
 class SGDOptimizer(Optimizer):
     """Stochastic gradient descent optimizer
