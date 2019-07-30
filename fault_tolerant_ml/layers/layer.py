@@ -45,7 +45,7 @@ class Layer(object):
         # Store input tensor for feedforward
         x = x
         # Store edge
-        z = (x @ self.W)# + self.b
+        z = (x @ self.W) + self.b
         # Store output tensor for feedforward
         y = Tensor(self.act_fn(z.data))
 

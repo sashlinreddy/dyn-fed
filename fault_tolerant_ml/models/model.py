@@ -152,7 +152,7 @@ class Model():
     def parameters(self):
         for layer in self.layers:
             for k, v in layer.__dict__.items():
-                if 'W' == k:# or 'b' == k:
+                if 'W' == k or 'b' == k:
                     yield v
             
     def zero_grad(self):

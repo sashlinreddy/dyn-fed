@@ -53,23 +53,21 @@ class Distributor(object):
 
         return wait
 
-    def reduce(self, model, parameters, worker_params, beta=1.0):
+    def reduce(self, model, parameters, worker_params, beta=1.0, n_items=6):
         """Reduce across workers to master with some op
         """
 
-        n_items = 3
         # Decode multipart message
         for j, k in zip(np.arange(model.n_layers), np.arange(0, len(worker_params), n_items)):
             
             # Get data for correponding layer
-            Wdata, Wdtype, Wshape = worker_params[k:k+n_items]
+            Wdata, Wdtype, Wshape, bdata, bdtype, bshape = worker_params[k:k+n_items]
 
             W = zhelpers.reconstruct_array(Wdata, Wdtype, Wshape)
-            # b = zhelpers.reconstruct_array(bdata, bdtype, bshape)
+            b = zhelpers.reconstruct_array(bdata, bdtype, bshape)
             
-            # self._logger.info(f"W.shape={W.shape}, params[{i}][0].shape={params[i][0].shape}")
             parameters[j][0] += beta * W
-            # params[i][1] += beta * b
+            parameters[j][1] += beta * b
 
         return parameters
 
@@ -107,7 +105,7 @@ class Distributor(object):
 
         errs = []
         d_Ws = []
-        parameters = [[np.zeros_like(l.W.data)] for l in model.layers]
+        parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
 
         while i < n_alive_workers:
 
@@ -206,7 +204,7 @@ class Distributor(object):
         # parameters /= i
         for p in parameters:
             p[0] /= i
-            # param[1] /= i
+            p[1] /= i
 
         epoch_loss /= i
 

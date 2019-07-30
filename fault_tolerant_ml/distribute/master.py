@@ -119,7 +119,7 @@ class Master(object):
             # self.logger.info(f"type(self.model.layers[0].W.data)={self.model.layers[0].W.data.dtype}")
             for i in np.arange(self.model.n_layers):
                 self.model.layers[i].W.data = parameters[i][0]
-                # self.model.layers[i].b = parameters[i][1]
+                self.model.layers[i].b.data = parameters[i][1]
 
         # y_pred = self.model.predict(self.data.X_test)
         # y_train_pred = self.model.predict(self.data.X_train)

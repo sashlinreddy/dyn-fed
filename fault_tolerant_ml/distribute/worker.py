@@ -242,18 +242,18 @@ class Worker(object):
                                 # W = W.copy()
                                 # W = zhelpers.reconstruct_array(data, dtype, shape)
 
-                                n_items = 3
+                                n_items = 6
                                 # Decode multipart message
                                 for layer, i in zip(self.model.layers, np.arange(0, len(msg), n_items)):
                                     
                                     # Get data for correponding layer
-                                    Wdata, Wdtype, Wshape = msg[i:i+n_items]
+                                    Wdata, Wdtype, Wshape, bdata, bdtype, bshape = msg[i:i+n_items]
 
                                     W = zhelpers.reconstruct_array(Wdata, Wdtype, Wshape)
-                                    # b = reconstruct_array(bdata, bdtype, bshape)
+                                    b = zhelpers.reconstruct_array(bdata, bdtype, bshape)
                                     
                                     layer.W = Tensor(W, is_param=True)
-                                    # layer.b.data = b
+                                    layer.b = Tensor(b, is_param=True)
                                 
                             elif self.quantize == 1:
 
