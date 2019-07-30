@@ -21,9 +21,9 @@ class TestMatrixOps(unittest.TestCase):
         """Test quantization size
         """
         interval = 100
-        theta = np.random.randn(784, 10)
+        W = np.random.randn(784, 10)
 
-        msg = linspace_quantization(theta, interval=interval)
+        msg = linspace_quantization(W, interval=interval)
 
         # Check if desired no. of bytes
         assert msg.nbytes == 7852
@@ -33,18 +33,18 @@ class TestMatrixOps(unittest.TestCase):
         """
 
         interval = 100
-        theta = np.random.randn(784, 10).astype(np.float32)
+        W = np.random.randn(784, 10).astype(np.float32)
 
         # Quantize the parameters
-        msg = linspace_quantization(theta, interval=interval)
+        msg = linspace_quantization(W, interval=interval)
 
         buf = memoryview(msg.tostring())
 
         # Reconstruct the parameters
-        r_theta = reconstruct_approximation(buf, theta.shape, r_dtype=np.float32)
-        logger.info(f"Reconstructed dtype={r_theta.dtype}")
+        r_W = reconstruct_approximation(buf, W.shape, r_dtype=np.float32)
+        logger.info(f"Reconstructed dtype={r_W.dtype}")
         # Check data type
-        assert r_theta.dtype == np.float32
+        assert r_W.dtype == np.float32
 
     def test_reconstruct_error(self):
         """Test reconstruct error
@@ -53,15 +53,15 @@ class TestMatrixOps(unittest.TestCase):
         # Reconstruct error should be small enough for us to be comfortable with approximating the parameters
         eps = 0.1
         interval = 100
-        theta = np.random.randn(784, 10).astype(np.float32)
+        W = np.random.randn(784, 10).astype(np.float32)
 
-        msg = linspace_quantization(theta, interval=interval)
+        msg = linspace_quantization(W, interval=interval)
 
         buf = memoryview(msg.tostring())
 
-        r_theta = reconstruct_approximation(buf, theta.shape, r_dtype=np.float32)
+        r_W = reconstruct_approximation(buf, W.shape, r_dtype=np.float32)
 
-        delta = np.max(abs(theta - r_theta))
+        delta = np.max(abs(W - r_W))
         logger.info(f"Delta={delta}")
 
         assert delta < eps, "Reconstruct error is too large, consider a different interval for np.linspace"

@@ -82,9 +82,9 @@ class Master(object):
 
     @ftml_train_collect
     def _train_iteration(self, events):
-        theta_p = self.model.theta.copy()
+        W_p = self.model.W.copy()
         # Receive updated parameters from workers
-        # d_theta, epoch_loss = self.gather(events, timeout=10)
+        # d_W, epoch_loss = self.gather(events, timeout=10)
         params = {
             "watch_dog": self.watch_dog,
             "strategy": self.strategy,
@@ -92,8 +92,8 @@ class Master(object):
             "n_samples": self.data.n_samples,
             "timeout": 10,
             "quantize": self.strategy.quantize,
-            # "theta": self.model.theta
-            "theta": self.model.theta.data
+            # "W": self.model.W
+            "W": self.model.W.data
         }
         parameters, epoch_loss = self.distributor.collect(
             events=events, 
@@ -103,18 +103,18 @@ class Master(object):
 
         if self.strategy.send_gradients:
             # Update the global parameters with weighted error
-            self.model.theta = \
+            self.model.W = \
             self.optimizer.minimize(
                 X=self.X_train, 
                 y=None, 
                 y_pred=None, 
-                theta=self.model.theta, 
+                W=self.model.W, 
                 precomputed_gradients=parameters
             )
         else:
             self.logger.info(f"parameters.dtype={parameters.dtype}")
-            self.model.theta.data = parameters
-            self.logger.info(f"type(self.model.theta.data)={self.model.theta.data.dtype}")
+            self.model.W.data = parameters
+            self.logger.info(f"type(self.model.W.data)={self.model.W.data.dtype}")
 
         y_pred = self.model.predict(self.data.X_test)
         y_train_pred = self.model.predict(self.data.X_train)
@@ -124,15 +124,15 @@ class Master(object):
         test_acc = accuracy_scorev2(self.data.y_test.data, y_pred.data)
 
         if self._tf_logger is not None:
-            self._tf_logger.histogram("theta-master", self.model.theta.data, self.model.iter, bins=self.n_iterations)
+            self._tf_logger.histogram("W-master", self.model.W.data, self.model.iter, bins=self.n_iterations)
             self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
             self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
             self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
             grad_l2_norm = np.linalg.norm(parameters)
             self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.model.iter)
 
-        # delta = np.max(np.abs(theta_p - self.model.theta))
-        delta = np.max(np.abs(theta_p.data - self.model.theta.data))
+        # delta = np.max(np.abs(W_p - self.model.W))
+        delta = np.max(np.abs(W_p.data - self.model.W.data))
 
         # self.logger.info(f"iteration = {self.strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
         self.logger.info(f"iteration = {self.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
@@ -400,7 +400,7 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.model.theta.data if self.strategy.quantize != 1 else linspace_quantization(self.model.theta.data, interval=200)
+            data = self.model.W.data if self.strategy.quantize != 1 else linspace_quantization(self.model.W.data, interval=200)
             workers = None
             params = self.set_params()
 
@@ -462,11 +462,11 @@ class Master(object):
         
         self.logger.info(f"Initialized dummy data of size {self.data}")
 
-        # self.model.theta = \
+        # self.model.W = \
         # np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
-        self.model.theta = \
+        self.model.W = \
         Tensor(np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01, is_param=True)
-        self.logger.debug(f"Init theta={self.model.theta}")
+        self.logger.debug(f"Init W={self.model.W}")
         
         self.poller = self.setup_poller()
 

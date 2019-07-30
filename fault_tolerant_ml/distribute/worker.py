@@ -138,14 +138,11 @@ class Worker(object):
         self._logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
         self.have_work = True
 
-    def do_work(self, theta_g=None):
+    def do_work(self, W_g=None):
         """Worker doing the heavy lifting of calculating gradients and calculating loss
 
         Args:
-            X (numpy.ndarray): Feature matrix
-            y (numpy.ndarray): Label vector
-            theta (numpy.ndarray): Parameter matrix
-            theta_g (numpy.ndarray): Global parameters
+            W_g (numpy.ndarray): Global parameters
 
         Returns:
             batch_loss (float): Loss for this iteration
@@ -155,15 +152,15 @@ class Worker(object):
         # Get predictions
         y_pred = self.model.predict(self.X)
 
-        self.model.theta, batch_loss = self.model.optimizer.minimize(
+        self.model.W, batch_loss = self.model.optimizer.minimize(
             self.X, 
             self.y, 
             y_pred, 
-            self.model.theta, 
+            self.model.W, 
             # N=self.n_samples,
             iteration=self.model.iter + 1,
             N=self.X.shape[0],
-            theta_g=theta_g)
+            W_g=W_g)
         most_representative = self.model.optimizer.most_rep
         
         return batch_loss, most_representative
@@ -171,7 +168,7 @@ class Worker(object):
     def train(self):
         """Training for the worker
 
-        Boots up the worker to start receiving data. Thereafter, the worker does the heavy lifting by computing the gradients of the parameter matrix. This is returned to the master, where the master will aggregate gradients and apply them to the global theta. The parameters will be distributed back to the worker and this occurs iteratively, to find the global minima for the parameter matrix.
+        Boots up the worker to start receiving data. Thereafter, the worker does the heavy lifting by computing the gradients of the parameter matrix. This is returned to the master, where the master will aggregate gradients and apply them to the global W. The parameters will be distributed back to the worker and this occurs iteratively, to find the global minima for the parameter matrix.
         """
         poller = self.setup_poller()
         # poller.register(self.push_socket, zmq.POLLOUT)
@@ -184,7 +181,7 @@ class Worker(object):
             self.n_samples = 0
             self.n_features = 0
             self.n_classes = 0
-            theta = None
+            W = None
 
             # self.starter.send_multipart([b"READY", self.worker_id.encode()])
             # self.ctrl_socket.send(b"READY")
@@ -233,38 +230,38 @@ class Worker(object):
                                 # Reconstruct numpy array
                                 buf = memoryview(data)
                                 
-                                theta = np.frombuffer(buf, dtype=dtype)
-                                theta = theta.reshape(eval(shape))
-                                theta = theta.copy()
+                                W = np.frombuffer(buf, dtype=dtype)
+                                W = W.reshape(eval(shape))
+                                W = W.copy()
                                 
                             elif self.quantize == 1:
 
                                 # Receive numpy struct array
                                 buf = memoryview(msg[0])
 
-                                # Reconstruct theta matrix from min, max, no. of intervals and which bins
+                                # Reconstruct W matrix from min, max, no. of intervals and which bins
                                 # each parameter value falls in
                                 shape = (self.n_features, self.n_classes)
-                                theta = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
+                                W = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
 
-                            theta = Tensor(theta, is_param=True)
-                            theta_g = theta.copy()
-                            self.model.theta = theta
+                            W = Tensor(W, is_param=True)
+                            W_g = W.copy()
+                            self.model.W = W
                             
                             count = 1
                             while True:
                             # Each worker does work and we get the resulting gradients
                                 batch_loss, most_representative = \
                                 self.do_work( 
-                                    theta_g=theta_g
+                                    W_g=W_g
                                 )
                                 # self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}")
                                 self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss.data:7.4f}")
 
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
-                                    self._tf_logger.histogram(f"theta={self.worker_id}", self.model.theta.data, self.model.iter, bins=400)
-                                    self._tf_logger.histogram(f"d_theta={self.worker_id}", self.model.theta.grad.data, self.model.iter, bins=400)
+                                    self._tf_logger.histogram(f"W={self.worker_id}", self.model.W.data, self.model.iter, bins=400)
+                                    self._tf_logger.histogram(f"d_W={self.worker_id}", self.model.W.grad.data, self.model.iter, bins=400)
                                     self._tf_logger.scalar(f"loss-{self.worker_id}", batch_loss, self.model.iter)
 
                                 self.model.iter += 1
@@ -273,21 +270,21 @@ class Worker(object):
                                 count += 1
 
                             # Get messages ready to send by converting them to bytes format. We do not
-                            # need to send the shape since the gradients have the same shape as theta which
+                            # need to send the shape since the gradients have the same shape as W which
                             # the master already owns
                             if self.quantize:
-                                # d_theta = linspace_quantization(d_theta, interval=100)
-                                # self.model.theta = linspace_quantization(self.model.theta, interval=100)
-                                # d_theta.data = linspace_quantization(d_theta.data, interval=100)
+                                # d_W = linspace_quantization(d_W, interval=100)
+                                # self.model.W = linspace_quantization(self.model.W, interval=100)
+                                # d_W.data = linspace_quantization(d_W.data, interval=100)
                                 pass
-                                # self.model.theta.grad.data = linspace_quantization(self.model.theta.grad.data, interval=100)
-                                # self.model.theta.data = linspace_quantization(self.model.theta.data, interval=100)
+                                # self.model.W.grad.data = linspace_quantization(self.model.W.grad.data, interval=100)
+                                # self.model.W.data = linspace_quantization(self.model.W.data, interval=100)
 
                             self._logger.debug(f"Send gradients flag={self.send_gradients}")
-                            msg = self.model.theta.tostring()
+                            msg = self.model.W.tostring()
                             if self.send_gradients:
-                                # msg = d_theta.tostring()
-                                msg = self.model.theta.grad.tostring()
+                                # msg = d_W.tostring()
+                                msg = self.model.W.grad.tostring()
                                 
                             # loss = str(batch_loss).encode()
                             loss = str(batch_loss.data).encode()

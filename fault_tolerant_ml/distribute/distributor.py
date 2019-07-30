@@ -44,7 +44,7 @@ class Distributor(object):
             events (dict): Dictionary of events from our poller
 
         Returns:
-            d_theta (numpy.ndarray): Our gradient matrix that is aggregated with a weighting according to the number    of samples each worker has
+            d_W (numpy.ndarray): Our gradient matrix that is aggregated with a weighting according to the number    of samples each worker has
             epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
         """
         watch_dog = params["watch_dog"]
@@ -53,9 +53,9 @@ class Distributor(object):
         n_samples: int = params["n_samples"]
         timeout = params["timeout"] # We give x seconds to poll worker if state changed since poll event
         quantize: bool = params["quantize"]
-        theta: np.ndarray = params["theta"]
+        W: np.ndarray = params["W"]
         
-        parameters: np.ndarray = np.zeros_like(theta)
+        parameters: np.ndarray = np.zeros_like(W)
         epoch_loss: int = 0.0
 
         self._logger.debug(f"Receiving gradients")
@@ -69,7 +69,7 @@ class Distributor(object):
         workers_received = set()
 
         errs = []
-        d_thetas = []
+        d_Ws = []
 
         while i < n_alive_workers:
 
@@ -124,17 +124,17 @@ class Distributor(object):
                 # beta = samples_for_worker
 
                 # Decode gradient matrix
-                # self._logger.debug(f"theta.dtype={theta.dtype}")
+                # self._logger.debug(f"W.dtype={W.dtype}")
 
                 if quantize:
                     self._logger.debug(f"Reconstructing gradients")
-                    # shape = theta.shape
-                    # parameter_temp = reconstruct_approximation(parameter_temp, shape, r_dtype=theta.dtype)
-                    parameter_temp = np.frombuffer(parameter_temp, dtype=theta.dtype)
-                    parameter_temp = parameter_temp.reshape(theta.shape)
+                    # shape = W.shape
+                    # parameter_temp = reconstruct_approximation(parameter_temp, shape, r_dtype=W.dtype)
+                    parameter_temp = np.frombuffer(parameter_temp, dtype=W.dtype)
+                    parameter_temp = parameter_temp.reshape(W.shape)
                 else:
-                    parameter_temp = np.frombuffer(parameter_temp, dtype=theta.dtype)
-                    parameter_temp = parameter_temp.reshape(theta.shape)
+                    parameter_temp = np.frombuffer(parameter_temp, dtype=W.dtype)
+                    parameter_temp = parameter_temp.reshape(W.shape)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
@@ -155,7 +155,7 @@ class Distributor(object):
                 epoch_loss += beta * epoch_loss_temp
                 # epoch_loss += epoch_loss_temp
                 errs.append(np.exp(-epoch_loss_temp))
-                d_thetas.append(parameter_temp)
+                d_Ws.append(parameter_temp)
 
                 workers_received.add(worker)
 
@@ -167,11 +167,11 @@ class Distributor(object):
         # for j in np.arange(len(errs)):
         #     weight = errs[j] / sum_es
         #     # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
-        #     d_thetas[j] = d_thetas[j] * weight if weight > 0 else d_thetas[j] * epsilon
-        #     d_theta += d_thetas[j]
+        #     d_Ws[j] = d_Ws[j] * weight if weight > 0 else d_Ws[j] * epsilon
+        #     d_W += d_Ws[j]
 
         # Average parameters
-        # d_theta /= len(self.workers)
+        # d_W /= len(self.workers)
         # epoch_loss /= len(self.workers)
         # self._logger.debug(f"Len worker={len(self.workers)}, i-1={i-1}")
         assert i > 0

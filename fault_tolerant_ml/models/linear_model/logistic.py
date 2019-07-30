@@ -57,7 +57,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
         n_classes = len(self.classes_)
 
         # Initialize parameters
-        self.theta = (np.random.randn(n_features, n_classes) * 0.01).astype(np.float32)
+        self.W = (np.random.randn(n_features, n_classes) * 0.01).astype(np.float32)
         
         i = 0
         delta = 1.0
@@ -69,14 +69,14 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             #     X = X[idxs]
             #     y = y[idxs]
                 
-            # Create a copy of theta so we can calculate change in theta
-            theta_p = self.theta.copy()
-            # Get predictions for current theta
+            # Create a copy of W so we can calculate change in W
+            W_p = self.W.copy()
+            # Get predictions for current W
             y_pred = self.predict(X)
             # Calculate and apply gradients
-            self.theta, epoch_loss = self.optimizer.minimize(X, y, y_pred, self.theta)
-            # Calculate change in theta
-            delta = np.max(np.abs(theta_p - self.theta))
+            self.W, epoch_loss = self.optimizer.minimize(X, y, y_pred, self.W)
+            # Calculate change in W
+            delta = np.max(np.abs(W_p - self.W))
             acc = accuracy_scorev2(y.data, y_pred.data)
 
             if i % 100 == 0:

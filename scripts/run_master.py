@@ -29,7 +29,7 @@ def run(n_workers, verbose):
             1: Redistribute only most representative data points of dead worker to alive workers
         quantize (int): Whether or not to quantize parameters
             0: No quantization
-            1: Min theta value, max theta value, interval, bins sent across the network to reconstruct the parameters on the worker side
+            1: Min W value, max W value, interval, bins sent across the network to reconstruct the parameters on the worker side
         scenario (int): The scenario we would like to run. Default 1: Normal run, Scenario 2: Kill worker. Scenario 3: Kill     
             worker and reintroduce another worker. Scenario 4: Communicate every 10 iterations, Scenario 5: Every 5             
             iterations and gradient clipping?

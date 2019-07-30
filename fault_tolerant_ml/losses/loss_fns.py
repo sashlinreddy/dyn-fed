@@ -108,10 +108,10 @@ def cross_entropy_loss(y_pred, y):
     return np.mean(single_cross_entropy_loss(y_pred, y))
 
 def cross_entropy_gradient(X, e):
-    # d_theta = np.mean(X * e, axis=0).T
-    d_theta = np.dot(X.T, e)
-    # d_theta = np.sum(X * e, axis=0)
-    return d_theta
+    # d_W = np.mean(X * e, axis=0).T
+    d_W = np.dot(X.T, e)
+    # d_W = np.sum(X * e, axis=0)
+    return d_W
 
 # Linear regression
 def mse(y_pred, y):
@@ -125,5 +125,5 @@ def mse(y_pred, y):
     return cost
 
 def mse_gradient(X, e):
-    d_theta = np.mean(X * e, axis=0).T
-    return d_theta
+    d_W = np.mean(X * e, axis=0).T
+    return d_W

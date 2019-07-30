@@ -27,17 +27,17 @@ class Optimizer(object):
         """
         raise NotImplementedError("Child must override this method")
 
-    def compute_gradients(self, X, y, theta):
+    def compute_gradients(self, X, y, W):
         """Compute gradients to be overridden by children
         """
         raise NotImplementedError("Child must override this method")
 
-    def apply_gradients(self, d_theta, theta):
+    def apply_gradients(self, d_W, W):
         """Compute gradients to be overridden by children
         """
         raise NotImplementedError("Child must override this method")
 
-    def minimize(self, X, y, y_pred, theta):
+    def minimize(self, X, y, y_pred, W):
         """Minimizes objective function to be overridden by children
         
         This function will perform the update of the parameters in order to get close to the  global minima
@@ -162,59 +162,59 @@ class SGDOptimizer(Optimizer):
 
         return batch_loss
 
-    def compute_gradients(self, X, y, y_pred, theta):
+    def compute_gradients(self, X, y, y_pred, W):
         """Computes gradients of parameter matrix
         
         Args:
             X (numpy.ndarray): Feature matrix
-            theta (numpy.ndarray): Parameter matrix
+            W (numpy.ndarray): Parameter matrix
         
         Returns:
-            d_theta (numpy.ndarray): Gradient parameter matrix
+            d_W (numpy.ndarray): Gradient parameter matrix
         """
         # Calculate error/residuals
         cost_prime = self.loss.grad(y, y_pred)
         # Calculate error term
         delta = y_pred * (1 - y_pred) * cost_prime
-        d_theta = 1 / X.shape[0] * (X.T @ delta)
+        d_W = 1 / X.shape[0] * (X.T @ delta)
 
-        # self._logger.debug(f"d_theta={d_theta} \n, d_theta.shape={d_theta.shape}")
-        # assert np.all(d_theta == 0.0)
+        # self._logger.debug(f"d_W={d_W} \n, d_W.shape={d_W.shape}")
+        # assert np.all(d_W == 0.0)
 
-        return d_theta
+        return d_W
 
-    def apply_gradients(self, theta, N, theta_g=None):
+    def apply_gradients(self, W, N, W_g=None):
         """Applies gradients by updating parameter matrix
         
         Args:
-            d_theta (numpy.ndarray): Gradient parameter matrix
+            d_W (numpy.ndarray): Gradient parameter matrix
         
         Returns:
-            theta (numpy.ndarray): Updated parameter matrix
+            W (numpy.ndarray): Updated parameter matrix
         """
 
         if self.role != "worker":
-            theta = theta - self.learning_rate * theta.grad
+            W = W - self.learning_rate * W.grad
         else:
-            theta = (
-                (1 - self._mu_g * self.learning_rate) * theta - 
-                (self.learning_rate * theta.grad) + 
-                (self._mu_g * theta_g * self.learning_rate)
+            W = (
+                (1 - self._mu_g * self.learning_rate) * W - 
+                (self.learning_rate * W.grad) + 
+                (self._mu_g * W_g * self.learning_rate)
             )
 
-        return theta
+        return W
 
-    def minimize(self, X, y, y_pred, theta, precomputed_gradients=None, N=None, theta_g=None, **kwargs):
+    def minimize(self, X, y, y_pred, W, precomputed_gradients=None, N=None, W_g=None, **kwargs):
         """Minimizes gradients. Computes loss from actual and predicted, computes gradients and applies gradients
         
         Args:
             X (numpy.ndarray): Feature matrix
             y (numpy.ndarray): Actual labels
             y_pred (numpy.ndarray): Predicted labels
-            theta (numpy.ndarray): Parameter matrix
+            W (numpy.ndarray): Parameter matrix
         
         Returns:
-            theta (numpy.ndarray): Updated parameter matrix
+            W (numpy.ndarray): Updated parameter matrix
             batch_loss (float): Loss for current predictions and labels
         """
 
@@ -223,17 +223,17 @@ class SGDOptimizer(Optimizer):
             batch_loss = self.compute_loss(y, y_pred)
 
             # Get gradients
-            theta.grad = self.compute_gradients(X, y, y_pred, theta)
+            W.grad = self.compute_gradients(X, y, y_pred, W)
 
             self._logger.info(f'n_samples={N}')
             # Apply them
-            theta = self.apply_gradients(theta, N, theta_g=theta_g)
-            return theta, batch_loss
+            W = self.apply_gradients(W, N, W_g=W_g)
+            return W, batch_loss
         else:
-            theta.grad = precomputed_gradients
+            W.grad = precomputed_gradients
             # Apply them
-            theta = self.apply_gradients(theta, X.shape[0])
-            return theta
+            W = self.apply_gradients(W, X.shape[0])
+            return W
 
 class AdamOptimizer(Optimizer):
     """Adam gradient descent optimizer
@@ -305,64 +305,64 @@ class AdamOptimizer(Optimizer):
 
         return batch_loss
 
-    def compute_gradients(self, X, y, y_pred, theta):
+    def compute_gradients(self, X, y, y_pred, W):
         """Computes gradients of parameter matrix
         
         Args:
             X (numpy.ndarray): Feature matrix
-            theta (numpy.ndarray): Parameter matrix
+            W (numpy.ndarray): Parameter matrix
         
         Returns:
-            d_theta (numpy.ndarray): Gradient parameter matrix
+            d_W (numpy.ndarray): Gradient parameter matrix
         """
         # Calculate error/residuals
         cost_prime = self.loss.grad(y, y_pred)
         # Calculate error term
         delta = y_pred * (1 - y_pred) * cost_prime
-        d_theta = 1 / X.shape[0] * (X.T @ delta)
+        d_W = 1 / X.shape[0] * (X.T @ delta)
 
-        return d_theta
+        return d_W
 
-    def apply_gradients(self, theta, iteration, theta_g=None):
+    def apply_gradients(self, W, iteration, W_g=None):
         """Applies gradients by updating parameter matrix
         
         Args:
-            d_theta (numpy.ndarray): Gradient parameter matrix
+            d_W (numpy.ndarray): Gradient parameter matrix
         
         Returns:
-            theta (numpy.ndarray): Updated parameter matrix
+            W (numpy.ndarray): Updated parameter matrix
         """
 
         if self.m_t is None:
-            self.m_t = theta.grad.zeros_like()
+            self.m_t = W.grad.zeros_like()
         if self.v_t is None:
-            self.v_t = theta.grad.zeros_like()
+            self.v_t = W.grad.zeros_like()
 
         # Update biased first moment estimate
-        self.m_t = self.beta_1 * self.m_t + (1. - self.beta_1) * theta.grad
+        self.m_t = self.beta_1 * self.m_t + (1. - self.beta_1) * W.grad
         # Update biased second raw moment estimate
-        self.v_t = self.beta_2 * self.v_t + (1. - self.beta_2) * theta.grad**2
+        self.v_t = self.beta_2 * self.v_t + (1. - self.beta_2) * W.grad**2
 
         # Bias correction
         m_t_corrected = self.m_t / (1. - self.beta_1**(iteration))
         v_t_corrected = self.v_t / (1. - self.beta_2**(iteration))
 
         # Update weights
-        theta = theta - self.learning_rate * m_t_corrected / (np.sqrt(v_t_corrected) + self.epsilon)
+        W = W - self.learning_rate * m_t_corrected / (np.sqrt(v_t_corrected) + self.epsilon)
 
-        return theta
+        return W
 
-    def minimize(self, X, y, y_pred, theta, precomputed_gradients=None, N=None, theta_g=None, **kwargs):
+    def minimize(self, X, y, y_pred, W, precomputed_gradients=None, N=None, W_g=None, **kwargs):
         """Minimizes gradients. Computes loss from actual and predicted, computes gradients and applies gradients
         
         Args:
             X (numpy.ndarray): Feature matrix
             y (numpy.ndarray): Actual labels
             y_pred (numpy.ndarray): Predicted labels
-            theta (numpy.ndarray): Parameter matrix
+            W (numpy.ndarray): Parameter matrix
         
         Returns:
-            theta (numpy.ndarray): Updated parameter matrix
+            W (numpy.ndarray): Updated parameter matrix
             batch_loss (float): Loss for current predictions and labels
         """
 
@@ -374,14 +374,14 @@ class AdamOptimizer(Optimizer):
             batch_loss = self.compute_loss(y, y_pred)
 
             # Get gradients
-            theta.grad = self.compute_gradients(X, y, y_pred, theta)
+            W.grad = self.compute_gradients(X, y, y_pred, W)
 
             self._logger.info(f'n_samples={N}')
             # Apply them
-            theta = self.apply_gradients(theta, iteration)
-            return theta, batch_loss
+            W = self.apply_gradients(W, iteration)
+            return W, batch_loss
         else:
-            theta.grad = precomputed_gradients
+            W.grad = precomputed_gradients
             # Apply them
-            theta = self.apply_gradients(theta, X.shape[0])
-            return theta
+            W = self.apply_gradients(W, X.shape[0])
+            return W
