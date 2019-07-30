@@ -136,10 +136,14 @@ class Worker(object):
         self.X = Tensor(self.X)
         self.y = Tensor(self.y)
 
+        # Cap batch size to number of samples we have
+        if self.model.batch_size > self.X.shape[0]:
+            self.model.batch_size = self.X.shape[0]
+
         self._logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
         self.have_work = True
 
-    def do_work(self, W_g=None):
+    def do_work(self, X, y, W_g=None):
         """Worker doing the heavy lifting of calculating gradients and calculating loss
 
         Args:
@@ -152,15 +156,15 @@ class Worker(object):
 
         # Get predictions
         # y_pred = self.model.predict(self.X)
-        y_pred = self.model.forward(self.X)
+        y_pred = self.model.forward(X)
 
         batch_loss = self.model.optimizer.minimize(
             self.model,
-            self.y, 
+            y, 
             y_pred, 
             # N=self.n_samples,
             iteration=self.model.iter + 1,
-            N=self.X.shape[0],
+            N=X.shape[0],
             W_g=W_g)
         # self.model.layers[0].W = W
         most_representative = self.model.optimizer.most_rep
@@ -272,13 +276,25 @@ class Worker(object):
                             
                             count = 1
                             while True:
-                            # Each worker does work and we get the resulting gradients
-                                batch_loss, most_representative = \
-                                self.do_work( 
-                                    W_g=None
-                                )
+                                epoch_loss = 0.0
+                                n_batches = 0
+                                for start in range(0, self.X.shape[0], self.model.batch_size):
+                                    end = start + self.model.batch_size
+    
+                                    X_batch = self.X[start:end]
+                                    y_batch = self.y[start:end]
+                                    # Each worker does work and we get the resulting parameters
+                                    batch_loss, most_representative = \
+                                    self.do_work(
+                                        X_batch,
+                                        y_batch,
+                                        W_g=None
+                                    )
+                                    epoch_loss += batch_loss.data
+                                    n_batches += 1
+                                epoch_loss /= n_batches
                                 # self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}")
-                                self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss.data:7.4f}")
+                                self._logger.info(f"iteration = {self.model.iter}, Loss = {epoch_loss:7.4f}")
 
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
@@ -311,7 +327,7 @@ class Worker(object):
                                 msg = self.model.layers[0].W.grad.tostring()
                                 
                             # loss = str(batch_loss).encode()
-                            loss = str(batch_loss.data).encode()
+                            loss = str(epoch_loss).encode()
                             mr = most_representative.tostring()
                             
                             data = [loss, mr] + msg

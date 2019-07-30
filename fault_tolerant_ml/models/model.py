@@ -69,7 +69,7 @@ class Model():
     Attributes:
         layers (list): List of fault_tolerant_ml.layers.Layer objects
     """
-    def __init__(self, optimizer, strategy=None, max_iter=300, shuffle=True, verbose=10, **kwargs):
+    def __init__(self, optimizer, strategy=None, batch_size=64, max_iter=300, shuffle=True, verbose=10, **kwargs):
         self.layers = []
         self.n_layers = 0
         self.max_iter = max_iter
@@ -77,6 +77,7 @@ class Model():
         self.iter = 0
         self.verbose = verbose
         self.optimizer = optimizer
+        self.batch_size = batch_size
 
         self.encode_name = None
         if "encode_name" in kwargs:

@@ -127,23 +127,23 @@ def run(n_workers, role, verbose, id, tmux, add):
     )
 
     # Create model
-    model = LogisticRegression(
-        optimizer=optimizer,
-        strategy=strategy, 
-        max_iter=model_cfg['n_iterations'], 
-        shuffle=model_cfg['shuffle'], 
-        verbose=verbose,
-        encode_name=encoded_run_name
-    )
-
-    # model = MLP(
-    #     optimizer, 
-    #     strategy, 
+    # model = LogisticRegression(
+    #     optimizer=optimizer,
+    #     strategy=strategy, 
     #     max_iter=model_cfg['n_iterations'], 
     #     shuffle=model_cfg['shuffle'], 
     #     verbose=verbose,
     #     encode_name=encoded_run_name
     # )
+
+    model = MLP(
+        optimizer, 
+        strategy, 
+        max_iter=model_cfg['n_iterations'], 
+        shuffle=model_cfg['shuffle'], 
+        verbose=verbose,
+        encode_name=encoded_run_name
+    )
 
     try:
         logger = logging.getLogger("ftml.scripts.train")
