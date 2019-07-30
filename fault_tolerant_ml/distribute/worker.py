@@ -38,14 +38,9 @@ class Worker(object):
         self.model = model
         self.strategy = self.model.strategy
 
-        self.n_workers = self.model.strategy.n_workers
-        self.scenario = self.model.strategy.scenario
         self.remap = self.model.strategy.remap
         self.quantize = self.model.strategy.quantize
-        self.n_most_rep = self.model.optimizer.n_most_rep
-        self.learning_rate = self.model.optimizer.learning_rate
         self.comm_period = self.model.strategy.comm_period
-        self.mu_g = self.model.optimizer.mu_g
         self.send_gradients = self.model.strategy.send_gradients
 
         ip_filename = "ip_config.json"
@@ -188,7 +183,6 @@ class Worker(object):
 
         try:
             start = time.time()
-            self.scenario = 0
             self.n_samples = 0
             self.n_features = 0
             self.n_classes = 0
