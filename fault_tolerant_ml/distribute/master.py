@@ -28,6 +28,7 @@ from fault_tolerant_ml.distribute import Distributor
 from fault_tolerant_ml.distribute.wrappers import ftml_train, ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.distribute.states import *
 from fault_tolerant_ml.operators import Tensor
+from fault_tolerant_ml.utils import zhelpers
 
 class Master(object):
     """Master class for distributed machine learning system
@@ -402,7 +403,8 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.model.layers[0].W.data if self.strategy.quantize != 1 else linspace_quantization(self.model.layers[0].W.data, interval=200)
+            # data = self.model.layers[0].W.data if self.strategy.quantize != 1 else linspace_quantization(self.model.layers[0].W.data, interval=200)
+            data = zhelpers.multipart_params(self.model.parameters())
             workers = None
             params = self.set_params()
 

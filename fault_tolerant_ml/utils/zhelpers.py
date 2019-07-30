@@ -74,3 +74,40 @@ def recv_array(socket, flags=0, copy=True, track=False):
     buf = memoryview(msg)
     A = np.frombuffer(buf, dtype=md['dtype'])
     return A.reshape(md['shape'])
+
+
+def multipart_params(data_list):
+    """Prep model parameters to send to workers.
+
+    Get parameters from each layer and append the data, dtype and shape a list to send. Also quantize parameters
+    if quantize flag = 1
+    """
+
+    multipart = []
+    for data in data_list:
+        multipart.append(data.tostring())
+        multipart.append(data.dtype.str.encode())
+        multipart.append(str(data.shape).encode())
+
+    return multipart
+
+def reconstruct_array(data, dtype, shape):
+    """Reconstruct numpy array from buffer given dtype and shape
+
+    Args:
+        data (byte string): Byte array to be reconstructed
+        dtype (byte string): Data type of reconstructed array
+        shape (byte string): Shape of reconstructed array
+
+    Returns:
+        arr (numpy.ndarray): Reconstructed array of shape `shape` and type `dtype`
+    """
+    # Decode shape byte string
+    shape = shape.decode()
+    shape = eval(shape)
+    # Reconstruct numpy array
+    buf = memoryview(data)
+    arr = np.frombuffer(buf, dtype=dtype)
+    arr = arr.reshape(shape)
+
+    return arr

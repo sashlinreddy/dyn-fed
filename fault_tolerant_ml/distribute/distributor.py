@@ -203,10 +203,11 @@ class Distributor(object):
                 
             if params["quantize"] == 0:
                 # Get message send ready
-                msg = data.tostring()
-                dtype = data.dtype.str.encode()
-                shape = str(data.shape).encode()
-                multipart = [msg, dtype, shape]
+                # msg = data.tostring()
+                # dtype = data.dtype.str.encode()
+                # shape = str(data.shape).encode()
+                # multipart = [msg, dtype, shape]
+                multipart = data
                 subscribe_msg = b"WORKNODELAY" if params["delay_change"] else b"WORK"
 
             # Quantized parameters

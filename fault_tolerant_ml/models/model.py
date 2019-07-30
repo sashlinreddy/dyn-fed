@@ -146,6 +146,12 @@ class Model():
         valid, type_found = _check_layers(layers)
         assert valid, f"All layers should be of type Layer, found {type_found} instead"
         self.layers += layers
+
+    def parameters(self):
+        for layer in self.layers:
+            for k, v in layer.__dict__.items():
+                if 'W' == k:# or 'b' == k:
+                    yield v
             
     def zero_grad(self):
         """Zeros out the gradients
@@ -155,11 +161,6 @@ class Model():
                 if isinstance(v, Tensor):
                     if v.is_param:
                         v.zero_grad()
-
-    def compile(self, optimizer):
-        """Compile the model with the corresponding optimizer
-        """
-        self.optimizer = optimizer
 
     def fit(self, X=None, y=None):
         """Training for estimating parameters
