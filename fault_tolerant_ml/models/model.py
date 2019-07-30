@@ -69,9 +69,17 @@ class Model():
     Attributes:
         layers (list): List of fault_tolerant_ml.layers.Layer objects
     """
-    def __init__(self, strategy=None, verbose=10, **kwargs):
+    def __init__(self, optimizer, strategy=None, max_iter=300, shuffle=True, verbose=10, **kwargs):
         self.layers = []
+        self.max_iter = max_iter
+        self.shuffle = shuffle
+        self.iter = 0
         self.verbose = verbose
+        self.optimizer = optimizer
+
+        self.encode_name = None
+        if "encode_name" in kwargs:
+            self.encode_name = kwargs["encode_name"]
 
         if strategy is None:
             self.strategy = LocalStrategy(config={})

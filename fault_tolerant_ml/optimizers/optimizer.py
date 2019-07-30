@@ -44,11 +44,12 @@ class Optimizer(object):
         """
         raise NotImplementedError("Child must override this method")
 
-class SGD():
+class SGD(Optimizer):
     
     def __init__(self, loss, learning_rate=0.1, **kwargs):
-        self.learning_rate = learning_rate
-        self.loss = loss
+        super().__init__(loss, learning_rate)
+        # self.learning_rate = learning_rate
+        # self.loss = loss
 
         self._role = None
         self._most_rep = None
@@ -60,6 +61,43 @@ class SGD():
             self._role = kwargs["role"]
         if "mu_g" in kwargs:
             self._mu_g = kwargs["mu_g"]
+
+    @property
+    def name(self):
+        return "sgd"
+
+    @property
+    def most_rep(self):
+        return self._most_rep
+
+    @property
+    def n_most_rep(self):
+        return self._n_most_rep
+
+    @property
+    def mu_g(self):
+        return self._mu_g
+
+    @property
+    def role(self):
+        return self._role
+
+    def compute_loss(self, y, y_pred):
+        # Calculate loss between predicted and actual using selected loss function
+        batch_loss = self.loss(y, y_pred, reduce=False)
+
+        if self._role != "master":
+            # Calculate most representative data points. We regard data points that have a 
+            # high loss to be most representative
+            if batch_loss.shape[1] > 1:
+                temp = np.mean(batch_loss, axis=1).data
+                self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
+            else:
+                self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
+            # Calculate worker loss - this is aggregated
+            batch_loss = np.mean(abs(batch_loss))
+
+        return batch_loss
         
     def compute_gradients(self, model, y, y_pred):
         """Compute gradients for each layer of the model and updates gradients for the parameters
@@ -72,15 +110,17 @@ class SGD():
         output_layer = model.layers[-1]
         m = model.layers[0].x.shape[0]
         # For each output unit, calculate it's error term
-        delta = self.loss.grad(y, y_pred) * output_layer.activation_fn.grad(output_layer.z)
+        delta = self.loss.grad(y, y_pred) * output_layer.act_fn.grad(output_layer.z)
         output_layer.W.grad = (1 / m) * output_layer.x.T @ delta
         output_layer.b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
 
         # For hidden units, calculate error term
         for i in np.arange(n_layers - 2, -1, -1):
-            delta = (delta @ model.layers[i+1].W.T) * model.layers[i].activation_fn.grad(model.layers[i].z)
+            delta = (delta @ model.layers[i+1].W.T) * model.layers[i].act_fn.grad(model.layers[i].z)
             model.layers[i].W.grad = (1 / m) * (model.layers[i].x.T @ delta)
             model.layers[i].b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
+
+        return model
             
     def apply_gradients(self, model):
         """Apply gradients to the parameters in each layer
@@ -92,13 +132,20 @@ class SGD():
             layer.W = layer.W - self.learning_rate * layer.W.grad
             layer.b = layer.b - self.learning_rate * layer.b.grad
 
-    def minimize(self, model, y, y_pred):
+        return model
+
+    def minimize(self, model, y, y_pred, iteration=None, N=None, W_g=None):
+
+        # Compute loss
+        batch_loss = self.compute_loss(y, y_pred)
 
         # Backprop
-        self.compute_gradients(model, y, y_pred)
+        model = self.compute_gradients(model, y, y_pred)
 
         # Update gradients
-        self.apply_gradients(model)
+        model = self.apply_gradients(model)
+
+        return model.layers[0].W, batch_loss
 
 class SGDOptimizer(Optimizer):
     """Stochastic gradient descent optimizer

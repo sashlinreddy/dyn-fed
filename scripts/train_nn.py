@@ -13,11 +13,11 @@ from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_train
 from fault_tolerant_ml.data import MNist, OccupancyData
 from fault_tolerant_ml.losses import cross_entropy_loss, cross_entropy_gradient, CrossEntropyLoss
 from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer, SGD
-from fault_tolerant_ml.models.linear_model import LogisticRegression
+# from fault_tolerant_ml.models.linear_model import LogisticRegression
 from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
 from fault_tolerant_ml.utils import setup_logger, model_utils
 from fault_tolerant_ml.lib.io import file_io
-from .ft_models import MLP
+from ft_models import MLP, LogisticRegression
 
 @click.command()
 @click.argument('n_workers', type=int)
@@ -127,7 +127,8 @@ def run(n_workers, role, verbose, id, tmux, add):
     )
 
     # Create model
-    model = MLP(
+    model = LogisticRegression(
+        optimizer=optimizer,
         strategy=strategy, 
         max_iter=model_cfg['n_iterations'], 
         shuffle=model_cfg['shuffle'], 

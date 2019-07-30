@@ -150,17 +150,18 @@ class Worker(object):
         """
 
         # Get predictions
-        y_pred = self.model.predict(self.X)
+        # y_pred = self.model.predict(self.X)
+        y_pred = self.model.forward(self.X)
 
-        self.model.W, batch_loss = self.model.optimizer.minimize(
-            self.X, 
+        W, batch_loss = self.model.optimizer.minimize(
+            self.model,
             self.y, 
             y_pred, 
-            self.model.W, 
             # N=self.n_samples,
             iteration=self.model.iter + 1,
             N=self.X.shape[0],
             W_g=W_g)
+        self.model.layers[0].W = W
         most_representative = self.model.optimizer.most_rep
         
         return batch_loss, most_representative
@@ -246,7 +247,8 @@ class Worker(object):
 
                             W = Tensor(W, is_param=True)
                             W_g = W.copy()
-                            self.model.W = W
+                            # self.model.layers[0].W = W
+                            self.model.layers[0].W = W
                             
                             count = 1
                             while True:
@@ -260,8 +262,8 @@ class Worker(object):
 
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
-                                    self._tf_logger.histogram(f"W={self.worker_id}", self.model.W.data, self.model.iter, bins=400)
-                                    self._tf_logger.histogram(f"d_W={self.worker_id}", self.model.W.grad.data, self.model.iter, bins=400)
+                                    self._tf_logger.histogram(f"W={self.worker_id}", self.model.layers[0].W.data, self.model.iter, bins=400)
+                                    self._tf_logger.histogram(f"d_W={self.worker_id}", self.model.layers[0].W.grad.data, self.model.iter, bins=400)
                                     self._tf_logger.scalar(f"loss-{self.worker_id}", batch_loss, self.model.iter)
 
                                 self.model.iter += 1
@@ -274,17 +276,17 @@ class Worker(object):
                             # the master already owns
                             if self.quantize:
                                 # d_W = linspace_quantization(d_W, interval=100)
-                                # self.model.W = linspace_quantization(self.model.W, interval=100)
+                                # self.model.layers[0].W = linspace_quantization(self.model.layers[0].W, interval=100)
                                 # d_W.data = linspace_quantization(d_W.data, interval=100)
                                 pass
-                                # self.model.W.grad.data = linspace_quantization(self.model.W.grad.data, interval=100)
-                                # self.model.W.data = linspace_quantization(self.model.W.data, interval=100)
+                                # self.model.layers[0].W.grad.data = linspace_quantization(self.model.layers[0].W.grad.data, interval=100)
+                                # self.model.layers[0].W.data = linspace_quantization(self.model.layers[0].W.data, interval=100)
 
                             self._logger.debug(f"Send gradients flag={self.send_gradients}")
-                            msg = self.model.W.tostring()
+                            msg = self.model.layers[0].W.tostring()
                             if self.send_gradients:
                                 # msg = d_W.tostring()
-                                msg = self.model.W.grad.tostring()
+                                msg = self.model.layers[0].W.grad.tostring()
                                 
                             # loss = str(batch_loss).encode()
                             loss = str(batch_loss.data).encode()

@@ -4,7 +4,7 @@ from fault_tolerant_ml.operators import Tensor
 
 class Layer(object):
     
-    def __init__(self, n_inputs, n_outputs, W=None, b=None, activation="sigmoid", dtype=np.float64):
+    def __init__(self, n_inputs, n_outputs, W=None, b=None, activation="sigmoid", dtype=np.float32):
         
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
@@ -45,8 +45,8 @@ class Layer(object):
         # Store input tensor for feedforward
         x = x
         # Store edge
-        z = (x @ self.W) + self.b
+        z = (x @ self.W)# + self.b
         # Store output tensor for feedforward
-        y = Tensor(self.act_fn(self.z.data))
+        y = Tensor(self.act_fn(z.data))
 
         return x, z, y
