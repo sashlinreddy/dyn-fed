@@ -35,6 +35,24 @@ class Distributor(object):
         multipart.extend(data)
         socket.send_multipart(multipart)
 
+    def check_timeout(self, running_time, timeout, watch_dog, strategy, workers_received):
+        wait = True
+        if running_time > timeout:
+            self._logger.debug(f"Running time exceeded timeout={running_time}")
+            active_workers = set(watch_dog.active_workers)
+            # Get workers that we did not receive work from
+            diff = active_workers - workers_received
+            for w in diff:
+                # Set dead workers state to false
+                watch_dog.states[w].state = False
+                if strategy.remap != 1:                                    
+                    watch_dog.states[w].idxs = watch_dog.states[w].most_representative
+            
+            self.state = REMAP
+            wait = False
+
+        return wait
+
     def reduce(self, model, parameters, worker_params, beta=1.0):
         """Reduce across workers to master with some op
         """
@@ -105,23 +123,12 @@ class Distributor(object):
                     if e.errno == zmq.EAGAIN: # pylint: disable=no-member
                         # state changed since poll event
                         running_time += time.time() - start_i
-                        if running_time > timeout:
-                            self._logger.debug(f"Running time exceeded timeout={running_time}")
-                            active_workers = set(watch_dog.active_workers)
-                            # Get workers that we did not receive work from
-                            diff = active_workers - workers_received
-                            for w in diff:
-                                # Set dead workers state to false
-                                watch_dog.states[w].state = False
-                                if strategy.remap != 1:                                    
-                                    watch_dog.states[w].idxs = watch_dog.states[w].most_representative
-                            
-                            self.state = REMAP
+                        wait = self.check_timeout(running_time, timeout, watch_dog, strategy, workers_received)
+                        if not wait:
                             break
 
                         continue
 
-                # self._logger.debug(f"Alive workers={n_alive_workers}")
                 if i == 0:
                     worker, epoch_loss_temp, mr = msg[0:3]
                     worker_params = msg[3:]
@@ -155,9 +162,6 @@ class Distributor(object):
                     worker_params = np.frombuffer(worker_params, dtype=W.dtype)
                     worker_params = worker_params.reshape(W.shape)
                 else:
-                    # parameter_temp = np.frombuffer(parameter_temp[0], dtype=W.dtype)
-                    # parameter_temp = parameter_temp.reshape(W.shape)
-
                     # Aggregate parameters
                     parameters = self.reduce(model, parameters, worker_params)
 
@@ -196,9 +200,6 @@ class Distributor(object):
         #     d_W += d_Ws[j]
 
         # Average parameters
-        # d_W /= len(self.workers)
-        # epoch_loss /= len(self.workers)
-        # self._logger.debug(f"Len worker={len(self.workers)}, i-1={i-1}")
         assert i > 0
         assert i > 0
         i -= n_connected
