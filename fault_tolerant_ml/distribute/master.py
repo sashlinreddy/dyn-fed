@@ -94,7 +94,8 @@ class Master(object):
             "timeout": 10,
             "quantize": self.strategy.quantize,
             # "W": self.model.layers[0].W
-            "W": self.model.layers[0].W.data
+            "W": self.model.layers[0].W.data,
+            "model": self.model
         }
         parameters, epoch_loss = self.distributor.collect(
             events=events, 
@@ -113,9 +114,12 @@ class Master(object):
                 precomputed_gradients=parameters
             )
         else:
-            self.logger.info(f"parameters.dtype={parameters.dtype}")
-            self.model.layers[0].W.data = parameters
-            self.logger.info(f"type(self.model.layers[0].W.data)={self.model.layers[0].W.data.dtype}")
+            # self.logger.info(f"parameters.dtype={parameters.dtype}")
+            # self.model.layers[0].W.data = parameters
+            # self.logger.info(f"type(self.model.layers[0].W.data)={self.model.layers[0].W.data.dtype}")
+            for i in np.arange(self.model.n_layers):
+                self.model.layers[i].W.data = parameters[i][0]
+                # self.model.layers[i].b = parameters[i][1]
 
         # y_pred = self.model.predict(self.data.X_test)
         # y_train_pred = self.model.predict(self.data.X_train)

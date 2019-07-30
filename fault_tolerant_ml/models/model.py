@@ -71,6 +71,7 @@ class Model():
     """
     def __init__(self, optimizer, strategy=None, max_iter=300, shuffle=True, verbose=10, **kwargs):
         self.layers = []
+        self.n_layers = 0
         self.max_iter = max_iter
         self.shuffle = shuffle
         self.iter = 0
@@ -146,6 +147,7 @@ class Model():
         valid, type_found = _check_layers(layers)
         assert valid, f"All layers should be of type Layer, found {type_found} instead"
         self.layers += layers
+        self.n_layers = len(self.layers)
 
     def parameters(self):
         for layer in self.layers:

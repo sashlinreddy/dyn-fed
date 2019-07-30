@@ -4,6 +4,8 @@ import numpy as np
 import time
 from fault_tolerant_ml.distribute.states import *
 from fault_tolerant_ml.utils.maths import reconstruct_approximation
+from fault_tolerant_ml.utils import zhelpers
+
 class Distributor(object):
     """Responsible for distributing data
     """
@@ -33,9 +35,25 @@ class Distributor(object):
         multipart.extend(data)
         socket.send_multipart(multipart)
 
-    def reduce(self):
+    def reduce(self, model, parameters, worker_params, beta=1.0):
         """Reduce across workers to master with some op
         """
+
+        n_items = 3
+        # Decode multipart message
+        for j, k in zip(np.arange(model.n_layers), np.arange(0, len(worker_params), n_items)):
+            
+            # Get data for correponding layer
+            Wdata, Wdtype, Wshape = worker_params[k:k+n_items]
+
+            W = zhelpers.reconstruct_array(Wdata, Wdtype, Wshape)
+            # b = zhelpers.reconstruct_array(bdata, bdtype, bshape)
+            
+            # self._logger.info(f"W.shape={W.shape}, params[{i}][0].shape={params[i][0].shape}")
+            parameters[j][0] += beta * W
+            # params[i][1] += beta * b
+
+        return parameters
 
     def collect(self, events, socket, params):
         """Receives gradients from workers
@@ -54,8 +72,9 @@ class Distributor(object):
         timeout = params["timeout"] # We give x seconds to poll worker if state changed since poll event
         quantize: bool = params["quantize"]
         W: np.ndarray = params["W"]
+        model = params["model"]
         
-        parameters: np.ndarray = np.zeros_like(W)
+        # parameters: np.ndarray = np.zeros_like(W)
         epoch_loss: int = 0.0
 
         self._logger.debug(f"Receiving gradients")
@@ -70,6 +89,7 @@ class Distributor(object):
 
         errs = []
         d_Ws = []
+        parameters = [[np.zeros_like(l.W.data)] for l in model.layers]
 
         while i < n_alive_workers:
 
@@ -104,14 +124,13 @@ class Distributor(object):
                 # self._logger.debug(f"Alive workers={n_alive_workers}")
                 if i == 0:
                     worker, epoch_loss_temp, mr = msg[0:3]
-                    parameter_temp = msg[3:]
+                    worker_params = msg[3:]
                 else:
                     # Receive multipart including command message
                     cmd = msg[0]
                     if cmd == b"WORK":
-                        # worker, epoch_loss_temp, mr, parameter_temp = msg[1:]
                         worker, epoch_loss_temp, mr = msg[1:4]
-                        parameter_temp = msg[4:]
+                        worker_params = msg[4:]
                     elif cmd == b"CONNECT":
                         # self.register_workers(msg[1])
                         watch_dog.add_worker(msg[1])
@@ -133,11 +152,14 @@ class Distributor(object):
                     self._logger.debug(f"Reconstructing gradients")
                     # shape = W.shape
                     # parameter_temp = reconstruct_approximation(parameter_temp, shape, r_dtype=W.dtype)
-                    parameter_temp = np.frombuffer(parameter_temp, dtype=W.dtype)
-                    parameter_temp = parameter_temp.reshape(W.shape)
+                    worker_params = np.frombuffer(worker_params, dtype=W.dtype)
+                    worker_params = worker_params.reshape(W.shape)
                 else:
-                    parameter_temp = np.frombuffer(parameter_temp[0], dtype=W.dtype)
-                    parameter_temp = parameter_temp.reshape(W.shape)
+                    # parameter_temp = np.frombuffer(parameter_temp[0], dtype=W.dtype)
+                    # parameter_temp = parameter_temp.reshape(W.shape)
+
+                    # Aggregate parameters
+                    parameters = self.reduce(model, parameters, worker_params)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
@@ -154,11 +176,11 @@ class Distributor(object):
 
                 # # Weight parameters and loss
                 # parameters += beta * parameter_temp
-                parameters = parameters + (beta * parameter_temp)
+                # parameters = parameters + (beta * parameter_temp)
                 epoch_loss += beta * epoch_loss_temp
                 # epoch_loss += epoch_loss_temp
                 errs.append(np.exp(-epoch_loss_temp))
-                d_Ws.append(parameter_temp)
+                d_Ws.append(worker_params)
 
                 workers_received.add(worker)
 
@@ -180,7 +202,11 @@ class Distributor(object):
         assert i > 0
         assert i > 0
         i -= n_connected
-        parameters /= i
+        # parameters /= i
+        for p in parameters:
+            p[0] /= i
+            # param[1] /= i
+
         epoch_loss /= i
 
         self._logger.debug("Calculated gradients")
