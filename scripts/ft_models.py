@@ -14,8 +14,8 @@ class MLP(ft.Model):
             **kwargs
         )
 
-        self.add(Layer(784, 32, activation="sigmoid"))
-        self.add(Layer(32, 10, activation="sigmoid"))
+        self.add(Layer(784, 128, activation="sigmoid"))
+        self.add(Layer(128, 10, activation="sigmoid"))
 
 class LogisticRegression(ft.Model):
 

@@ -108,16 +108,20 @@ class Model():
                     model=self,
                     verbose=self.verbose,
                 )
-
+                self._logger.info("Connecting master sockets")
+                self._master.connect()
             else:
 
-                time.sleep(2)
+                time.sleep(15)
 
                 self._worker = Worker(
                     model=self,
                     verbose=self.verbose,
                     id=self.strategy.identity
                 )
+
+                self._logger.info("Connecting worker sockets")
+                self._worker.connect()
 
     def _fit_mw(self, X=None, y=None):
         """Training logistic regression using the master worker strategy
@@ -128,14 +132,10 @@ class Model():
         """
         if self.strategy.role == "master":
             # Master training
-            self._logger.info("Connecting master sockets")
-            self._master.connect()
                 # setattr(master, "train_iter", train_iter)
                 # time.sleep(1)
             self._master.train(X)
         else:
-            self._logger.info("Connecting worker sockets")
-            self._worker.connect()
             # Worker training
             self._worker.train()
         

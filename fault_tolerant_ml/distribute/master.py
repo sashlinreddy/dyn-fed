@@ -91,7 +91,7 @@ class Master(object):
             "strategy": self.strategy,
             "state": self.state,
             "n_samples": self.data.n_samples,
-            "timeout": 10,
+            "timeout": 20,
             "quantize": self.strategy.quantize,
             # "W": self.model.layers[0].W
             "W": self.model.layers[0].W.data,

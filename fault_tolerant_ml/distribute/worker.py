@@ -57,12 +57,12 @@ class Worker(object):
             with open(full_path, "r") as f:
                 ip_config = json.load(f)
         else:
-            file_watcher = FileWatcher(self.model.strategy.shared_folder, full_path)
-            file_found = file_watcher.run(timeout=5)
-            if file_found:
-                with open(full_path, "r") as f:
-                    ip_config = json.load(f)
-            else:
+            # file_watcher = FileWatcher(self.model.strategy.shared_folder, full_path)
+            # file_found = file_watcher.run(timeout=30)
+            # if file_found:
+            #     with open(full_path, "r") as f:
+            #         ip_config = json.load(f)
+            # else:
                 raise FileNotFoundError("IP Config file not found")
 
         self.master_ip_address = ip_config["ipAddress"]
