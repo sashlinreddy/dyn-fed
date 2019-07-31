@@ -35,7 +35,8 @@ def run(n_workers, role, verbose, id, tmux, add):
 
     """
 
-    load_dotenv(find_dotenv())
+    if not "SLURM_JOBID" in os.environ:
+        load_dotenv(find_dotenv())
 
     if "LOGDIR" in os.environ:
         from fault_tolerant_ml.lib.io.file_io import flush_dir
