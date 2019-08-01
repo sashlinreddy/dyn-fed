@@ -17,7 +17,7 @@ from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.utils.maths import reconstruct_approximation, linspace_quantization
-from fault_tolerant_ml.distribute import Distributor
+from fault_tolerant_ml.distribute import Coordinator
 from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.lib.io.file_io import FileWatcher
@@ -70,7 +70,7 @@ class Worker(object):
         self.encoded_name = self.model.encode_name
 
         self._tf_logger = None
-        self.distributor = Distributor()
+        self.coordinator = Coordinator()
 
     def connect(self):
         """Prepare our context, push socket and publisher

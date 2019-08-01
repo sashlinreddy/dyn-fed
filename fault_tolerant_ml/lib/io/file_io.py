@@ -93,4 +93,3 @@ class FileWatcher:
         self.observer.join()
 
         return self.file_found
-

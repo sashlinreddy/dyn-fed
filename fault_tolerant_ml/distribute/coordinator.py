@@ -6,7 +6,7 @@ from fault_tolerant_ml.distribute.states import *
 from fault_tolerant_ml.utils.maths import reconstruct_approximation
 from fault_tolerant_ml.utils import zhelpers
 
-class Distributor(object):
+class Coordinator(object):
     """Responsible for distributing data
     """
     
@@ -198,7 +198,6 @@ class Distributor(object):
         #     d_W += d_Ws[j]
 
         # Average parameters
-        assert i > 0
         assert i > 0
         i -= n_connected
         # parameters /= i
