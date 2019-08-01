@@ -108,6 +108,13 @@ nosetests -vv
 
 * Build and test on mobile app
 
+## Links
+
+* [Automatic differentiation lecture notes](http://www.cs.cmu.edu/~wcohen/10-605/notes/autodiff.pdf)
+* [Automatic differentation wiki](https://en.wikipedia.org/wiki/Automatic_differentiation)
+* https://github.com/joelgrus/autograd/tree/master
+* https://github.com/ddbourgin
+
 ## Credits
 
 This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
