@@ -19,23 +19,7 @@ class Coordinator(object):
         
         return [str(params[i]).encode() for i in vars]
 
-    def bcast(self, socket, data, subscribe_msg=b""):
-        """Broadcasts to anyone listening on the socket
-        """
-
-        multipart = [b"", subscribe_msg]
-        multipart.extend(data)
-
-        socket.send_multipart(multipart)
-
-    def send(self, socket, worker, data, tag=b""):
-        """Send to specific rank/worker
-        """
-        multipart = [worker, tag]
-        multipart.extend(data)
-        socket.send_multipart(multipart)
-
-    def check_timeout(self, running_time, timeout, watch_dog, strategy, workers_received):
+    def _check_timeout(self, running_time, timeout, watch_dog, strategy, workers_received):
         wait = True
         if running_time > timeout:
             self._logger.debug(f"Running time exceeded timeout={running_time}")
@@ -53,25 +37,98 @@ class Coordinator(object):
 
         return wait
 
-    def reduce(self, model, parameters, worker_params, beta=1.0, n_items=6):
-        """Reduce across workers to master with some op
+    def _decode_msg(self, worker_params):
+        """Decode parameters received from workers
+
+        Args:
+            worker_params (list of byte strings): W and b params received from corresponding worker
+
+        Returns:
+            W (np.ndarray): Parameter matrix as numpy array
+            b (np.ndarray): Bias matrix
+        """
+        # Get data for correponding layer
+        Wdata, Wdtype, Wshape, bdata, bdtype, bshape = worker_params
+
+        W = zhelpers.reconstruct_array(Wdata, Wdtype, Wshape)
+        b = zhelpers.reconstruct_array(bdata, bdtype, bshape)
+
+        return [W, b]
+
+    def _decode_params(self, model, parameters, worker_params, n_items=6):
+        """Collect all parameters across workers to master and decode
+
+        Args:
+            model (ftml.Model): Fault tolerant model
+            parameters (np.ndarray): Tensor where we store the collected messages
+            worker_params (byte string): Multipart message received from worker
+            n_items (int): Length of message received from worker that we need to decode (default: 6). 3 messages for the 
+            W tensor (data, dtype, shape) and 3 for the bias vector (data, dtype, shape)
+
+        Returns:
+            parameters (np.ndarray): Populated parameter tensor
         """
 
-        # Decode multipart message
+        # Decode multipart message for each layer
         for j, k in zip(np.arange(model.n_layers), np.arange(0, len(worker_params), n_items)):
             
-            # Get data for correponding layer
-            Wdata, Wdtype, Wshape, bdata, bdtype, bshape = worker_params[k:k+n_items]
-
-            W = zhelpers.reconstruct_array(Wdata, Wdtype, Wshape)
-            b = zhelpers.reconstruct_array(bdata, bdtype, bshape)
+            W, b = self._decode_msg(worker_params[k:k+n_items])
             
-            parameters[j][0] += beta * W
-            parameters[j][1] += beta * b
+            parameters[j][0] = W
+            parameters[j][1] = b
 
         return parameters
 
-    def collect(self, events, socket, params):
+    def bcast(self, socket, data, subscribe_msg=b""):
+        """Broadcasts to anyone listening on the socket
+        """
+
+        multipart = [b"", subscribe_msg]
+        multipart.extend(data)
+
+        socket.send_multipart(multipart)
+
+    def send(self, socket, worker, data, tag=b""):
+        """Send to specific rank/worker
+        """
+        multipart = [worker, tag]
+        multipart.extend(data)
+        socket.send_multipart(multipart)
+
+    def aggregate(self, d_Wbs, errors, model, samples, n_samples, by_loss=False):
+        epsilon = 1e-8
+        # Iterate through workers and weight parameters by corresponding epoch loss
+        parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
+        n_received_workers = len(errors)
+        # n_sample_workers = int(np.ceil(n_received_workers * c))
+        # sample_workers = np.random.choice(np.arange(n_received_workers), n_sample_workers)
+        workers = np.arange(n_received_workers)
+        # sum_es = np.sum([np.exp(errors[i]) for i in sample_workers])
+        sum_es = np.sum(np.exp(errors))
+        for j in workers:
+            weight = 1.0 / n_received_workers  # Default aggregation is the average across workers
+            # Weight by loss calculated by worker - worker with highest loss has greater weight
+            if by_loss:
+                weight = np.exp(errors[j]) / sum_es
+            n_samples_worker = samples[j]
+            samples_weight = n_samples_worker / n_samples
+            self._logger.debug(f"samples_weight={samples_weight}")
+            # weight *= samples_weight
+            self._logger.debug(f"worker={j}, weight={weight}, loss={errors[j]}")
+            for k in np.arange(model.n_layers):
+                parameters[k][0] += d_Wbs[j][k][0] * weight if weight > 0 else d_Wbs[j][k][0] * epsilon # For W parameter
+                parameters[k][1] += d_Wbs[j][k][1] * weight if weight > 0 else d_Wbs[j][k][1] * epsilon # For b parameter
+                # Add some randomness 
+                # parameters[k][0] += (np.random.randn(parameters[k][0].shape[0], parameters[k][0].shape[1]) *  samples_weight)
+                # parameters[k][1] += (np.random.randn(parameters[k][1].shape[0], parameters[k][1].shape[1]) * samples_weight)
+                # parameters[k][0] /= n_received_workers
+                # parameters[k][1] /= n_received_workers
+
+        self._logger.debug(f"Norm layer 0={np.linalg.norm(parameters[0][0])}")
+
+        return parameters
+
+    def collect(self, events, socket, params, weight_by_loss=False):
         """Receives gradients from workers
 
         Args:
@@ -104,7 +161,8 @@ class Coordinator(object):
         workers_received = set()
 
         errs = []
-        d_Ws = []
+        d_Wbs = []
+        samples = []
         parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
 
         while i < n_alive_workers:
@@ -121,7 +179,7 @@ class Coordinator(object):
                     if e.errno == zmq.EAGAIN: # pylint: disable=no-member
                         # state changed since poll event
                         running_time += time.time() - start_i
-                        wait = self.check_timeout(running_time, timeout, watch_dog, strategy, workers_received)
+                        wait = self._check_timeout(running_time, timeout, watch_dog, strategy, workers_received)
                         if not wait:
                             break
 
@@ -150,9 +208,6 @@ class Coordinator(object):
                 # beta = 1 / n_samples
                 # beta = samples_for_worker
 
-                # Decode gradient matrix
-                # self._logger.debug(f"W.dtype={W.dtype}")
-
                 if quantize:
                     self._logger.debug(f"Reconstructing gradients")
                     # shape = W.shape
@@ -160,8 +215,8 @@ class Coordinator(object):
                     worker_params = np.frombuffer(worker_params, dtype=W.dtype)
                     worker_params = worker_params.reshape(W.shape)
                 else:
-                    # Aggregate parameters
-                    parameters = self.reduce(model, parameters, worker_params)
+                    # Decode parameters
+                    parameters = self._decode_params(model, parameters, worker_params)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
@@ -172,39 +227,32 @@ class Coordinator(object):
                 else:
                     watch_dog.states[worker].most_representative = np.min(watch_dog.states[worker].idxs) + mr
                     
-
                 # Decode loss
                 epoch_loss_temp = float(epoch_loss_temp.decode())
 
-                # # Weight parameters and loss
-                # parameters += beta * parameter_temp
-                # parameters = parameters + (beta * parameter_temp)
+                # Aggregate loss
                 epoch_loss += beta * epoch_loss_temp
-                # epoch_loss += epoch_loss_temp
-                errs.append(np.exp(-epoch_loss_temp))
-                d_Ws.append(worker_params)
+
+                if weight_by_loss:
+                    # Accumulate epoch loss for each worker
+                    errs.append(epoch_loss_temp)
+                    # Accumulate params for each worker
+                    d_Wbs.append(parameters)
+                    # Accumulate samples for each worker
+                    samples.append(samples_for_worker)
 
                 workers_received.add(worker)
 
                 i += 1
                 running_time = 0
 
-        # sum_es = np.sum(errs)
-        # epsilon = 1e-8
-        # for j in np.arange(len(errs)):
-        #     weight = errs[j] / sum_es
-        #     # self.logger.debug(f"worker={j}, weight={weight}, loss={errs[j]}")
-        #     d_Ws[j] = d_Ws[j] * weight if weight > 0 else d_Ws[j] * epsilon
-        #     d_W += d_Ws[j]
+        if weight_by_loss:
+            # Aggregate with weighted average
+            parameters = self.aggregate(d_Wbs, errs, model, samples, n_samples, by_loss=weight_by_loss)
 
         # Average parameters
         assert i > 0
         i -= n_connected
-        # parameters /= i
-        for p in parameters:
-            p[0] /= i
-            p[1] /= i
-
         epoch_loss /= i
 
         self._logger.debug("Calculated gradients")

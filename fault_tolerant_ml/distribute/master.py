@@ -100,7 +100,8 @@ class Master(object):
         parameters, epoch_loss = self.coordinator.collect(
             events=events, 
             socket=self.pull_socket,
-            params=params
+            params=params,
+            weight_by_loss=True
         )
 
         if self.strategy.send_gradients:
