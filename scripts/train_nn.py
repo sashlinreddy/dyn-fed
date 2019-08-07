@@ -127,17 +127,6 @@ def run(n_workers, role, verbose, id, tmux, add):
         role=role
     )
 
-    # Create model
-    # model = LogisticRegression(
-    #     optimizer=optimizer,
-    #     strategy=strategy, 
-    #     batch_size=model_cfg["batch_size"],
-    #     max_iter=model_cfg['n_iterations'], 
-    #     shuffle=model_cfg['shuffle'], 
-    #     verbose=verbose,
-    #     encode_name=encoded_run_name
-    # )
-
     model = MLP(
         optimizer, 
         strategy, 

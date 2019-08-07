@@ -24,7 +24,7 @@ from fault_tolerant_ml.metrics import accuracy_scorev2
 from fault_tolerant_ml.utils.maths import linspace_quantization
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.distribute import WatchDog
-from fault_tolerant_ml.distribute import Distributor
+from fault_tolerant_ml.distribute import Coordinator
 from fault_tolerant_ml.distribute.wrappers import ftml_train, ftml_train_collect, ftml_trainv2
 from fault_tolerant_ml.distribute.states import *
 from fault_tolerant_ml.operators import Tensor
@@ -43,7 +43,7 @@ class Master(object):
         self.mapping = {}
 
         self.watch_dog = WatchDog()
-        self.distributor = Distributor()
+        self.coordinator = Coordinator()
 
         # Distributed environ variables
         self.state = START
@@ -97,22 +97,19 @@ class Master(object):
             "W": self.model.layers[0].W.data,
             "model": self.model
         }
-        parameters, epoch_loss = self.distributor.collect(
+        parameters, epoch_loss = self.coordinator.collect(
             events=events, 
             socket=self.pull_socket,
-            params=params
+            params=params,
+            weight_by_loss=False
         )
 
         if self.strategy.send_gradients:
-            # Update the global parameters with weighted error
-            self.model.layers[0].W = \
-            self.optimizer.minimize(
-                X=self.X_train, 
-                y=None, 
-                y_pred=None, 
-                W=self.model.layers[0].W, 
-                precomputed_gradients=parameters
-            )
+            for i in np.arange(self.model.n_layers):
+                self.model.layers[i].W.grad.data = parameters[i][0]
+                self.model.layers[i].b.grad.data = parameters[i][1]
+            # Update the global parameters with aggregated parameters
+            self.optimizer.apply_gradients(self.model)
         else:
             # self.logger.info(f"parameters.dtype={parameters.dtype}")
             # self.model.layers[0].W.data = parameters
@@ -262,7 +259,7 @@ class Master(object):
         self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
     def set_params(self):
-        """Prepares parameters to be sent by the distributor
+        """Prepares parameters to be sent by the coordinator
         """
         params = {}
         params["state"] = self.state
@@ -298,7 +295,7 @@ class Master(object):
             data = (self.X_train, self.y_train)
             params = self.set_params()
 
-            self.distributor.map(
+            self.coordinator.map(
                 socket=self.ctrl_socket, 
                 data=data, 
                 workers=self.watch_dog.states, 
@@ -317,7 +314,7 @@ class Master(object):
 
             #     worker_ids = list(self.watch_dog.states.keys())
             #     fname = os.path.join(figdir, f"class-balance.png")
-            #     class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items()]
+            #     class_bal = [v[1] for (k, v) in self.coordinator.labels_per_worker.items()]
             #     class_names = self.data.class_names
 
             #     class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
@@ -393,7 +390,7 @@ class Master(object):
                 data = (self.X_train, self.y_train)
                 params = self.set_params()
 
-            self.distributor.map(
+            self.coordinator.map(
                     socket=self.ctrl_socket, 
                     data=data, 
                     workers=self.watch_dog.states, 
@@ -412,7 +409,7 @@ class Master(object):
             workers = None
             params = self.set_params()
 
-            self.distributor.map(
+            self.coordinator.map(
                 socket=self.publisher, 
                 data=data, 
                 workers=workers, 
@@ -443,7 +440,7 @@ class Master(object):
                 self.logger.debug("Saving class balances distribution plot...")
                 worker_ids = [s.identity.decode() for s in self.watch_dog.states if s.state]
                 fname = os.path.join(figdir, f"mnist-class-balance.png")
-                class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
+                class_bal = [v[1] for (k, v) in self.coordinator.labels_per_worker.items() if k.identity.decode() in worker_ids]
                 class_names = self.data.class_names
 
                 class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)

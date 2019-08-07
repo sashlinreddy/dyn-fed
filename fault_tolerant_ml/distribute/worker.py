@@ -17,7 +17,7 @@ from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.utils.maths import reconstruct_approximation, linspace_quantization
-from fault_tolerant_ml.distribute import Distributor
+from fault_tolerant_ml.distribute import Coordinator
 from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.lib.io.file_io import FileWatcher
@@ -70,7 +70,7 @@ class Worker(object):
         self.encoded_name = self.model.encode_name
 
         self._tf_logger = None
-        self.distributor = Distributor()
+        self.coordinator = Coordinator()
 
     def connect(self):
         """Prepare our context, push socket and publisher
@@ -175,6 +175,8 @@ class Worker(object):
             W_g=W_g)
         # self.model.layers[0].W = W
         most_representative = self.model.optimizer.most_rep
+
+        # self._logger.debug(f"layers[-1].grad={self.model.layers[-1].W.grad.data}")
         
         return batch_loss, most_representative
 
@@ -326,11 +328,18 @@ class Worker(object):
 
                             self._logger.debug(f"Send gradients flag={self.send_gradients}")
                             # msg = self.model.layers[0].W.tostring()
-                            msg = zhelpers.multipart_params(self.model.parameters())
-                            self._logger.debug(f"Length of msg={len(msg)}")
+                            params = self.model.parameters()
+                            
                             if self.send_gradients:
                                 # msg = d_W.tostring()
-                                msg = self.model.layers[0].W.grad.tostring()
+                                # msg = self.model.layers[0].W.grad.tostring()
+                                params = self.model.parameters(grad=True)
+
+                            msg = zhelpers.multipart_params(params)
+
+                            # self._logger.debug(f"layers[-1].grad={self.model.layers[-1].W.grad.data}")
+
+                            self._logger.debug(f"Length of msg={len(msg)}")
                                 
                             # loss = str(batch_loss).encode()
                             loss = str(epoch_loss).encode()

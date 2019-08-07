@@ -1,5 +1,5 @@
 from .watch_dog import WatchDog
-from .distributor import Distributor
+from .coordinator import Coordinator
 from .master import Master
 from .worker import Worker
 from .strategy import DistributionStrategy, MasterWorkerStrategy
