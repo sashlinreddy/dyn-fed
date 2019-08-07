@@ -175,6 +175,8 @@ class Worker(object):
             W_g=W_g)
         # self.model.layers[0].W = W
         most_representative = self.model.optimizer.most_rep
+
+        # self._logger.debug(f"layers[-1].grad={self.model.layers[-1].W.grad.data}")
         
         return batch_loss, most_representative
 
@@ -326,11 +328,18 @@ class Worker(object):
 
                             self._logger.debug(f"Send gradients flag={self.send_gradients}")
                             # msg = self.model.layers[0].W.tostring()
-                            msg = zhelpers.multipart_params(self.model.parameters())
-                            self._logger.debug(f"Length of msg={len(msg)}")
+                            params = self.model.parameters()
+                            
                             if self.send_gradients:
                                 # msg = d_W.tostring()
-                                msg = self.model.layers[0].W.grad.tostring()
+                                # msg = self.model.layers[0].W.grad.tostring()
+                                params = self.model.parameters(grad=True)
+
+                            msg = zhelpers.multipart_params(params)
+
+                            # self._logger.debug(f"layers[-1].grad={self.model.layers[-1].W.grad.data}")
+
+                            self._logger.debug(f"Length of msg={len(msg)}")
                                 
                             # loss = str(batch_loss).encode()
                             loss = str(epoch_loss).encode()

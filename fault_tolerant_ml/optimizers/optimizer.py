@@ -127,8 +127,8 @@ class SGD(Optimizer):
             model (fault_tolerant_ml.Model): Tensor model containing multiple layers
         """
         for layer in model.layers:
-            layer.W = layer.W - self.learning_rate * layer.W.grad
-            layer.b = layer.b - self.learning_rate * layer.b.grad
+            layer.W.data = layer.W.data - self.learning_rate * layer.W.grad.data
+            layer.b.data = layer.b.data - self.learning_rate * layer.b.grad.data
 
     def minimize(self, model, y, y_pred, iteration=None, N=None, W_g=None):
 

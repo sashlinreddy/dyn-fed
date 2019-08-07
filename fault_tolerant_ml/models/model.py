@@ -150,11 +150,16 @@ class Model():
         self.layers += layers
         self.n_layers = len(self.layers)
 
-    def parameters(self):
+    def parameters(self, grad=False):
+        """Returns all model parameters
+        """
         for layer in self.layers:
             for k, v in layer.__dict__.items():
                 if 'W' == k or 'b' == k:
-                    yield v
+                    if grad:
+                        yield v.grad
+                    else:
+                        yield v
             
     def zero_grad(self):
         """Zeros out the gradients

@@ -101,19 +101,15 @@ class Master(object):
             events=events, 
             socket=self.pull_socket,
             params=params,
-            weight_by_loss=True
+            weight_by_loss=False
         )
 
         if self.strategy.send_gradients:
-            # Update the global parameters with weighted error
-            self.model.layers[0].W = \
-            self.optimizer.minimize(
-                X=self.X_train, 
-                y=None, 
-                y_pred=None, 
-                W=self.model.layers[0].W, 
-                precomputed_gradients=parameters
-            )
+            for i in np.arange(self.model.n_layers):
+                self.model.layers[i].W.grad.data = parameters[i][0]
+                self.model.layers[i].b.grad.data = parameters[i][1]
+            # Update the global parameters with aggregated parameters
+            self.optimizer.apply_gradients(self.model)
         else:
             # self.logger.info(f"parameters.dtype={parameters.dtype}")
             # self.model.layers[0].W.data = parameters
