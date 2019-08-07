@@ -19,6 +19,25 @@ class Activation(ABC):
     def grad(self, x, **kwargs):
         raise NotImplementedError
 
+class Linear(Activation):
+    """
+    A linear activation function.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def __str__(self):
+        return "Linear"
+
+    def fn(self, z):
+        return z
+
+    def grad(self, x):
+        return 1
+
+    def grad2(self, x):
+        return 0
+
 class Sigmoid(Activation):
     """
     A logistic sigmoid activation function.

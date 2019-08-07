@@ -1,5 +1,6 @@
 import numpy as np
-from fault_tolerant_ml.activations.activation import Sigmoid, ReLU
+import logging
+from fault_tolerant_ml.activations.activation import Sigmoid, ReLU, Linear
 from fault_tolerant_ml.operators import Tensor
 
 class Layer(object):
@@ -10,6 +11,8 @@ class Layer(object):
         self.n_outputs = n_outputs
         self.W = Tensor(np.random.randn(self.n_inputs, self.n_outputs).astype(dtype) * 0.01, is_param=True)
         self.b = Tensor(np.zeros((1, self.n_outputs)).astype(dtype), is_param=True)
+
+        self._logger = logging.getLogger(f'ftml.layers.{self.__class__.__name__}')
         
         if W is not None:
             self.W = W
@@ -20,9 +23,12 @@ class Layer(object):
         self.act_fn = None
         if self.activation == "relu":
             self.act_fn = ReLU()
-        else:
-            # Default to sigmoid
+        
+        elif self.activation == "sigmoid":
             self.act_fn = Sigmoid()
+        else:
+            # Default to linear
+            self.act_fn = Linear()
 
     def __repr__(self):
         return f"Layer({self.n_inputs}, {self.n_outputs})"
@@ -46,7 +52,10 @@ class Layer(object):
         x = x
         # Store edge
         z = (x @ self.W) + self.b
+        
         # Store output tensor for feedforward
         y = Tensor(self.act_fn(z.data))
 
+        assert np.array_equal(z.data, y.data)
+        
         return x, z, y

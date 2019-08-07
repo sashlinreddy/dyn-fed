@@ -84,7 +84,7 @@ class MSELoss(Loss):
         return loss
 
     @staticmethod
-    def grad(y, y_pred, z, act_fn):
+    def grad(y, y_pred):
         """Returns gradient for mean squared error loss for each sample or across batch
 
         y (numpy.ndarray): Actual labels
@@ -95,7 +95,7 @@ class MSELoss(Loss):
         Returns:
             grad (numpy.ndarray): Gradient tensor
         """
-        grad = (y_pred - y) * act_fn.grad(z)
+        grad = (y_pred - y)
 
         return grad
 

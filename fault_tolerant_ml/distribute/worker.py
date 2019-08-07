@@ -63,7 +63,7 @@ class Worker(object):
             #     with open(full_path, "r") as f:
             #         ip_config = json.load(f)
             # else:
-                raise FileNotFoundError("IP Config file not found")
+            raise FileNotFoundError("IP Config file not found")
 
         self.master_ip_address = ip_config["ipAddress"]
 
