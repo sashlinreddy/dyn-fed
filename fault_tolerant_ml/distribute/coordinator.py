@@ -124,8 +124,6 @@ class Coordinator(object):
                 # parameters[k][0] /= n_received_workers
                 # parameters[k][1] /= n_received_workers
 
-        self._logger.debug(f"Norm layer 0={np.linalg.norm(parameters[0][0])}")
-
         return parameters
 
     def collect(self, events, socket, params, weight_by_loss=False):
