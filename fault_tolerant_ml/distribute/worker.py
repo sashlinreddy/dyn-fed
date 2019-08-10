@@ -196,7 +196,7 @@ class Worker(object):
         self._logger.info('Started Worker %s' % self.worker_id)
 
         try:
-            start = time.time()
+            start_time = time.time()
             self.n_samples = 0
             self.n_features = 0
             self.n_classes = 0
@@ -362,9 +362,9 @@ class Worker(object):
                     if command == b"WORK":
                         self.receive_data()
 
-            end = time.time()
+            elapsed_time = time.time() - start_time
 
-            self._logger.info("Time taken for %d iterations is %7.6fs" % (self.model.iter-1, end-start))
+            self._logger.info("Time taken for %d iterations is %7.6fs" % (self.model.iter-1, elapsed_time))
         except KeyboardInterrupt:
             self._logger.info("Keyboard quit")
         except zmq.ZMQError:
