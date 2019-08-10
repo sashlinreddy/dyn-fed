@@ -34,20 +34,19 @@ class Layer(object):
         return f"Layer({self.n_inputs}, {self.n_outputs})"
         
     def __call__(self, value):
-        
-        # Store input tensor for feedforward
-        # self.x = value
-        # # Store edge
-        # self.z = (value @ self.W) + self.b
-        # # Store output tensor for feedforward
-        # self.y = Tensor(self.act_fn(self.z.data))
+        """Perform feedforward for layer given input
 
+        Args:
+            value (ftml.Tensor): Input tensor to perform feedforward on
+
+        Returns:
+            y (ftml.Tensor): Output tensor
+        """
         self.x, self.z, self.y = self._forward(value)
         
         return self.y
 
     def _forward(self, x, retain_derived=True):
-
         # Store input tensor for feedforward
         x = x
         # Store edge
