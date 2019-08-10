@@ -33,6 +33,9 @@ def run(n_workers, role, verbose, id, tmux, add):
 
     """
 
+    # For reproducibility
+    np.random.seed(42)
+
     if not "SLURM_JOBID" in os.environ:
         load_dotenv(find_dotenv())
 
@@ -70,9 +73,6 @@ def run(n_workers, role, verbose, id, tmux, add):
 
     # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
-
-    # For reproducibility
-    np.random.seed(42)
 
     logger = None
     data = None
