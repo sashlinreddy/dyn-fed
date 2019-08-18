@@ -241,16 +241,6 @@ class Worker(object):
                                 # Receive parameter matrix on the subscriber socket
                                 if cmd == b"WORKNODELAY":
                                     self.comm_period = 1
-                                # data, dtype, shape = msg # pylint: disable=unbalanced-tuple-unpacking
-                                # shape = shape.decode()
-
-                                # # Reconstruct numpy array
-                                # buf = memoryview(data)
-                                
-                                # W = np.frombuffer(buf, dtype=dtype)
-                                # W = W.reshape(eval(shape))
-                                # W = W.copy()
-                                # W = zhelpers.reconstruct_array(data, dtype, shape)
 
                                 n_items = 6
                                 # Decode multipart message

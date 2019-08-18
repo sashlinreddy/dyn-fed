@@ -118,11 +118,6 @@ class Coordinator(object):
             for k in np.arange(model.n_layers):
                 parameters[k][0] += d_Wbs[j][k][0] * weight if weight > 0 else d_Wbs[j][k][0] * epsilon # For W parameter
                 parameters[k][1] += d_Wbs[j][k][1] * weight if weight > 0 else d_Wbs[j][k][1] * epsilon # For b parameter
-                # Add some randomness 
-                # parameters[k][0] += (np.random.randn(parameters[k][0].shape[0], parameters[k][0].shape[1]) *  samples_weight)
-                # parameters[k][1] += (np.random.randn(parameters[k][1].shape[0], parameters[k][1].shape[1]) * samples_weight)
-                # parameters[k][0] /= n_received_workers
-                # parameters[k][1] /= n_received_workers
 
         return parameters
 
@@ -257,6 +252,130 @@ class Coordinator(object):
         
         return parameters, epoch_loss
 
+    def _map_params(self, socket, data, params):
+        """Maps model parameters
+
+        Args:
+            socket (zmq.Socket): ZMQ socket to push messages to subscribers
+            data (numpy.ndarray): Parameter tensor
+            params (dict): Additional params to check if need to quantize
+        """
+        if params["quantize"] == 0:
+                # Get message send ready
+                # msg = data.tostring()
+                # dtype = data.dtype.str.encode()
+                # shape = str(data.shape).encode()
+                # multipart = [msg, dtype, shape]
+                multipart = data
+                subscribe_msg = b"WORKNODELAY" if params["delay_change"] else b"WORK"
+
+        # Quantized parameters
+        elif params["quantize"] == 1:
+            self._logger.debug("Distributing quantized parameters")
+            # Get message send ready
+            msg = data.tostring()
+            multipart = [msg]
+            subscribe_msg = b"WORK"
+            
+        self.bcast(socket=socket, data=multipart, subscribe_msg=subscribe_msg)
+
+    def _map(self, socket, data, workers, params, gen_func):
+        """Maps data to workers on startup or new worker
+        """
+        # Distribute data/data indices to work on
+        self._logger.debug("Distributor distributing data")
+        X_train, y_train = data
+        batch_size = int(np.ceil(params["n_samples"] / params["n_alive"]))
+        batch_gen = gen_func(X_train, y_train, batch_size, shuffle=False)
+
+        # Encode to bytes
+        enc_vars = [
+            "n_samples", "n_features", "n_classes", "state"
+        ]
+        multipart_params = self._encode(params, enc_vars)
+
+        state = params["state"]
+
+        self._logger.debug(f"State={state}")
+        
+        if "mapping" in params:
+            mapping = params["mapping"]
+
+        if params["remap"] != 1:
+            self.labels_per_worker = {}
+
+        # Iterate through workers and send
+        i = 0
+        for worker in workers:
+
+            if worker.state:
+                worker.mr_idxs_used = False
+                # Get next batch to send
+                X_batch, y_batch = next(batch_gen)
+                X_batch = X_batch.data
+                y_batch = y_batch.data
+                self._logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
+                batch_data = np.hstack((X_batch, y_batch))
+
+                if y_batch.shape[1] > 1:
+                    y_b = np.argmax(y_batch, axis=1) 
+                else:
+                    y_b = y_batch
+
+                if (state == REMAP) and (params["remap"] == 1):
+                    classes, dists = np.unique(y_b, return_counts=True)
+                    self._logger.debug(f"Classes={classes}")
+                    self.labels_per_worker[worker][1][classes] = self.labels_per_worker[worker][1][classes] + dists
+                else:
+                    self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
+
+                # Encode data
+                dtype = batch_data.dtype.str.encode()
+                shape = str(batch_data.shape).encode()
+                msg = batch_data.tostring()
+
+                # Keep track of samples per worker
+                # Redistribute all data points
+                if (state == MAP) or params["remap"] != 1:
+                    worker.n_samples = X_batch.shape[0]
+                    lower_bound = X_batch.shape[0] * i
+                    upper_bound = lower_bound + X_batch.shape[0]
+                    worker.idxs = np.arange(lower_bound, upper_bound)
+                    if worker.most_representative is None:
+                        worker.most_representative = np.zeros((params["n_most_rep"],))
+                        worker.lower_bound = lower_bound
+                        worker.upper_bound = upper_bound
+                # Redistribute only most representative data points for dead workers
+                else:
+                    worker.n_samples += X_batch.shape[0]
+                    lower_bound = X_batch.shape[0] * i
+                    upper_bound = lower_bound + X_batch.shape[0]
+                    batch_range = np.arange(lower_bound, upper_bound)
+                    new_range = np.arange(worker.upper_bound, worker.upper_bound + batch_range.shape[0]) 
+                    self._logger.debug(f"New range={new_range}, worker max idx={np.max(worker.idxs)}, upper bound={worker.upper_bound}")
+                    worker.upper_bound = worker.upper_bound + batch_range.shape[0]
+                    if not worker.mapping:
+                        worker.mapping = dict(zip(worker.idxs, worker.idxs))
+                    
+                    self._logger.debug(f"Batch range shape={batch_range}, i={i}")
+                    global_idxs = [mapping.get(j) for j in batch_range]
+                    # self._logger.debug(f"global idxs={global_idxs}, i={i}")
+                    worker.mapping.update(dict(zip(new_range, global_idxs)))
+                    worker.idxs = np.hstack((worker.idxs, global_idxs))
+                    if worker.most_representative is None:
+                        worker.most_representative = np.zeros((params["n_most_rep"],))
+
+                multipart_data = [batch_data, dtype, shape]
+
+                self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
+                self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")
+
+                i += 1
+
+        self._logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}")
+
+        self._logger.debug(f"Labels per worker={self.labels_per_worker}")
+
     def map(self, socket, data, workers, params, gen_func=None):
         """Sends the data to the necessary destination
         
@@ -274,116 +393,7 @@ class Coordinator(object):
         # Publish parameters
         if state == DIST_PARAMS:
                 
-            if params["quantize"] == 0:
-                # Get message send ready
-                # msg = data.tostring()
-                # dtype = data.dtype.str.encode()
-                # shape = str(data.shape).encode()
-                # multipart = [msg, dtype, shape]
-                multipart = data
-                subscribe_msg = b"WORKNODELAY" if params["delay_change"] else b"WORK"
-
-            # Quantized parameters
-            elif params["quantize"] == 1:
-                self._logger.debug("Distributing quantized parameters")
-                # Get message send ready
-                msg = data.tostring()
-                multipart = [msg]
-                subscribe_msg = b"WORK"
-                
-            self.bcast(socket=socket, data=multipart, subscribe_msg=subscribe_msg)
+            self._map_params(socket, data, params)
 
         else:
-            # Distribute data/data indices to work on
-            self._logger.debug("Distributor distributing data")
-            X_train, y_train = data
-            batch_size = int(np.ceil(params["n_samples"] / params["n_alive"]))
-            batch_gen = gen_func(X_train, y_train, batch_size, shuffle=False)
-
-            # Encode to bytes
-            enc_vars = [
-                "n_samples", "n_features", "n_classes", "state"
-            ]
-            multipart_params = self._encode(params, enc_vars)
-
-            state = params["state"]
-
-            self._logger.debug(f"State={state}")
-            
-            if "mapping" in params:
-                mapping = params["mapping"]
-
-            if params["remap"] != 1:
-                self.labels_per_worker = {}
-
-            # Iterate through workers and send
-            i = 0
-            for worker in workers:
-
-                if worker.state:
-                    worker.mr_idxs_used = False
-                    # Get next batch to send
-                    X_batch, y_batch = next(batch_gen)
-                    X_batch = X_batch.data
-                    y_batch = y_batch.data
-                    self._logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
-                    batch_data = np.hstack((X_batch, y_batch))
-
-                    if y_batch.shape[1] > 1:
-                        y_b = np.argmax(y_batch, axis=1) 
-                    else:
-                        y_b = y_batch
-
-                    if (state == REMAP) and (params["remap"] == 1):
-                        classes, dists = np.unique(y_b, return_counts=True)
-                        self._logger.debug(f"Classes={classes}")
-                        self.labels_per_worker[worker][1][classes] = self.labels_per_worker[worker][1][classes] + dists
-                    else:
-                        self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
-
-                    # Encode data
-                    dtype = batch_data.dtype.str.encode()
-                    shape = str(batch_data.shape).encode()
-                    msg = batch_data.tostring()
-
-                    # Keep track of samples per worker
-                    # Redistribute all data points
-                    if (state == MAP) or params["remap"] != 1:
-                        worker.n_samples = X_batch.shape[0]
-                        lower_bound = X_batch.shape[0] * i
-                        upper_bound = lower_bound + X_batch.shape[0]
-                        worker.idxs = np.arange(lower_bound, upper_bound)
-                        if worker.most_representative is None:
-                            worker.most_representative = np.zeros((params["n_most_rep"],))
-                            worker.lower_bound = lower_bound
-                            worker.upper_bound = upper_bound
-                    # Redistribute only most representative data points for dead workers
-                    else:
-                        worker.n_samples += X_batch.shape[0]
-                        lower_bound = X_batch.shape[0] * i
-                        upper_bound = lower_bound + X_batch.shape[0]
-                        batch_range = np.arange(lower_bound, upper_bound)
-                        new_range = np.arange(worker.upper_bound, worker.upper_bound + batch_range.shape[0]) 
-                        self._logger.debug(f"New range={new_range}, worker max idx={np.max(worker.idxs)}, upper bound={worker.upper_bound}")
-                        worker.upper_bound = worker.upper_bound + batch_range.shape[0]
-                        if not worker.mapping:
-                            worker.mapping = dict(zip(worker.idxs, worker.idxs))
-                        
-                        self._logger.debug(f"Batch range shape={batch_range}, i={i}")
-                        global_idxs = [mapping.get(j) for j in batch_range]
-                        # self._logger.debug(f"global idxs={global_idxs}, i={i}")
-                        worker.mapping.update(dict(zip(new_range, global_idxs)))
-                        worker.idxs = np.hstack((worker.idxs, global_idxs))
-                        if worker.most_representative is None:
-                            worker.most_representative = np.zeros((params["n_most_rep"],))
-
-                    multipart_data = [batch_data, dtype, shape]
-
-                    self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
-                    self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")
-
-                    i += 1
-
-            self._logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}")
-
-            self._logger.debug(f"Labels per worker={self.labels_per_worker}")
+            self._map(socket, data, workers, params, gen_func)
