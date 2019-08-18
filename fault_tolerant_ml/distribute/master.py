@@ -247,12 +247,9 @@ class Master(object):
                 if command == b"CONNECT":
                     self.register_workers()
                     n_workers_found = len(self.watch_dog.states)
-                    # start = time.time()
             else:
         
                 end = time.time()
-                # if round(end - start, 2) % 1 == 0:
-                #     self.logger.debug(end-start)
                 if end-start > timeout:
                     self._logger.info(f"{timeout} second timeout - no more workers found")
                     break
