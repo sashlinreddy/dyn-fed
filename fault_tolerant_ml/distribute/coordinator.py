@@ -378,10 +378,9 @@ class Coordinator(object):
 
     def map(self, socket, data, workers, params, gen_func=None):
         """Sends the data to the necessary destination
-        
-        Long description
-        
+                
         Args:
+            socket (zmq.Socket): ZMQ socket to push messages to subscribers
             data (numpy.ndarray): Data matrix that will be partitioned and distributed to each worker
             workers (distribute.WorkerStates): worker state objects containing state of worker and other info
             params (dict): Additional params to send to all workers
