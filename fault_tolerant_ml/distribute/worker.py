@@ -21,6 +21,7 @@ from fault_tolerant_ml.distribute import Coordinator
 from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.lib.io.file_io import FileWatcher
+from fault_tolerant_ml.distribute.states import REMAP
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -120,16 +121,19 @@ class Worker(object):
         data = data.reshape(eval(shape))
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes = self.ctrl_socket.recv_multipart() # pylint: disable=unbalanced-tuple-unpacking
+        _, n_samples, n_features, n_classes, state = self.ctrl_socket.recv_multipart() # pylint: disable=unbalanced-tuple-unpacking
         self.n_samples = int(n_samples.decode())
         self.n_features = int(n_features.decode())
         self.n_classes = int(n_classes.decode())
+        self.state = int(state.decode())
 
         if "TFDIR" in os.environ:
             logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
 
-        if self.remap == 1 and not start:
+        self._logger.debug(f"Data size={data[:, :self.n_features].shape}")
+
+        if self.remap == 1 and not start and state == REMAP:
             self.X, self.y = np.vstack([self.X, data[:, :self.n_features]]), np.vstack([self.y, data[:, -self.n_classes:]])
             self._logger.debug(f"New data shape={self.X.shape}")
         else:
@@ -162,21 +166,16 @@ class Worker(object):
         """
 
         # Get predictions
-        # y_pred = self.model.predict(self.X)
         y_pred = self.model.forward(X)
 
         batch_loss = self.model.optimizer.minimize(
             self.model,
             y, 
             y_pred, 
-            # N=self.n_samples,
             iteration=self.model.iter + 1,
             N=X.shape[0],
             W_g=W_g)
-        # self.model.layers[0].W = W
         most_representative = self.model.optimizer.most_rep
-
-        # self._logger.debug(f"layers[-1].grad={self.model.layers[-1].W.grad.data}")
         
         return batch_loss, most_representative
 
@@ -191,7 +190,6 @@ class Worker(object):
         Boots up the worker to start receiving data. Thereafter, the worker does the heavy lifting by computing the gradients of the parameter matrix. This is returned to the master, where the master will aggregate gradients and apply them to the global W. The parameters will be distributed back to the worker and this occurs iteratively, to find the global minima for the parameter matrix.
         """
         poller = self.setup_poller()
-        # poller.register(self.push_socket, zmq.POLLOUT)
 
         self._logger.info('Started Worker %s' % self.worker_id)
 
@@ -336,8 +334,6 @@ class Worker(object):
                                 params = self.model.parameters(grad=True)
 
                             msg = zhelpers.multipart_params(params)
-
-                            # self._logger.debug(f"layers[-1].grad={self.model.layers[-1].W.grad.data}")
 
                             self._logger.debug(f"Length of msg={len(msg)}")
                                 

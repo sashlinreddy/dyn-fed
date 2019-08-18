@@ -302,7 +302,7 @@ class Coordinator(object):
 
             # Encode to bytes
             enc_vars = [
-                "n_samples", "n_features", "n_classes"
+                "n_samples", "n_features", "n_classes", "state"
             ]
             multipart_params = self._encode(params, enc_vars)
 
