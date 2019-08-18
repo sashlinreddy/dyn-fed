@@ -185,8 +185,8 @@ class Worker(object):
         multipart.extend(data)
         return multipart
 
-    def train(self):
-        """Training for the worker
+    def start(self):
+        """Worker session
 
         Boots up the worker to start receiving data. Thereafter, the worker does the heavy lifting by computing the gradients of the parameter matrix. This is returned to the master, where the master will aggregate gradients and apply them to the global W. The parameters will be distributed back to the worker and this occurs iteratively, to find the global minima for the parameter matrix.
         """

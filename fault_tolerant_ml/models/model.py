@@ -134,10 +134,10 @@ class Model():
             # Master training
                 # setattr(master, "train_iter", train_iter)
                 # time.sleep(1)
-            self._master.train(X)
+            self._master.start(X)
         else:
             # Worker training
-            self._worker.train()
+            self._worker.start()
         
     def add(self, layers):
         """Add new layer(s) to model

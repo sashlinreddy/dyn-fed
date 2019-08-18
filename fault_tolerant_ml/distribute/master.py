@@ -482,7 +482,7 @@ class Master(object):
 
         self.print_metrics()
         
-    def train(self, data):
+    def start(self, data):
         """Starts work of master. First connects to workers and then performs machine learning training
         """
         self.data = data

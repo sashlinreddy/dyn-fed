@@ -89,10 +89,10 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
         """
         if self.strategy.role == "master":
             # Master training
-            self._master.train(X)
+            self._master.start(X)
         else:
             # Worker training
-            self._worker.train()
+            self._worker.start()
 
     def fit(self, X=None, y=None):
         """Training for estimating parameters
