@@ -112,7 +112,7 @@ class Model():
                 self._master.connect()
             else:
 
-                time.sleep(15)
+                time.sleep(3)
 
                 self._worker = Worker(
                     model=self,
@@ -132,8 +132,6 @@ class Model():
         """
         if self.strategy.role == "master":
             # Master training
-                # setattr(master, "train_iter", train_iter)
-                # time.sleep(1)
             self._master.start(X)
         else:
             # Worker training

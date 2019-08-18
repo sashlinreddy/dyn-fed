@@ -236,8 +236,9 @@ class Master(object):
         """
         timeout = self.strategy.worker_timeout # 10 second time out
         start = time.time()
+        n_workers_found = 0
 
-        while True:
+        while n_workers_found < self.strategy.n_workers:
             events = dict(self.poller.poll())
 
             if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
@@ -245,6 +246,7 @@ class Master(object):
 
                 if command == b"CONNECT":
                     self.register_workers()
+                    n_workers_found = len(self.watch_dog.states)
                     # start = time.time()
             else:
         
@@ -466,12 +468,6 @@ class Master(object):
         np.random.seed(42)
         
         self._logger.info(f"Initialized dummy data of size {self.data}")
-
-        # self.model.layers[0].W = \
-        # np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
-        # self.model.layers[0].W = \
-        # Tensor(np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01, is_param=True)
-        # self.logger.debug(f"Init W={self.model.layers[0].W}")
         self._logger.debug(f"Init W={self.model.layers[0].W}")
         
         self.poller = self.setup_poller()
