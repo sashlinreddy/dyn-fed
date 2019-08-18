@@ -96,6 +96,19 @@ class Coordinator(object):
         socket.send_multipart(multipart)
 
     def aggregate(self, d_Wbs, errors, model, samples, n_samples, mode=0):
+        """Aggregate received parameters
+
+        Args:
+            d_Wbs (list): List of parameters received
+            errors (list): List of losses for each worker
+            model (ftml.Model): Model being used
+            samples (list): List containing number of samples for each worker
+            n_samples (int): Total number of samples
+            mode (int): Aggregation mode (default: 0)
+
+        Returns:
+            parameters (list): List of numpy matrices for each layer
+        """
         epsilon = 1e-8
         # Iterate through workers and weight parameters by corresponding epoch loss
         parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
@@ -258,11 +271,6 @@ class Coordinator(object):
             params (dict): Additional params to check if need to quantize
         """
         if params["quantize"] == 0:
-                # Get message send ready
-                # msg = data.tostring()
-                # dtype = data.dtype.str.encode()
-                # shape = str(data.shape).encode()
-                # multipart = [msg, dtype, shape]
                 multipart = data
                 subscribe_msg = b"WORKNODELAY" if params["delay_change"] else b"WORK"
 
@@ -356,13 +364,13 @@ class Coordinator(object):
                     
                     self._logger.debug(f"Batch range shape={batch_range}, i={i}")
                     global_idxs = [mapping.get(j) for j in batch_range]
-                    # self._logger.debug(f"global idxs={global_idxs}, i={i}")
+                    self._logger.debug(f"global idxs={global_idxs}, i={i}")
                     worker.mapping.update(dict(zip(new_range, global_idxs)))
                     worker.idxs = np.hstack((worker.idxs, global_idxs))
                     if worker.most_representative is None:
                         worker.most_representative = np.zeros((params["n_most_rep"],))
 
-                multipart_data = [batch_data, dtype, shape]
+                multipart_data = [msg, dtype, shape]
 
                 self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
                 self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")
@@ -370,7 +378,6 @@ class Coordinator(object):
                 i += 1
 
         self._logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}")
-
         self._logger.debug(f"Labels per worker={self.labels_per_worker}")
 
     def map(self, socket, data, workers, params, gen_func=None):
@@ -388,8 +395,6 @@ class Coordinator(object):
 
         # Publish parameters
         if state == DIST_PARAMS:
-                
             self._map_params(socket, data, params)
-
         else:
             self._map(socket, data, workers, params, gen_func)
