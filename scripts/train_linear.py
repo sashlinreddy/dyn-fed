@@ -98,8 +98,6 @@ def run(n_workers, role, verbose, id, tmux, add):
         # data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
         # data.transform()    
 
-        # time.sleep(2)
-
     # Define loss
     loss = MSELoss()
 

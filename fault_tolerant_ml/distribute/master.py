@@ -101,7 +101,7 @@ class Master(object):
             events=events, 
             socket=self.pull_socket,
             params=params,
-            weight_by_loss=False
+            aggregate_mode=self.strategy.aggregate_mode
         )
 
         if self.strategy.send_gradients:

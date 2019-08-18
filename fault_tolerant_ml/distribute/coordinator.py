@@ -95,7 +95,7 @@ class Coordinator(object):
         multipart.extend(data)
         socket.send_multipart(multipart)
 
-    def aggregate(self, d_Wbs, errors, model, samples, n_samples, by_loss=False):
+    def aggregate(self, d_Wbs, errors, model, samples, n_samples, mode=0):
         epsilon = 1e-8
         # Iterate through workers and weight parameters by corresponding epoch loss
         parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
@@ -108,12 +108,11 @@ class Coordinator(object):
         for j in workers:
             weight = 1.0 / n_received_workers  # Default aggregation is the average across workers
             # Weight by loss calculated by worker - worker with highest loss has greater weight
-            if by_loss:
+            if mode == 1:
+                n_samples_worker = samples[j]
+                weight = n_samples_worker / n_samples
+            elif mode == 2:
                 weight = np.exp(errors[j]) / sum_es
-            n_samples_worker = samples[j]
-            samples_weight = n_samples_worker / n_samples
-            self._logger.debug(f"samples_weight={samples_weight}")
-            # weight *= samples_weight
             self._logger.debug(f"worker={j}, weight={weight}, loss={errors[j]}")
             for k in np.arange(model.n_layers):
                 parameters[k][0] += d_Wbs[j][k][0] * weight if weight > 0 else d_Wbs[j][k][0] * epsilon # For W parameter
@@ -121,7 +120,7 @@ class Coordinator(object):
 
         return parameters
 
-    def collect(self, events, socket, params, weight_by_loss=False):
+    def collect(self, events, socket, params, aggregate_mode=0):
         """Receives gradients from workers
 
         Args:
@@ -226,22 +225,20 @@ class Coordinator(object):
                 # Aggregate loss
                 epoch_loss += beta * epoch_loss_temp
 
-                if weight_by_loss:
-                    # Accumulate epoch loss for each worker
-                    errs.append(epoch_loss_temp)
-                    # Accumulate params for each worker
-                    d_Wbs.append(parameters)
-                    # Accumulate samples for each worker
-                    samples.append(samples_for_worker)
+                # Accumulate epoch loss for each worker
+                errs.append(epoch_loss_temp)
+                # Accumulate params for each worker
+                d_Wbs.append(parameters)
+                # Accumulate samples for each worker
+                samples.append(samples_for_worker)
 
                 workers_received.add(worker)
 
                 i += 1
                 running_time = 0
 
-        if weight_by_loss:
-            # Aggregate with weighted average
-            parameters = self.aggregate(d_Wbs, errs, model, samples, n_samples, by_loss=weight_by_loss)
+        # Aggregate with weighted average
+        parameters = self.aggregate(d_Wbs, errs, model, samples, n_samples, mode=aggregate_mode)
 
         # Average parameters
         assert i > 0
