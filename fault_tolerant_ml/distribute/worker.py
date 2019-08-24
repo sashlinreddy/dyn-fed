@@ -224,7 +224,7 @@ class Worker(object):
                         # Read envelope with address
                         self._logger.debug("Receiving contents")
                         contents = self.subscriber.recv_multipart()
-                        address = contents[0]
+                        _ = contents[0]
                         cmd = contents[1]
                         msg = contents[2:]
                         packet_size = np.sum([len(m) for m in contents])

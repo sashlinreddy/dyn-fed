@@ -115,6 +115,3 @@ class WatchDog(object):
             self.states[worker].state = True
         else:
             self.logger.debug("Worker asking for work again?")
-
-
-    

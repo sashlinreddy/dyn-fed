@@ -160,7 +160,7 @@ class Master(object):
     def _training_loop(self):
         """Not being used at the moment
         """
-        delta = 1.0
+        # delta = 1.0
         start = time.time()
 
         while self.model.iter < self.n_iterations:

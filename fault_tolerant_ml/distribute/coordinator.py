@@ -2,7 +2,7 @@ import logging
 import zmq.green as zmq
 import numpy as np
 import time
-from fault_tolerant_ml.distribute.states import *
+from fault_tolerant_ml.distribute.states import MAP, REMAP, DIST_PARAMS
 from fault_tolerant_ml.utils.maths import reconstruct_approximation
 from fault_tolerant_ml.utils import zhelpers
 
