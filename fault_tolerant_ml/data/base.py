@@ -11,7 +11,7 @@ class Dataset():
     """
 
     # pylint: disable=too-many-instance-attributes
-    
+
     def __init__(self, filepath):
         self.filepath = filepath
         self.n_samples: int = 0
@@ -77,7 +77,7 @@ class Dataset():
                 # We need to circle back and stack the points from worker 1 onto these points
                 end = end - X.shape[0]
                 X_batch = np.vstack([X_batch, X[0:end]])
-                y_batch = np.vstack([y_batch, X[0:end]])
+                y_batch = np.vstack([y_batch, y[0:end]])
             yield X_batch, y_batch
 
     def prepare_data(self):
