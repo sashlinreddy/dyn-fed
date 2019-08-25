@@ -1,3 +1,6 @@
-from .dummy_model import DummyData
-from .occupancy_model import OccupancyData
+"""Dataset module
+"""
+from .base import Dataset
+from .dummy import DummyData
 from .mnist import MNist
+from .occupancy_model import OccupancyData

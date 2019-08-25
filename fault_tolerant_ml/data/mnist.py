@@ -1,13 +1,22 @@
-import struct
+"""Mnist dataset
+"""
 import gzip
+import struct
+
 import numpy as np
 
-# Local
-from .base_model import Dataset
 from fault_tolerant_ml.operators import Tensor
 
-class MNist(Dataset):
+from .base import Dataset
 
+
+class MNist(Dataset):
+    """Class to make mnist dataset accessible and overrides Dataset
+
+    Attributes:
+        filepath (str): Path to mnist dataset
+        class_names (list): List of classname
+    """
     def __init__(self, filepath, fashion=False):
         super().__init__(filepath)
 
@@ -28,12 +37,17 @@ class MNist(Dataset):
 
     
     def __repr__(self):
-        return f'<{self.__class__.__name__} X_train={self.X_train.shape}, y_train={self.y_train.shape}, X_test={self.X_test.shape}, y_test={self.y_test.shape}>'
+        return (
+            f"<{self.__class__.__name__} X_train={self.X_train.shape}, "
+            f"y_train={self.y_train.shape}, X_test={self.X_test.shape}, "
+            f"y_test={self.y_test.shape}>"
+        )
 
     def read_data(self, filepath):
-
+        """Reads mnist dataset
+        """
         with gzip.open(filepath) as f:
-            zero, data_type, dims = struct.unpack('>HBB', f.read(4))
+            _, _, dims = struct.unpack('>HBB', f.read(4))
             shape = tuple(struct.unpack('>I', f.read(4))[0] for d in range(dims))
             return np.fromstring(f.read(), dtype=np.uint8).reshape(shape)
 
