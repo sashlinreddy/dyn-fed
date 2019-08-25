@@ -1,5 +1,5 @@
-import time
-import random
+"""Multiprocessor example with zmq
+"""
 # from threading import Thread
 from multiprocessing import Process
 import numpy as np
@@ -12,9 +12,11 @@ NBR_WORKERS = 5
 
 
 def worker_thread(context=None):
+    """Worker thread
+    """
     # context = context or zmq.Context.instance()
     context = context or zmq.Context()
-    worker = context.socket(zmq.REQ)
+    worker = context.socket(zmq.REQ) # pylint: disable=no-member
 
     # We use a string identity for ease here
     zhelpers.set_id(worker)
@@ -42,3 +44,4 @@ def worker_thread(context=None):
 
 for _ in range(NBR_WORKERS):
     Process(target=worker_thread).start()
+    

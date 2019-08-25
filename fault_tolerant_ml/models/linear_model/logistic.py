@@ -1,21 +1,39 @@
-import numpy as np
+"""Logistic regression class
+"""
 import logging
 import time
+
+import numpy as np
+
+from fault_tolerant_ml.distribute import Master, Worker
+from fault_tolerant_ml.metrics import accuracy_scorev2
 
 # Local
 from ..base import BaseEstimator
 from .base import LinearClassifierMixin
-from fault_tolerant_ml.metrics import accuracy_scorev2
-from fault_tolerant_ml.distribute import Master, Worker
+
 
 class LogisticRegression(BaseEstimator, LinearClassifierMixin):
+    """Logistic regression class
 
-    def __init__(self, optimizer, strategy, max_iter=300, shuffle=True, verbose=10, encode_name=None):
+    Attributes:
+        max_iter (int): Max no. of iterations
+        shuffle (bool): Whether or not to shuffle dataset
+        iter (int): Current iteration
+        verbose (int): Verbose for logging
+        encode_name (str): Encoded name for logging
+    """
+    def __init__(self, optimizer, strategy, max_iter=300,
+                 shuffle=True, verbose=10, encode_name=None):
         super().__init__(optimizer, strategy, encode_name=encode_name)
         self.max_iter = max_iter
         self.shuffle = shuffle
         self.iter = 0
         self.verbose = verbose
+
+        # Model params
+        self.W: np.ndarray = None
+        self.classes_: np.ndarray = None
 
         self._logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
 
@@ -44,7 +62,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
                 self._worker = Worker(
                     model=self,
                     verbose=self.verbose,
-                    id=self.strategy.identity
+                    identity=self.strategy.identity
                 )
 
                 self._worker.connect()
@@ -80,7 +98,10 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             acc = accuracy_scorev2(y.data, y_pred.data)
 
             if i % 100 == 0:
-                print(f"Iteration={i}, delta={delta:.3f}, loss={epoch_loss:.3f}, train acc={acc:.3f}")
+                self._logger.info(
+                    f"Iteration={i}, delta={delta:.3f}, "
+                    f"loss={epoch_loss:.3f}, train acc={acc:.3f}"
+                )
 
             i += 1
 
@@ -103,10 +124,12 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             self._fit_mw(X, y)
         
     def predict_proba(self, X):
-        pass
+        """Returns predicted probabilities
+        """
 
     def predict_log_proba(self, X):
-        pass
+        """Predicts predicted log probabilities
+        """
 
     def plot_metrics(self):
         """Plots metrics

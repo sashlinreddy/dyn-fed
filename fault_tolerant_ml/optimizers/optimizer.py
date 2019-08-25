@@ -1,55 +1,22 @@
-import numpy as np # Linear Algebra
+"""Contains logic for all optimizers
+"""
 import logging
 
-class Optimizer(object):
+import numpy as np  # Linear Algebra
+
+
+class OptimizerV1():
     """Base class for machine learning optimizers
     
     Attributes:
-        learning_rate (float): The rate at which the machine learning algorithm will learn      and how fast our descent method will go down the slope to find it's global minima
+        loss (ftml.Loss): Loss function
+        learning_rate (float): The rate at which the machine learning algorithm
+        will learn and how fast our descent method will go down the slope to
+        find it's global minima
     """
-    def __init__(self, loss, learning_rate):
+    def __init__(self, loss, learning_rate, **kwargs):
         self.learning_rate = learning_rate
         self.loss = loss
-
-        self._logger = logging.getLogger(f"ftml.optimizers.{self.__class__.__name__}")
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}(learning_rate={self.learning_rate})"
-
-    @property
-    def name(self):
-        """Name of optimizer
-        """
-        raise NotImplementedError("Child must override this method")
-
-    def compute_loss(self, y, y_pred):
-        """Compute loss to be overridden by children
-        """
-        raise NotImplementedError("Child must override this method")
-
-    def compute_gradients(self, X, y, W):
-        """Compute gradients to be overridden by children
-        """
-        raise NotImplementedError("Child must override this method")
-
-    def apply_gradients(self, d_W, W):
-        """Compute gradients to be overridden by children
-        """
-        raise NotImplementedError("Child must override this method")
-
-    def minimize(self, X, y, y_pred, W):
-        """Minimizes objective function to be overridden by children
-        
-        This function will perform the update of the parameters in order to get close to the  global minima
-        """
-        raise NotImplementedError("Child must override this method")
-
-class SGD(Optimizer):
-    
-    def __init__(self, loss, learning_rate=0.1, **kwargs):
-        super().__init__(loss, learning_rate)
-        # self.learning_rate = learning_rate
-        # self.loss = loss
 
         self._role = None
         self._most_rep = None
@@ -62,25 +29,161 @@ class SGD(Optimizer):
         if "mu_g" in kwargs:
             self._mu_g = kwargs["mu_g"]
 
+        self._logger = logging.getLogger(f"ftml.optimizers.{self.__class__.__name__}")
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(learning_rate={self.learning_rate})"
+
     @property
     def name(self):
-        return "sgd"
+        """Name of optimizer
+        """
+        raise NotImplementedError("Child must override this method")
 
     @property
     def most_rep(self):
+        """No. of most representative data points
+        """
         return self._most_rep
 
     @property
     def n_most_rep(self):
+        """No. of most representative data points
+        """
         return self._n_most_rep
 
     @property
     def mu_g(self):
+        """No. of most representative data points
+        """
         return self._mu_g
 
     @property
     def role(self):
+        """No. of most representative data points
+        """
         return self._role
+
+    def compute_loss(self, y, y_pred):
+        """Compute loss to be overridden by children
+        """
+        raise NotImplementedError("Child must override this method")
+
+    def compute_gradients(self, X, y, y_pred, W):
+        """Compute gradients to be overridden by children
+        """
+        raise NotImplementedError("Child must override this method")
+
+    def apply_gradients(self, W, **kwargs):
+        """Compute gradients to be overridden by children
+        """
+        raise NotImplementedError("Child must override this method")
+
+    def minimize(self, X, y, y_pred, W, **kwargs):
+        """Minimizes objective function to be overridden by children
+        
+        This function will perform the update of the parameters in order to
+        get close to the  global minima
+        """
+        raise NotImplementedError("Child must override this method")
+
+class Optimizer():
+    """Base class for machine learning optimizers
+    
+    Attributes:
+        loss (ftml.Loss): Loss function
+        learning_rate (float): The rate at which the machine learning algorithm
+        will learn and how fast our descent method will go down the slope to
+        find it's global minima
+    """
+    def __init__(self, loss, learning_rate, **kwargs):
+        self.learning_rate = learning_rate
+        self.loss = loss
+
+        self._role = None
+        self._most_rep = None
+        self._n_most_rep = 0
+        self._mu_g = 1.0 / self.learning_rate
+        if "n_most_rep" in kwargs:
+            self._n_most_rep = kwargs["n_most_rep"]
+        if "role" in kwargs:
+            self._role = kwargs["role"]
+        if "mu_g" in kwargs:
+            self._mu_g = kwargs["mu_g"]
+
+        self._logger = logging.getLogger(f"ftml.optimizers.{self.__class__.__name__}")
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(learning_rate={self.learning_rate})"
+
+    @property
+    def name(self):
+        """Name of optimizer
+        """
+        raise NotImplementedError("Child must override this method")
+
+    @property
+    def most_rep(self):
+        """No. of most representative data points
+        """
+        return self._most_rep
+
+    @property
+    def n_most_rep(self):
+        """No. of most representative data points
+        """
+        return self._n_most_rep
+
+    @property
+    def mu_g(self):
+        """No. of most representative data points
+        """
+        return self._mu_g
+
+    @property
+    def role(self):
+        """No. of most representative data points
+        """
+        return self._role
+
+    def compute_loss(self, y, y_pred):
+        """Compute loss to be overridden by children
+        """
+        raise NotImplementedError("Child must override this method")
+
+    def compute_gradients(self, model, y, y_pred):
+        """Compute gradients to be overridden by children
+        """
+        raise NotImplementedError("Child must override this method")
+
+    def apply_gradients(self, model):
+        """Compute gradients to be overridden by children
+        """
+        raise NotImplementedError("Child must override this method")
+
+    def minimize(self, model, y, y_pred, **kwargs):
+        """Minimizes objective function to be overridden by children
+        
+        This function will perform the update of the parameters in order to
+        get close to the  global minima
+        """
+        raise NotImplementedError("Child must override this method")
+
+class SGD(Optimizer):
+    """Stochastic gradient descent optimizer
+
+    Attributes:
+        loss (ftml.Losses): Loss function
+        learning_rate (float): Learning rate
+    """
+    def __init__(self, loss, learning_rate=0.1, **kwargs):
+        super().__init__(loss, learning_rate, **kwargs)
+        # self.learning_rate = learning_rate
+        # self.loss = loss
+
+    @property
+    def name(self):
+        return "sgd"
 
     def compute_loss(self, y, y_pred):
         # Calculate loss between predicted and actual using selected loss function
@@ -130,7 +233,7 @@ class SGD(Optimizer):
             layer.W.data = layer.W.data - self.learning_rate * layer.W.grad.data
             layer.b.data = layer.b.data - self.learning_rate * layer.b.grad.data
 
-    def minimize(self, model, y, y_pred, iteration=None, N=None, W_g=None):
+    def minimize(self, model, y, y_pred, **kwargs):
 
         # Compute loss
         batch_loss = self.compute_loss(y, y_pred)
@@ -143,27 +246,17 @@ class SGD(Optimizer):
 
         return batch_loss
 
-class SGDOptimizer(Optimizer):
+class SGDOptimizer(OptimizerV1):
     """Stochastic gradient descent optimizer
     """
     def __init__(self, loss, learning_rate=0.1, **kwargs):
-        super().__init__(loss, learning_rate)
-        self._role = None
-        self._most_rep = None
+        super().__init__(loss, learning_rate, **kwargs)
         self._clip_norm = None
         self._clip_val = None
-        self._n_most_rep = 0
-        self._mu_g = 1.0 / self.learning_rate
-        if "n_most_rep" in kwargs:
-            self._n_most_rep = kwargs["n_most_rep"]
-        if "role" in kwargs:
-            self._role = kwargs["role"]
         if "clip_norm" in kwargs:
             self._clip_norm = kwargs["clip_norm"]
         if "clip_val" in kwargs:
             self._clip_val = kwargs["clip_val"]
-        if "mu_g" in kwargs:
-            self._mu_g = kwargs["mu_g"]
 
     def __repr__(self):
         return f"{self.__class__.__name__}(learning_rate={self.learning_rate}, mu_g={self.mu_g})"
@@ -171,22 +264,6 @@ class SGDOptimizer(Optimizer):
     @property
     def name(self):
         return "sgd"
-
-    @property
-    def most_rep(self):
-        return self._most_rep
-
-    @property
-    def n_most_rep(self):
-        return self._n_most_rep
-
-    @property
-    def mu_g(self):
-        return self._mu_g
-
-    @property
-    def role(self):
-        return self._role
 
     def compute_loss(self, y, y_pred):
         # Calculate loss between predicted and actual using selected loss function
@@ -226,7 +303,7 @@ class SGDOptimizer(Optimizer):
 
         return d_W
 
-    def apply_gradients(self, W, N, W_g=None):
+    def apply_gradients(self, W, **kwargs):
         """Applies gradients by updating parameter matrix
         
         Args:
@@ -235,6 +312,7 @@ class SGDOptimizer(Optimizer):
         Returns:
             W (numpy.ndarray): Updated parameter matrix
         """
+        W_g = kwargs.get("W_g")
 
         if self.role != "worker":
             W = W - self.learning_rate * W.grad
@@ -247,8 +325,9 @@ class SGDOptimizer(Optimizer):
 
         return W
 
-    def minimize(self, X, y, y_pred, W, precomputed_gradients=None, N=None, W_g=None, **kwargs):
-        """Minimizes gradients. Computes loss from actual and predicted, computes gradients and applies gradients
+    def minimize(self, X, y, y_pred, W, **kwargs):
+        """Minimizes gradients. Computes loss from actual and predicted, 
+        computes gradients and applies gradients
         
         Args:
             X (numpy.ndarray): Feature matrix
@@ -260,7 +339,10 @@ class SGDOptimizer(Optimizer):
             W (numpy.ndarray): Updated parameter matrix
             batch_loss (float): Loss for current predictions and labels
         """
-
+        N = kwargs.get("N")
+        precomputed_gradients = kwargs.get("precomputed_gradients")
+        W_g = kwargs.get("W_g")
+        
         if precomputed_gradients is None:
             # Calculate loss
             batch_loss = self.compute_loss(y, y_pred)
@@ -270,15 +352,15 @@ class SGDOptimizer(Optimizer):
 
             self._logger.info(f'n_samples={N}')
             # Apply them
-            W = self.apply_gradients(W, N, W_g=W_g)
+            W = self.apply_gradients(W, W_g=W_g)
             return W, batch_loss
         else:
             W.grad = precomputed_gradients
             # Apply them
-            W = self.apply_gradients(W, X.shape[0])
+            W = self.apply_gradients(W)
             return W
 
-class AdamOptimizer(Optimizer):
+class AdamOptimizer(OptimizerV1):
     """Adam gradient descent optimizer
     
     Attributes:
@@ -287,26 +369,15 @@ class AdamOptimizer(Optimizer):
         beta2 (float): Second moment hyperparameter (default: 0.999)
         epsilon (float): Some arbritrary epsilon so we do not divide by 0 (default: 1e-8)
     """
-    def __init__(self, loss, learning_rate=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, **kwargs):
-        super().__init__(loss, learning_rate)
+    def __init__(self, loss, learning_rate=0.001, beta_1=0.9, beta_2=0.999,
+                 epsilon=1e-08, **kwargs):
+        super().__init__(loss, learning_rate, **kwargs)
 
         self.beta_1 = beta_1
         self.beta_2 = beta_2
         self.epsilon = epsilon
         self.m_t = None
         self.v_t = None
-        self._role = None
-        self._most_rep = None
-        self._clip_norm = None
-        self._clip_val = None
-        self._n_most_rep = 0
-        self._mu_g = 1.0 / self.learning_rate
-        if "n_most_rep" in kwargs:
-            self._n_most_rep = kwargs["n_most_rep"]
-        if "role" in kwargs:
-            self._role = kwargs["role"]
-        if "mu_g" in kwargs:
-            self._mu_g = kwargs["mu_g"]
 
     def __repr__(self):
         return f"{self.__class__.__name__}(learning_rate={self.learning_rate}, mu_g={self.mu_g})"
@@ -314,22 +385,6 @@ class AdamOptimizer(Optimizer):
     @property
     def name(self):
         return "adam"
-
-    @property
-    def most_rep(self):
-        return self._most_rep
-
-    @property
-    def n_most_rep(self):
-        return self._n_most_rep
-
-    @property
-    def mu_g(self):
-        return self._mu_g
-
-    @property
-    def role(self):
-        return self._role
 
     def compute_loss(self, y, y_pred):
         # Calculate loss between predicted and actual using selected loss function
@@ -366,7 +421,7 @@ class AdamOptimizer(Optimizer):
 
         return d_W
 
-    def apply_gradients(self, W, iteration, W_g=None):
+    def apply_gradients(self, W, **kwargs):
         """Applies gradients by updating parameter matrix
         
         Args:
@@ -375,6 +430,9 @@ class AdamOptimizer(Optimizer):
         Returns:
             W (numpy.ndarray): Updated parameter matrix
         """
+
+        iteration = kwargs.get("iteration")
+        # W_g = kwargs.get("W_g")
 
         if self.m_t is None:
             self.m_t = W.grad.zeros_like()
@@ -395,8 +453,9 @@ class AdamOptimizer(Optimizer):
 
         return W
 
-    def minimize(self, X, y, y_pred, W, precomputed_gradients=None, N=None, W_g=None, **kwargs):
-        """Minimizes gradients. Computes loss from actual and predicted, computes gradients and applies gradients
+    def minimize(self, X, y, y_pred, W, **kwargs):
+        """Minimizes gradients. Computes loss from actual and predicted,
+        computes gradients and applies gradients
         
         Args:
             X (numpy.ndarray): Feature matrix
@@ -408,9 +467,10 @@ class AdamOptimizer(Optimizer):
             W (numpy.ndarray): Updated parameter matrix
             batch_loss (float): Loss for current predictions and labels
         """
-
-        if "iteration" in kwargs:
-            iteration = kwargs["iteration"]
+        N = kwargs.get("N")
+        precomputed_gradients = kwargs.get("precomputed_gradients")
+        # W_g = kwargs.get("W_g")
+        iteration = kwargs.get("iteration")
 
         if precomputed_gradients is None:
             # Calculate loss
@@ -421,10 +481,10 @@ class AdamOptimizer(Optimizer):
 
             self._logger.info(f'n_samples={N}')
             # Apply them
-            W = self.apply_gradients(W, iteration)
+            W = self.apply_gradients(W, iteration=iteration)
             return W, batch_loss
         else:
             W.grad = precomputed_gradients
             # Apply them
-            W = self.apply_gradients(W, X.shape[0])
+            W = self.apply_gradients(W)
             return W

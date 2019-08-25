@@ -1,4 +1,5 @@
-"""This file contains all logic for the base class of models. For implementation of logistic regression or neural networks,
+"""This file contains all logic for the base class of models. For
+implementation of logistic regression or neural networks,
 you should inherit from this class.
 """
 
@@ -30,7 +31,6 @@ def _check_layers(layers):
     return valid, type_found
 
 # strategy=None, **kwargs):
-        
 #         self.encode_name = None
 #         if "encode_name" in kwargs:
 #             self.encode_name = kwargs["encode_name"]
@@ -44,7 +44,9 @@ def _check_layers(layers):
 #         self._logger = logging.getLogger(f"ftml.models.{self.__class__.__name__}")
 
 #     def encode(self):
-#         return f"{self.strategy.n_workers}-{self.strategy.scenario}-{self.strategy.remap}-{self.strategy.quantize}-{self.optimizer.n_most_rep}-{self.strategy.comm_period}-{self.optimizer.mu_g}-{self.strategy.send_gradients}"
+#         return f"{self.strategy.n_workers}-{self.strategy.scenario}-
+# {self.strategy.remap}-{self.strategy.quantize}-{self.optimizer.n_most_rep}
+# -{self.strategy.comm_period}-{self.optimizer.mu_g}-{self.strategy.send_gradients}"
 
 class Model():
     """
@@ -69,7 +71,14 @@ class Model():
     Attributes:
         layers (list): List of fault_tolerant_ml.layers.Layer objects
     """
-    def __init__(self, optimizer, strategy=None, batch_size=64, max_iter=300, shuffle=True, verbose=10, **kwargs):
+    def __init__(self,
+                 optimizer,
+                 strategy=None,
+                 batch_size=64,
+                 max_iter=300,
+                 shuffle=True,
+                 verbose=10,
+                 **kwargs):
         self.layers = []
         self.n_layers = 0
         self.max_iter = max_iter
@@ -92,7 +101,7 @@ class Model():
 
         # Setup distribution strategy
         self._setup()
-        
+
     def __repr__(self):
         return f"Model([{self.layers}])"
 
@@ -117,7 +126,7 @@ class Model():
                 self._worker = Worker(
                     model=self,
                     verbose=self.verbose,
-                    id=self.strategy.identity
+                    identity=self.strategy.identity
                 )
 
                 self._logger.info("Connecting worker sockets")
@@ -136,7 +145,7 @@ class Model():
         else:
             # Worker training
             self._worker.start()
-        
+
     def add(self, layers):
         """Add new layer(s) to model
         """
@@ -153,7 +162,7 @@ class Model():
         """
         for layer in self.layers:
             for k, v in layer.__dict__.items():
-                if 'W' == k or 'b' == k:
+                if k in ('W', 'b'):
                     if grad:
                         yield v.grad
                     else:
@@ -180,10 +189,12 @@ class Model():
         """Feedforward through network given input x
 
         Args:
-            x (fault_tolerant_ml.operators.Tensor): Input tensor which is the feature dataset
+            x (fault_tolerant_ml.operators.Tensor): Input tensor which is
+            the feature dataset
 
         Returns:
-            y_pred (fault_tolerant_ml.operators.Tensor): Output tensor which is the prediction for each class
+            y_pred (fault_tolerant_ml.operators.Tensor): Output tensor 
+            which is the prediction for each class
         """
         input_layer = x
         for layer in self.layers:
@@ -191,3 +202,4 @@ class Model():
             input_layer = layer.y
             
         return y_pred
+        

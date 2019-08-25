@@ -1,34 +1,31 @@
-"""Contains all master logic for fault tolerant ml. 
+"""Contains all master logic for fault tolerant ml.
 
 Any master devices should run the master logic.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import time
-import zmq.green as zmq
-import numpy as np
-import logging
-import click
-import gevent
-import signal
-import os
-import socket
 import json
+import logging
+import os
+import signal
+import socket
+import time
 
+import gevent
+import numpy as np
+import zmq.green as zmq
+
+from fault_tolerant_ml.distribute import Coordinator, WatchDog
+from fault_tolerant_ml.distribute.states import (COMPLETE, DIST_PARAMS, MAP,
+                                                 REDUCE, REMAP, START)
+from fault_tolerant_ml.distribute.wrappers import (ftml_train,
+                                                   ftml_train_collect,
+                                                   ftml_trainv2)
+from fault_tolerant_ml.metrics import accuracy_scorev2
+from fault_tolerant_ml.tools import TFLogger
 # Local
 from fault_tolerant_ml.utils import zhelpers
-from fault_tolerant_ml.utils import setup_logger
-from fault_tolerant_ml.metrics import accuracy_scorev2
-from fault_tolerant_ml.utils.maths import linspace_quantization
-from fault_tolerant_ml.tools import TFLogger
-from fault_tolerant_ml.distribute import WatchDog
-from fault_tolerant_ml.distribute import Coordinator
-from fault_tolerant_ml.distribute.wrappers import ftml_train, ftml_train_collect, ftml_trainv2
-from fault_tolerant_ml.distribute.states import *
-from fault_tolerant_ml.operators import Tensor
-from fault_tolerant_ml.utils import zhelpers
+
 
 class Master(object):
     """Master class for distributed machine learning system
@@ -38,12 +35,18 @@ class Master(object):
         # ZMQ variables
         self.ctrl_socket = None
         self.publisher = None
-        self.context   = zmq.Context()
+        self.context = zmq.Context()
 
         self.mapping = {}
 
         self.watch_dog = WatchDog()
         self.coordinator = Coordinator()
+
+        # Define sockets
+        self.pull_socket = None
+        self.ctrl_socket = None
+        self.publisher = None
+        self.poller = None
 
         # Distributed environ variables
         self.state = START
@@ -58,6 +61,10 @@ class Master(object):
         # Model variables
         self.n_iterations = int(np.ceil(self.model.max_iter / self.strategy.comm_period))
         self.optimizer = self.model.optimizer
+        self.data = None
+        self.X_train = None
+        self.y_train = None
+
 
         # Tracking variables
         self.times = []
@@ -113,7 +120,8 @@ class Master(object):
         else:
             # self.logger.info(f"parameters.dtype={parameters.dtype}")
             # self.model.layers[0].W.data = parameters
-            # self.logger.info(f"type(self.model.layers[0].W.data)={self.model.layers[0].W.data.dtype}")
+            # self.logger.info(f"type(self.model.layers[0].W.data)=
+            # {self.model.layers[0].W.data.dtype}")
             for i in np.arange(self.model.n_layers):
                 self.model.layers[i].W.data = parameters[i][0]
                 self.model.layers[i].b.data = parameters[i][1]
@@ -128,7 +136,10 @@ class Master(object):
         test_acc = accuracy_scorev2(self.data.y_test.data, y_pred.data)
 
         if self._tf_logger is not None:
-            self._tf_logger.histogram("W-master", self.model.layers[0].W.data, self.model.iter, bins=self.n_iterations)
+            self._tf_logger.histogram(
+                "W-master", self.model.layers[0].W.data, 
+                self.model.iter, bins=self.n_iterations
+            )
             self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
             self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
             self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
@@ -138,8 +149,13 @@ class Master(object):
         # delta = np.max(np.abs(W_p - self.model.layers[0].W))
         delta = np.max(np.abs(W_p.data - self.model.layers[0].W.data))
 
-        # self.logger.info(f"iteration = {self.strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-        self._logger.info(f"iteration = {self.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
+        # self.logger.info(f"iteration = {self.strategy.model.iter}, 
+        # delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+        self._logger.info(
+            f"iteration = {self.model.iter}, delta = {delta:7.4f}, "
+            f"Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, "
+            f"test acc={test_acc*100:7.4f}%"
+        )
 
         return delta
         
@@ -169,7 +185,7 @@ class Master(object):
             events = dict(self.poller.poll())
 
             # If we have more than 1 worker
-            if len(self.watch_dog.states) > 0:
+            if len(self.watch_dog.states) > 0: # pylint: disable=len-as-condition
                 # Map tasks
                 self.map()
 
@@ -188,7 +204,7 @@ class Master(object):
         self.done()
         self.state = COMPLETE
         end = time.time()
-        self._logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
+        self._logger.info("Time taken for %d iterations is %7.6fs", self.n_iterations, end-start)
 
     def connect(self):
         """Connects to necessary sockets
@@ -205,6 +221,8 @@ class Master(object):
         self.ctrl_socket.bind("tcp://*:5565")
     
     def setup_poller(self):
+        """Setup poller
+        """
         poller = zmq.Poller()
         poller.register(self.pull_socket, zmq.POLLIN | zmq.POLLERR)
         poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
@@ -213,12 +231,16 @@ class Master(object):
         return poller
 
     def send_heartbeat(self):
+        """Send heartbeat - not using this at the moment
+        """
         for worker in self.watch_dog.states:
             self._logger.debug('PING')
             worker.state = False
             self.ctrl_socket.send_multipart([worker.identity, b'HEARTBEAT'])
 
     def heartbeat_loop(self):
+        """Heartbeat thread
+        """
         while self.state != COMPLETE:
             self.send_heartbeat()
             gevent.sleep(0.5)
@@ -232,7 +254,8 @@ class Master(object):
         self.watch_dog.add_worker(worker_id)
 
     def detect_workers(self):
-        """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
+        """Detects workers by polling whoever has sent through the
+        CONNECT command along with their worker ids
         """
         timeout = self.strategy.worker_timeout # 10 second time out
         start = time.time()
@@ -283,8 +306,8 @@ class Master(object):
     def map(self):
         """Starts new task depending on the state of the system.
 
-        Possible states range from mapping of data, remapping of data (if worker dies or another worker is added),
-        or distributing parameters.
+        Possible states range from mapping of data, remapping of data 
+        (if worker dies or another worker is added), or distributing parameters.
         """
         if self.state == START:
 
@@ -316,7 +339,8 @@ class Master(object):
             #     class_bal = [v[1] for (k, v) in self.coordinator.labels_per_worker.items()]
             #     class_names = self.data.class_names
 
-            #     class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
+            #     class_balance = ClassBalance(labels=worker_ids, legend=class_names, 
+            #     fname=fname, stacked=True, percentage=True)
             #     class_balance.fit(y=class_bal)
             #     class_balance.poof()
 
@@ -328,20 +352,33 @@ class Master(object):
                 # Remap only data for workers that went down in previous iteration
                 # Get indices for dead workers
                 if self.mapping:
-                    dead_worker = [w for w in self.watch_dog.states if not w.mr_idxs_used and not w.state]
+                    dead_worker = [
+                        w for w in self.watch_dog.states 
+                        if not w.mr_idxs_used and not w.state
+                        ]
                     if dead_worker:
                         dead_worker = dead_worker[0]
                     else:
                         return
 
-                    remap_idxs = np.hstack([[w.mapping.get(i) for i in w.most_representative] for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
-                    worker_ids_down = [w.identity for w in self.watch_dog.states if not w.mr_idxs_used and not w.state]
+                    remap_idxs = np.hstack([
+                        [w.mapping.get(i) for i in w.most_representative]
+                        for w in self.watch_dog.states
+                        if not w.mr_idxs_used and not w.state
+                    ])
+                    worker_ids_down = [
+                        w.identity for w in self.watch_dog.states
+                        if not w.mr_idxs_used and not w.state
+                    ]
                     self._logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
                     self._logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
                     
                     self._logger.debug(f"Remap idxs={remap_idxs.shape}")
                 else:
-                    remap_idxs = np.hstack([w.most_representative for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
+                    remap_idxs = np.hstack([
+                        w.most_representative for w in self.watch_dog.states
+                        if not w.mr_idxs_used and not w.state
+                    ])
 
                 n_samples = remap_idxs.shape[0]
                 new_range = np.arange(n_samples)
@@ -358,13 +395,16 @@ class Master(object):
                     if not w.mr_idxs_used:
                         w.mr_idxs_used = True
 
-                data =(X_train, y_train)
+                data = (X_train, y_train)
                 params = self.set_params()
                 params["n_samples"] = n_samples
 
             else:
                 # Stack all indices from current dataset that we will use to remap
-                global_idxs = np.hstack([w.idxs for w in self.watch_dog.states if (not w.mr_idxs_used) and (not w.idxs is None)])
+                global_idxs = np.hstack([
+                    w.idxs for w in self.watch_dog.states
+                    if (not w.mr_idxs_used) and (not w.idxs is None)
+                ])
                 new_range = np.arange(global_idxs.shape[0])
                 self._logger.debug(f"new data idxs shape={global_idxs.shape}")
 
@@ -372,8 +412,9 @@ class Master(object):
                 
                 # If we have had a failure before we need to just keep track of the global indices
                 if self.mapping:
-                    # The new dataset will be smaller than the original dataset. We still would like to only 
-                    # use indices of the original dataset to simplify things. This recalculates those indices
+                    # The new dataset will be smaller than the original dataset. 
+                    # We still would like to only use indices of the original dataset 
+                    # to simplify things. This recalculates those indices
                     global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
 
                 self._logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
@@ -390,12 +431,12 @@ class Master(object):
                 params = self.set_params()
 
             self.coordinator.map(
-                    socket=self.ctrl_socket, 
-                    data=data, 
-                    workers=self.watch_dog.states, 
-                    params=params, 
-                    gen_func=self.data.next_batch
-                )
+                socket=self.ctrl_socket, 
+                data=data, 
+                workers=self.watch_dog.states, 
+                params=params, 
+                gen_func=self.data.next_batch
+            )
 
             self.state = DIST_PARAMS
 
@@ -403,7 +444,8 @@ class Master(object):
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            # data = self.model.layers[0].W.data if self.strategy.quantize != 1 else linspace_quantization(self.model.layers[0].W.data, interval=200)
+            # data = self.model.layers[0].W.data if self.strategy.quantize != 1 
+            # else linspace_quantization(self.model.layers[0].W.data, interval=200)
             data = zhelpers.multipart_params(self.model.parameters())
             workers = None
             params = self.set_params()
@@ -425,10 +467,10 @@ class Master(object):
         self._logger.debug(f"Times={diff.mean():7.6f}s")
 
     def plot_metrics(self):
-
+        """Plot distributed computing related metrics
+        """
         if "FIGDIR" in os.environ:
 
-            import pandas as pd
             from fault_tolerant_ml.viz.target import ClassBalance
 
             figdir = os.path.join(os.environ["FIGDIR"], self.model.encode_name)
@@ -439,10 +481,19 @@ class Master(object):
                 self._logger.debug("Saving class balances distribution plot...")
                 worker_ids = [s.identity.decode() for s in self.watch_dog.states if s.state]
                 fname = os.path.join(figdir, f"mnist-class-balance.png")
-                class_bal = [v[1] for (k, v) in self.coordinator.labels_per_worker.items() if k.identity.decode() in worker_ids]
+                class_bal = [
+                    v[1] for (k, v) in self.coordinator.labels_per_worker.items()
+                    if k.identity.decode() in worker_ids
+                ]
                 class_names = self.data.class_names
 
-                class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
+                class_balance = ClassBalance(
+                    labels=worker_ids,
+                    legend=class_names,
+                    fname=fname,
+                    stacked=True,
+                    percentage=True
+                )
                 class_balance.fit(y=class_bal)
                 class_balance.poof()
 
@@ -456,10 +507,12 @@ class Master(object):
     def main_loop(self):
         """Main loop for training.
 
-        First detects workers who are willing to do work. Then distributes the data accordingly. Then we perform 
-        gradient descent iteratively. We parallelize the gradient calculation and calculate a weighted average
-        gradient matrix. This weighted average is calculated as the number of samples that a worker received as a 
-        fraction of the total number of samples in the entire dataset.
+        First detects workers who are willing to do work. Then distributes
+        the data accordingly. Then we perform gradient descent iteratively. 
+        We parallelize the gradient calculation and calculate a weighted average
+        gradient matrix. This weighted average is calculated as the number of
+        samples that a worker received as a fraction of the total number of
+        samples in the entire dataset.
         """
         # For reproducibility
         np.random.seed(42)
@@ -476,7 +529,8 @@ class Master(object):
         self.print_metrics()
         
     def start(self, data):
-        """Starts work of master. First connects to workers and then performs machine learning training
+        """Starts work of master. First connects to workers and then performs
+        machine learning training
         """
         self.data = data
         self.X_train, self.y_train = self.data.X_train, self.data.y_train

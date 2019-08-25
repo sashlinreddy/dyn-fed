@@ -1,10 +1,17 @@
+"""Coordinator for distributed training
+"""
+from __future__ import print_function
+from __future__ import absolute_import
+
 import logging
-import zmq.green as zmq
-import numpy as np
 import time
-from fault_tolerant_ml.distribute.states import MAP, REMAP, DIST_PARAMS
-from fault_tolerant_ml.utils.maths import reconstruct_approximation
+
+import numpy as np
+import zmq.green as zmq
+
+from fault_tolerant_ml.distribute.states import DIST_PARAMS, MAP, REMAP
 from fault_tolerant_ml.utils import zhelpers
+
 
 class Coordinator(object):
     """Responsible for distributing data
@@ -14,10 +21,11 @@ class Coordinator(object):
         
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
         self.labels_per_worker = {}
+        self.state = 0
 
-    def _encode(self, params, vars):
+    def _encode(self, params, variables):
         
-        return [str(params[i]).encode() for i in vars]
+        return [str(params[i]).encode() for i in variables]
 
     def _check_timeout(self, running_time, timeout, watch_dog, strategy, workers_received):
         wait = True
@@ -62,8 +70,9 @@ class Coordinator(object):
             model (ftml.Model): Fault tolerant model
             parameters (np.ndarray): Tensor where we store the collected messages
             worker_params (byte string): Multipart message received from worker
-            n_items (int): Length of message received from worker that we need to decode (default: 6). 3 messages for the 
-            W tensor (data, dtype, shape) and 3 for the bias vector (data, dtype, shape)
+            n_items (int): Length of message received from worker that we need
+            to decode (default: 6). 3 messages for the W tensor 
+            (data, dtype, shape) and 3 for the bias vector (data, dtype, shape)
 
         Returns:
             parameters (np.ndarray): Populated parameter tensor
@@ -128,8 +137,16 @@ class Coordinator(object):
                 weight = np.exp(errors[j]) / sum_es
             self._logger.debug(f"worker={j}, weight={weight}, loss={errors[j]}")
             for k in np.arange(model.n_layers):
-                parameters[k][0] += d_Wbs[j][k][0] * weight if weight > 0 else d_Wbs[j][k][0] * epsilon # For W parameter
-                parameters[k][1] += d_Wbs[j][k][1] * weight if weight > 0 else d_Wbs[j][k][1] * epsilon # For b parameter
+                parameters[k][0] += (
+                    d_Wbs[j][k][0] * weight
+                    if weight > 0
+                    else d_Wbs[j][k][0] * epsilon
+                ) # For W parameter
+                parameters[k][1] += (
+                    d_Wbs[j][k][1] * weight
+                    if weight > 0
+                    else d_Wbs[j][k][1] * epsilon
+                ) # For b parameter
 
         return parameters
 
@@ -140,14 +157,18 @@ class Coordinator(object):
             events (dict): Dictionary of events from our poller
 
         Returns:
-            d_W (numpy.ndarray): Our gradient matrix that is aggregated with a weighting according to the number    of samples each worker has
-            epoch_loss (float): The loss for this epoch aggregated from each worker, also weighted according to the     work each worker did
+            d_W (numpy.ndarray): Our gradient matrix that is aggregated
+            with a weighting according to the number of samples each 
+            worker has
+            epoch_loss (float): The loss for this epoch aggregated from each
+            worker, also weighted according to the work each worker did
         """
         watch_dog = params["watch_dog"]
         strategy = params["strategy"]
         self.state: int = params["state"]
         n_samples: int = params["n_samples"]
-        timeout = params["timeout"] # We give x seconds to poll worker if state changed since poll event
+        # We give x seconds to poll worker if state changed since poll event
+        timeout = params["timeout"]
         quantize: bool = params["quantize"]
         W: np.ndarray = params["W"]
         model = params["model"]
@@ -172,8 +193,9 @@ class Coordinator(object):
 
         while i < n_alive_workers:
 
-            # Timer to calculate running time for an iteration. We can then calculate the running time for 
-            # an iteration so that if a state changes since a poll event, we can break if the running time 
+            # Timer to calculate running time for an iteration. We can then
+            # calculate the running time for an iteration so that if a state
+            # changes since a poll event, we can break if the running time 
             # exceeds the timeout
             start_i = time.time()
 
@@ -184,7 +206,13 @@ class Coordinator(object):
                     if e.errno == zmq.EAGAIN: # pylint: disable=no-member
                         # state changed since poll event
                         running_time += time.time() - start_i
-                        wait = self._check_timeout(running_time, timeout, watch_dog, strategy, workers_received)
+                        wait = self._check_timeout(
+                            running_time,
+                            timeout,
+                            watch_dog,
+                            strategy,
+                            workers_received
+                        )
                         if not wait:
                             break
 
@@ -216,7 +244,8 @@ class Coordinator(object):
                 if quantize:
                     self._logger.debug(f"Reconstructing gradients")
                     # shape = W.shape
-                    # parameter_temp = reconstruct_approximation(parameter_temp, shape, r_dtype=W.dtype)
+                    # parameter_temp = reconstruct_approximation(parameter_temp,
+                    # shape, r_dtype=W.dtype)
                     worker_params = np.frombuffer(worker_params, dtype=W.dtype)
                     worker_params = worker_params.reshape(W.shape)
                 else:
@@ -227,10 +256,14 @@ class Coordinator(object):
                 mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
                 if strategy.remap == 2:
-                    watch_dog.states[worker].most_representative = watch_dog.states[worker].lower_bound + mr
-                    # self._logger.debug(f"Min mr={np.min(watch_dog.states[worker].most_representative)}, Max mr={np.max(watch_dog.states[worker].most_representative)}")
+                    watch_dog.states[worker].most_representative = \
+                        watch_dog.states[worker].lower_bound + mr
+                    # self._logger.debug(
+                    # f"Min mr={np.min(watch_dog.states[worker].most_representative)}, 
+                    # Max mr={np.max(watch_dog.states[worker].most_representative)}")
                 else:
-                    watch_dog.states[worker].most_representative = np.min(watch_dog.states[worker].idxs) + mr
+                    watch_dog.states[worker].most_representative = \
+                        np.min(watch_dog.states[worker].idxs) + mr
                     
                 # Decode loss
                 epoch_loss_temp = float(epoch_loss_temp.decode())
@@ -271,8 +304,8 @@ class Coordinator(object):
             params (dict): Additional params to check if need to quantize
         """
         if params["quantize"] == 0:
-                multipart = data
-                subscribe_msg = b"WORKNODELAY" if params["delay_change"] else b"WORK"
+            multipart = data
+            subscribe_msg = b"WORKNODELAY" if params["delay_change"] else b"WORK"
 
         # Quantized parameters
         elif params["quantize"] == 1:
@@ -330,7 +363,8 @@ class Coordinator(object):
                 if (state == REMAP) and (params["remap"] == 1):
                     classes, dists = np.unique(y_b, return_counts=True)
                     self._logger.debug(f"Classes={classes}")
-                    self.labels_per_worker[worker][1][classes] = self.labels_per_worker[worker][1][classes] + dists
+                    self.labels_per_worker[worker][1][classes] = \
+                        self.labels_per_worker[worker][1][classes] + dists
                 else:
                     self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
 
@@ -356,8 +390,15 @@ class Coordinator(object):
                     lower_bound = X_batch.shape[0] * i
                     upper_bound = lower_bound + X_batch.shape[0]
                     batch_range = np.arange(lower_bound, upper_bound)
-                    new_range = np.arange(worker.upper_bound, worker.upper_bound + batch_range.shape[0]) 
-                    self._logger.debug(f"New range={new_range}, worker max idx={np.max(worker.idxs)}, upper bound={worker.upper_bound}")
+                    new_range = np.arange(
+                        worker.upper_bound, 
+                        worker.upper_bound + batch_range.shape[0]
+                    ) 
+                    self._logger.debug(
+                        f"New range={new_range}, "
+                        f"worker max idx={np.max(worker.idxs)}, "
+                        f"upper bound={worker.upper_bound}"
+                    )
                     worker.upper_bound = worker.upper_bound + batch_range.shape[0]
                     if not worker.mapping:
                         worker.mapping = dict(zip(worker.idxs, worker.idxs))
@@ -385,8 +426,10 @@ class Coordinator(object):
                 
         Args:
             socket (zmq.Socket): ZMQ socket to push messages to subscribers
-            data (numpy.ndarray): Data matrix that will be partitioned and distributed to each worker
-            workers (distribute.WorkerStates): worker state objects containing state of worker and other info
+            data (numpy.ndarray): Data matrix that will be partitioned and
+            distributed to each worker
+            workers (distribute.WorkerStates): worker state objects containing
+            state of worker and other info
             params (dict): Additional params to send to all workers
             gen_func (generator func): A generator function to distribute the data
         """

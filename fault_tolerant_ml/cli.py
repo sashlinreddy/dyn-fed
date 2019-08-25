@@ -6,7 +6,7 @@ import click
 
 
 @click.command()
-def main(args=None):
+def main():
     """Console script for fault_tolerant_ml."""
     click.echo("Replace this message by putting your code into "
                "fault_tolerant_ml.cli.main")

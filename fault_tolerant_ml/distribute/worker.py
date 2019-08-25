@@ -3,25 +3,23 @@
 All worker devices will contain worker logic
 """
 
-import zmq.green as zmq
-import time
-import numpy as np
-import uuid
-import logging
-import click
-import os
 import json
+import logging
+import os
+import time
+import uuid
 
-# Local
-from fault_tolerant_ml.utils import setup_logger
-from fault_tolerant_ml.utils import zhelpers
-from fault_tolerant_ml.tools import TFLogger
-from fault_tolerant_ml.utils.maths import reconstruct_approximation, linspace_quantization
+import numpy as np
+import zmq.green as zmq
+
 from fault_tolerant_ml.distribute import Coordinator
-from fault_tolerant_ml.operators import Tensor
-from fault_tolerant_ml.utils import zhelpers
-from fault_tolerant_ml.lib.io.file_io import FileWatcher
 from fault_tolerant_ml.distribute.states import REMAP
+from fault_tolerant_ml.operators import Tensor
+from fault_tolerant_ml.tools import TFLogger
+# Local
+from fault_tolerant_ml.utils import setup_logger, zhelpers
+from fault_tolerant_ml.utils.maths import reconstruct_approximation
+
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -31,19 +29,34 @@ class Worker(object):
         subscriber (zmq.Socket): zmq.SUB socket which subscribes to all master published messages
         connected (bool): Whether or not the worker is connected successfully to the master
     """
-    def __init__(self, model, verbose, id=None):
+    def __init__(self, model, verbose, identity=None):
 
-        self.worker_id = str(uuid.uuid4()) if id is None else f"worker-{id}"
+        self.worker_id = str(uuid.uuid4()) if identity is None else f"worker-{identity}"
         self.subscriber = None
         self.connected = False
 
         self.model = model
         self.strategy = self.model.strategy
+        self.state = None
 
+        # Executor params
         self.remap = self.model.strategy.remap
         self.quantize = self.model.strategy.quantize
         self.comm_period = self.model.strategy.comm_period
         self.send_gradients = self.model.strategy.send_gradients
+
+        # ZMQ variables
+        self.context: zmq.Context = None
+        self.ctrl_socket: zmq.Socket = None
+        self.push_socket: zmq.Socket = None
+
+        # Model params
+        self.n_samples: int = 0
+        self.n_features: int = 0
+        self.n_classes: int = 0
+        self.X: np.ndarray = None
+        self.y: np.ndarray = None
+        self.have_work: bool = False
 
         setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
@@ -91,7 +104,10 @@ class Worker(object):
         # self.ctrl_socket.connect("tcp://localhost:5565")
         self.ctrl_socket.connect(f"tcp://{self.master_ip_address}:5565")
 
-        self._logger.info(f"Connected to ip address {self.master_ip_address}, on ports 5563, 5562 & 5565")
+        self._logger.info(
+            f"Connected to ip address {self.master_ip_address}, "
+            f"on ports 5563, 5562 & 5565"
+        )
 
     def setup_poller(self):
         """Register necessary sockets for poller
@@ -105,10 +121,13 @@ class Worker(object):
     def receive_data(self, start=True):
         """Receives data from worker
 
-        Receives and makes sense of the data received from the master. Also initializes the optimizer since we receive the learning rate from the master at this stage.
+        Receives and makes sense of the data received from the master.
+        Also initializes the optimizer since we receive the learning rate
+        from the master at this stage.
 
         Args:
-            start (bool): Whether or not we received the data at the beginning of the workers   life span. 
+            start (bool): Whether or not we received the data at the beginning
+            of the workers life span. 
 
         Returns:
             n_samples (int): No. of samples in the dataset for a worker
@@ -134,7 +153,10 @@ class Worker(object):
         self._logger.debug(f"Data size={data[:, :self.n_features].shape}")
 
         if self.remap == 1 and not start and state == REMAP:
-            self.X, self.y = np.vstack([self.X, data[:, :self.n_features]]), np.vstack([self.y, data[:, -self.n_classes:]])
+            self.X, self.y = (
+                np.vstack([self.X, data[:, :self.n_features]]),
+                np.vstack([self.y, data[:, -self.n_classes:]])
+            )
             self._logger.debug(f"New data shape={self.X.shape}")
         else:
             self.X, self.y = data[:, :self.n_features], data[:, -self.n_classes:]
@@ -155,16 +177,18 @@ class Worker(object):
         self.have_work = True
 
     def do_work(self, X, y, W_g=None):
-        """Worker doing the heavy lifting of calculating gradients and calculating loss
+        """Worker doing the heavy lifting of calculating gradients and
+        calculating loss
 
         Args:
             W_g (numpy.ndarray): Global parameters
 
         Returns:
             batch_loss (float): Loss for this iteration
-            most_representative (numpy.ndarray): Vector of most representative data samples     for a particular iteration. Most representative is determined by the data         points that have the highest loss.
+            most_representative (numpy.ndarray): Vector of most representative
+            data samples for a particular iteration. Most representative is 
+            determined by the data points that have the highest loss.
         """
-
         # Get predictions
         y_pred = self.model.forward(X)
 
@@ -180,6 +204,8 @@ class Worker(object):
         return batch_loss, most_representative
 
     def prep_multipart(self, data):
+        """Prepare multipart message
+        """
         multipart = [b"WORK", self.worker_id.encode()]
         multipart.extend(data)
         return multipart
@@ -187,11 +213,16 @@ class Worker(object):
     def start(self):
         """Worker session
 
-        Boots up the worker to start receiving data. Thereafter, the worker does the heavy lifting by computing the gradients of the parameter matrix. This is returned to the master, where the master will aggregate gradients and apply them to the global W. The parameters will be distributed back to the worker and this occurs iteratively, to find the global minima for the parameter matrix.
+        Boots up the worker to start receiving data. Thereafter, the worker
+        does the heavy lifting by computing the gradients of the parameter
+        matrix. This is returned to the master, where the master will aggregate
+        gradients and apply them to the global W. The parameters will be
+        distributed back to the worker and this occurs iteratively, to find the
+        global minima for the parameter matrix.
         """
         poller = self.setup_poller()
 
-        self._logger.info('Started Worker %s' % self.worker_id)
+        self._logger.info('Started Worker %s', self.worker_id)
 
         try:
             start_time = time.time()
@@ -209,7 +240,8 @@ class Worker(object):
 
                     events = dict(poller.poll())
 
-                    if (self.ctrl_socket in events) and (events.get(self.ctrl_socket) == zmq.POLLIN):
+                    if (self.ctrl_socket in events) \
+                        and (events.get(self.ctrl_socket) == zmq.POLLIN):
                         command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
                         self._logger.debug(f"Command={command}")
 
@@ -235,7 +267,6 @@ class Worker(object):
                             self._logger.info("Received EXIT command")
                             break
                         else:
-
                             if self.quantize != 1:
 
                                 # Receive parameter matrix on the subscriber socket
@@ -244,7 +275,8 @@ class Worker(object):
 
                                 n_items = 6
                                 # Decode multipart message
-                                for layer, i in zip(self.model.layers, np.arange(0, len(msg), n_items)):
+                                for layer, i in \
+                                    zip(self.model.layers, np.arange(0, len(msg), n_items)):
                                     
                                     # Get data for correponding layer
                                     Wdata, Wdtype, Wshape, bdata, bdtype, bshape = msg[i:i+n_items]
@@ -260,8 +292,9 @@ class Worker(object):
                                 # Receive numpy struct array
                                 buf = memoryview(msg[0])
 
-                                # Reconstruct W matrix from min, max, no. of intervals and which bins
-                                # each parameter value falls in
+                                # Reconstruct W matrix from min, max, no. of 
+                                # intervals and which bins each parameter value
+                                # falls in
                                 shape = (self.n_features, self.n_classes)
                                 W = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
 
@@ -289,30 +322,53 @@ class Worker(object):
                                     epoch_loss += batch_loss.data
                                     n_batches += 1
                                 epoch_loss /= n_batches
-                                # self._logger.info(f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}")
-                                self._logger.info(f"iteration = {self.model.iter}, Loss = {epoch_loss:7.4f}")
+                                # self._logger.info(
+                                # f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}"
+                                # )
+                                self._logger.info(
+                                    f"iteration = {self.model.iter}, Loss = {epoch_loss:7.4f}"
+                                )
 
                                 # Log to tensorboard
                                 if self._tf_logger is not None:
-                                    self._tf_logger.histogram(f"W={self.worker_id}", self.model.layers[0].W.data, self.model.iter, bins=400)
-                                    self._tf_logger.histogram(f"d_W={self.worker_id}", self.model.layers[0].W.grad.data, self.model.iter, bins=400)
-                                    self._tf_logger.scalar(f"loss-{self.worker_id}", batch_loss, self.model.iter)
+                                    self._tf_logger.histogram(
+                                        f"W={self.worker_id}",
+                                        self.model.layers[0].W.data,
+                                        self.model.iter, bins=400
+                                    )
+                                    self._tf_logger.histogram(
+                                        f"d_W={self.worker_id}",
+                                        self.model.layers[0].W.grad.data,
+                                        self.model.iter, bins=400
+                                    )
+                                    self._tf_logger.scalar(
+                                        f"loss-{self.worker_id}",
+                                        batch_loss,
+                                        self.model.iter
+                                    )
 
                                 self.model.iter += 1
                                 if count == self.comm_period:
                                     break
                                 count += 1
 
-                            # Get messages ready to send by converting them to bytes format. We do not
-                            # need to send the shape since the gradients have the same shape as W which
+                            # Get messages ready to send by converting them to
+                            # bytes format. We do not need to send the shape 
+                            # since the gradients have the same shape as W which
                             # the master already owns
                             if self.quantize:
                                 # d_W = linspace_quantization(d_W, interval=100)
-                                # self.model.layers[0].W = linspace_quantization(self.model.layers[0].W, interval=100)
+                                # self.model.layers[0].W = \
+                                # linspace_quantization(self.model.layers[0].W, interval=100)
                                 # d_W.data = linspace_quantization(d_W.data, interval=100)
                                 pass
-                                # self.model.layers[0].W.grad.data = linspace_quantization(self.model.layers[0].W.grad.data, interval=100)
-                                # self.model.layers[0].W.data = linspace_quantization(self.model.layers[0].W.data, interval=100)
+                                # self.model.layers[0].W.grad.data = \
+                                # linspace_quantization(
+                                # self.model.layers[0].W.grad.data, 
+                                # interval=100
+                                # )
+                                # self.model.layers[0].W.data = \
+                                # linspace_quantization(self.model.layers[0].W.data, interval=100)
 
                             self._logger.debug(f"Send gradients flag={self.send_gradients}")
                             # msg = self.model.layers[0].W.tostring()
@@ -350,7 +406,10 @@ class Worker(object):
 
             elapsed_time = time.time() - start_time
 
-            self._logger.info("Time taken for %d iterations is %7.6fs" % (self.model.iter-1, elapsed_time))
+            self._logger.info(
+                "Time taken for %d iterations is %7.6fs",
+                self.model.iter-1, elapsed_time
+            )
         except KeyboardInterrupt:
             self._logger.info("Keyboard quit")
         except zmq.ZMQError:
