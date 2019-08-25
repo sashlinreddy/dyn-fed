@@ -1,36 +1,37 @@
 """This file will train multilayer perceptrons
 """
 
-import click
-import os
-import time 
-import numpy as np
 import logging
-from dotenv import load_dotenv, find_dotenv
+import os
 
+import click
+import numpy as np
+from dotenv import find_dotenv, load_dotenv
+
+from fault_tolerant_ml.data import MNist
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
-from fault_tolerant_ml.data import MNist, OccupancyData
-from fault_tolerant_ml.losses import MSELoss
-from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer, SGD
-from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
-from fault_tolerant_ml.utils import setup_logger, model_utils
 from fault_tolerant_ml.lib.io import file_io
+from fault_tolerant_ml.losses import MSELoss
+from fault_tolerant_ml.metrics import accuracy_scorev2, confusion_matrix
+from fault_tolerant_ml.optimizers import SGD
+from fault_tolerant_ml.utils import model_utils, setup_logger
 from ft_models import LinearRegression
+
 
 @click.command()
 @click.argument('n_workers', type=int)
 @click.option('--role', '-r', default="worker", type=str)
 @click.option('--verbose', '-v', default=10, type=int)
-@click.option('--id', '-i', default="", type=str)
+@click.option('--identity', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
 @click.option('--add', '-a', default=0, type=int)
-def run(n_workers, role, verbose, id, tmux, add):
+def run(n_workers, role, verbose, identity, tmux, add):
     """Controller function which creates the master and starts off the training
 
     Args:
         n_workers (int): No. of workers to be used for the session
-        verbose (int): The logger level as an integer. See more in the logging file for different options
-
+        verbose (int): The logger level as an integer. See more
+        in the logging file for different options
     """
 
     # For reproducibility
@@ -40,8 +41,9 @@ def run(n_workers, role, verbose, id, tmux, add):
         load_dotenv(find_dotenv())
 
     if "LOGDIR" in os.environ:
-        from fault_tolerant_ml.lib.io.file_io import flush_dir
-        _ = [os.path.join(os.environ["LOGDIR"], "tf/")]
+        pass # Not doing anything for now in terms of flushing directories
+        # from fault_tolerant_ml.lib.io.file_io import flush_dir
+        # _ = [os.path.join(os.environ["LOGDIR"], "tf/")]
         # ignore_dir = []
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
@@ -57,19 +59,22 @@ def run(n_workers, role, verbose, id, tmux, add):
     executor_cfg = cfg['executor']
 
     # Create identity
-    identity: int = 0
+    d_identity: int = 0
 
     if tmux:
-        identity = id=int(id[1:]) if id != "" else None
+        d_identity = int(identity[1:]) if identity != "" else None
     else:
-        identity = int(id) if id != "" else None
+        d_identity = int(identity) if identity != "" else None
         if add:
-            identity += 1000
+            d_identity += 1000
 
-    executor_cfg['identity'] = identity
+    executor_cfg['identity'] = d_identity
 
     if 'PROJECT_DIR' in os.environ:
-        executor_cfg['shared_folder'] = os.path.join(os.environ['PROJECT_DIR'], executor_cfg['shared_folder'])
+        executor_cfg['shared_folder'] = os.path.join(
+            os.environ['PROJECT_DIR'], 
+            executor_cfg['shared_folder']
+        )
 
     # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
@@ -87,15 +92,17 @@ def run(n_workers, role, verbose, id, tmux, add):
         # Get data
         filepaths = {
             "train": {
-                "images": os.path.join(data_dir, "train-images-idx3-ubyte.gz"), "labels": os.path.join(data_dir, "train-labels-idx1-ubyte.gz")
+                "images": os.path.join(data_dir, "train-images-idx3-ubyte.gz"),
+                "labels": os.path.join(data_dir, "train-labels-idx1-ubyte.gz")
             },
             "test": {
-                "images": os.path.join(data_dir, "t10k-images-idx3-ubyte.gz"), "labels": os.path.join(data_dir, "t10k-labels-idx1-ubyte.gz")
+                "images": os.path.join(data_dir, "t10k-images-idx3-ubyte.gz"),
+                "labels": os.path.join(data_dir, "t10k-labels-idx1-ubyte.gz")
             }
         }
         data = MNist(filepaths)
 
-        # data = OccupancyData(filepath="/c/Users/nb304836/Documents/git-repos/large_scale_ml/data/occupancy_data/datatraining.txt", n_stacks=100)
+        # data = OccupancyData(filepath="data/occupancy_data/datatraining.txt", n_stacks=100)
         # data.transform()    
 
     # Define loss
@@ -124,11 +131,11 @@ def run(n_workers, role, verbose, id, tmux, add):
     )
 
     model = LinearRegression(
-        optimizer, 
-        strategy, 
+        optimizer,
+        strategy,
         batch_size=model_cfg["batch_size"],
-        max_iter=model_cfg['n_iterations'], 
-        shuffle=model_cfg['shuffle'], 
+        max_iter=model_cfg['n_iterations'],
+        shuffle=model_cfg['shuffle'],
         verbose=verbose,
         encode_name=encoded_run_name
     )

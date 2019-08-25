@@ -298,6 +298,7 @@ class Master(object):
             params["n_features"] = self.data.n_features
             params["n_classes"] = self.data.n_classes
             params["n_most_rep"] = self.optimizer.n_most_rep
+            params["overlap"] = self.strategy.overlap
             params["send_gradients"] = self.strategy.send_gradients
             params["comm_period"] = self.strategy.comm_period
             params["mapping"] = self.mapping

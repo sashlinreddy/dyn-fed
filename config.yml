@@ -16,6 +16,7 @@ executor:
   scenario: 1
   remap: 1
   quantize: 0
+  overlap: 0.0
   comm_period: 10
   aggregate_mode: 1
   delta_switch: 0.0004
