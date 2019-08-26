@@ -5,6 +5,8 @@ from __future__ import absolute_import, print_function
 import numpy as np
 from sklearn.model_selection import train_test_split
 
+from fault_tolerant_ml.operators import Tensor
+
 
 class Dataset():
     """Base class for all datasets for fault_tolerant_ml
@@ -76,8 +78,8 @@ class Dataset():
             if end > X.shape[0] and overlap > 0.0:
                 # We need to circle back and stack the points from worker 1 onto these points
                 end = end - X.shape[0]
-                X_batch = np.vstack([X_batch, X[0:end]])
-                y_batch = np.vstack([y_batch, y[0:end]])
+                X_batch = Tensor(np.vstack([X_batch.data, X.data[0:end]]))
+                y_batch = Tensor(np.vstack([y_batch.data, y.data[0:end]]))
             yield X_batch, y_batch
 
     def prepare_data(self):
