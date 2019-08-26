@@ -1,23 +1,24 @@
 """This file will train multilayer perceptrons
 """
 
-import click
-import os
-import time 
-import numpy as np
 import logging
-from dotenv import load_dotenv, find_dotenv
+import os
 
+import click
+import numpy as np
+from dotenv import find_dotenv, load_dotenv
+
+from fault_tolerant_ml.data import MNist
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
-from fault_tolerant_ml.distribute.wrappers import ftml_train_collect, ftml_trainv2
-from fault_tolerant_ml.data import MNist, OccupancyData
-from fault_tolerant_ml.losses import cross_entropy_loss, cross_entropy_gradient, CrossEntropyLoss
-from fault_tolerant_ml.optimizers import SGDOptimizer, AdamOptimizer, SGD
-# from fault_tolerant_ml.models.linear_model import LogisticRegression
-from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
-from fault_tolerant_ml.utils import setup_logger, model_utils
+
 from fault_tolerant_ml.lib.io import file_io
-from ft_models import MLP, LogisticRegression
+from fault_tolerant_ml.losses import CrossEntropyLoss
+# from fault_tolerant_ml.models.linear_model import LogisticRegression
+from fault_tolerant_ml.metrics import accuracy_scorev2, confusion_matrix
+from fault_tolerant_ml.optimizers import SGD
+from fault_tolerant_ml.utils import model_utils, setup_logger
+from ft_models import MLP
+
 
 @click.command()
 @click.argument('n_workers', type=int)
