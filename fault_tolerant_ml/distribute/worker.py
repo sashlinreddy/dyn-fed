@@ -14,6 +14,7 @@ import zmq.green as zmq
 
 from fault_tolerant_ml.distribute import Coordinator
 from fault_tolerant_ml.distribute.states import REMAP
+from fault_tolerant_ml.distribute.utils import decode_params
 from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.tools import TFLogger
 # Local
@@ -86,30 +87,7 @@ class Worker(object):
         self._tf_logger = None
         self.coordinator = Coordinator()
 
-    def connect(self):
-        """Prepare our context, push socket and publisher
-        """
-        self.context = zmq.Context()
-        self.subscriber = self.context.socket(zmq.SUB) # pylint: disable=no-member
-        # self.subscriber.connect("tcp://localhost:5563")
-        self.subscriber.connect(f"tcp://{self.master_ip_address}:5563")
-        self.subscriber.setsockopt(zmq.SUBSCRIBE, b"") # pylint: disable=no-member
-
-        self.push_socket = self.context.socket(zmq.PUSH) # pylint: disable=no-member
-        # self.push_socket.connect("tcp://localhost:5562")
-        self.push_socket.connect(f"tcp://{self.master_ip_address}:5562")
-
-        self.ctrl_socket = self.context.socket(zmq.DEALER) # pylint: disable=no-member
-        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id) # pylint: disable=no-member
-        # self.ctrl_socket.connect("tcp://localhost:5565")
-        self.ctrl_socket.connect(f"tcp://{self.master_ip_address}:5565")
-
-        self._logger.info(
-            f"Connected to ip address {self.master_ip_address}, "
-            f"on ports 5563, 5562 & 5565"
-        )
-
-    def setup_poller(self):
+    def _setup_poller(self):
         """Register necessary sockets for poller
         """
         poller = zmq.Poller()
@@ -118,7 +96,7 @@ class Worker(object):
 
         return poller
 
-    def receive_data(self, start=True):
+    def _receive_data(self, start=True):
         """Receives data from worker
 
         Receives and makes sense of the data received from the master.
@@ -176,7 +154,67 @@ class Worker(object):
         self._logger.info(f"Received data, X.shape={self.X.shape}, y.shape={self.y.shape}")
         self.have_work = True
 
-    def do_work(self, X, y, W_g=None):
+    def _read_envelope(self):
+        """Read envelope and return command and message
+
+        Returns:
+            cmd (bytes): Command whether to EXIT or WORK
+            msg (bytes): Parameter tensor from master in bytes
+        """
+        self._logger.debug("Receiving contents")
+        contents = self.subscriber.recv_multipart()
+        _ = contents[0]
+        cmd = contents[1]
+        msg = contents[2:]
+        packet_size = np.sum([len(m) for m in contents])
+
+        self._logger.debug(f"Packet size={packet_size} bytes")
+
+        return cmd, msg
+
+    def _parse_msg(self, cmd, msg):
+        """Parse contents received from master
+
+        Args:
+            cmd (byte): Command received from master
+            msg (byte array): Parameter Tensor as bytes
+
+        Returns:
+            parameters (np.ndarray): Parameter tensor as a numpy array
+        """
+        if self.quantize != 1:
+            # Receive parameter matrix on the subscriber socket
+            if cmd == b"WORKNODELAY":
+                self.comm_period = 1
+
+            parameters = [
+                [np.zeros_like(l.W.data), np.zeros_like(l.b.data)]
+                for l in self.model.layers
+            ]
+            parameters = decode_params(self.model.n_layers, parameters, msg)
+
+            for i in np.arange(self.model.n_layers):
+                self.model.layers[i].W.data = parameters[i][0]
+                self.model.layers[i].b.data = parameters[i][1]
+            
+        elif self.quantize == 1:
+            
+            # TODO: Recontruct approximation for quantized for many layers
+            # Receive numpy struct array
+            buf = memoryview(msg[0])
+
+            # Reconstruct W matrix from min, max, no. of 
+            # intervals and which bins each parameter value
+            # falls in
+            shape = (self.n_features, self.n_classes)
+            W = reconstruct_approximation(buf, shape, r_dtype=np.float32) # pylint: disable=unused-variable
+
+        # W = Tensor(W, is_param=True)
+        # W_g = W.copy()
+        # self.model.layers[0].W = W
+        # self.model.layers[0].W = W
+
+    def _do_work(self, X, y, W_g=None):
         """Worker doing the heavy lifting of calculating gradients and
         calculating loss
 
@@ -203,12 +241,196 @@ class Worker(object):
         
         return batch_loss, most_representative
 
-    def prep_multipart(self, data):
+    def _training_loop(self):
+        """Perform training loop
+
+        Returns:
+            epoch_loss (float): Loss for corresponding epoch
+            most_representative(np.ndarray): Most representative data points
+        """
+        count = 1
+        while True:
+            epoch_loss = 0.0
+            n_batches = 0
+            # self._logger.debug(
+            #     f"layers[0].W.data before mini={self.model.layers[0].W.data}"
+            # )
+            for start in range(0, self.X.shape[0], self.model.batch_size):
+                end = start + self.model.batch_size
+
+                X_batch = self.X[start:end]
+                y_batch = self.y[start:end]
+                # Each worker does work and we get the resulting parameters
+                batch_loss, most_representative = \
+                self._do_work(
+                    X_batch,
+                    y_batch,
+                    W_g=None
+                )
+                epoch_loss += batch_loss.data
+                n_batches += 1
+            epoch_loss /= n_batches
+            # self._logger.info(
+            # f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}"
+            # )
+            self._logger.info(
+                f"iteration = {self.model.iter}, Loss = {epoch_loss:7.4f}"
+            )
+
+            # Log to tensorboard
+            if self._tf_logger is not None:
+                self._tf_logger.histogram(
+                    f"W={self.worker_id}",
+                    self.model.layers[0].W.data,
+                    self.model.iter, bins=400
+                )
+                self._tf_logger.histogram(
+                    f"d_W={self.worker_id}",
+                    self.model.layers[0].W.grad.data,
+                    self.model.iter, bins=400
+                )
+                self._tf_logger.scalar(
+                    f"loss-{self.worker_id}",
+                    batch_loss,
+                    self.model.iter
+                )
+
+            self.model.iter += 1
+            if count == self.comm_period:
+                break
+            count += 1
+
+        return epoch_loss, most_representative
+
+    def _prep_multipart(self, data):
         """Prepare multipart message
         """
         multipart = [b"WORK", self.worker_id.encode()]
         multipart.extend(data)
         return multipart
+
+    def _check_subscriber_events(self):
+        """Check subscriber events
+
+        Args:
+            events (dict): Dictionary of zmq events
+
+        Returns:
+            session_end (bool): Whether or not exit command was received
+        """
+        # Read envelope with address
+        cmd, msg = self._read_envelope()
+        session_end = False
+
+        if cmd == b"EXIT":
+            # End session
+            self._logger.info("Received EXIT command")
+            session_end = True
+        else:
+            # Perform session
+            # Parse parameters
+            self._parse_msg(cmd, msg)
+            # Do training
+            epoch_loss, most_representative = self._training_loop()
+
+            # Get messages ready to send by converting them to
+            # bytes format. We do not need to send the shape 
+            # since the gradients have the same shape as W which
+            # the master already owns
+            if self.quantize:
+                # d_W = linspace_quantization(d_W, interval=100)
+                # self.model.layers[0].W = \
+                # linspace_quantization(self.model.layers[0].W, interval=100)
+                # d_W.data = linspace_quantization(d_W.data, interval=100)
+                pass
+                # self.model.layers[0].W.grad.data = \
+                # linspace_quantization(
+                # self.model.layers[0].W.grad.data, 
+                # interval=100
+                # )
+                # self.model.layers[0].W.data = \
+                # linspace_quantization(self.model.layers[0].W.data, interval=100)
+
+            self._logger.debug(f"Send gradients flag={self.send_gradients}")
+            # msg = self.model.layers[0].W.tostring()
+            params = self.model.parameters()
+            
+            if self.send_gradients:
+                # msg = d_W.tostring()
+                # msg = self.model.layers[0].W.grad.tostring()
+                params = self.model.parameters(grad=True)
+
+            msg = zhelpers.multipart_params(params)
+
+            self._logger.debug(f"Length of msg={len(msg)}")
+                
+            # loss = str(batch_loss).encode()
+            loss = str(epoch_loss).encode()
+            mr = most_representative.tostring()
+            
+            data = [loss, mr] + msg
+            multipart = self._prep_multipart(data)
+            self.push_socket.send_multipart(multipart)
+
+            self._logger.debug("Sent work back to master")
+
+        return session_end
+
+    def _handle_dealer_events(self, events):
+        """Handle events on control socket (zmq.Dealer)
+
+        Args:
+            events (dict): Dictionary of zmq.Events
+        """
+        if (self.ctrl_socket in events) \
+            and (events.get(self.ctrl_socket) == zmq.POLLIN):
+            command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
+            self._logger.debug(f"Command={command}")
+
+            if command == b"WORK":
+                self._receive_data(start=False)
+
+            if command == b"HEARTBEAT":
+                self.ctrl_socket.send(b"PONG")
+                self._logger.debug("PONG")
+
+    def _handle_subscriber_events(self, events):
+        """Handles subscriber events
+
+        Args:
+            events (dict): Dictionary of zmq.Events
+
+        Returns:
+            session_end (bool): Whether or not exit command was received
+        """
+        if (self.subscriber in events) and (events.get(self.subscriber) == zmq.POLLIN):
+            # Check subsriber event
+            session_end = self._check_subscriber_events()
+        return session_end
+
+
+    def connect(self):
+        """Prepare our context, push socket and publisher
+        """
+        self.context = zmq.Context()
+        self.subscriber = self.context.socket(zmq.SUB) # pylint: disable=no-member
+        # self.subscriber.connect("tcp://localhost:5563")
+        self.subscriber.connect(f"tcp://{self.master_ip_address}:5563")
+        self.subscriber.setsockopt(zmq.SUBSCRIBE, b"") # pylint: disable=no-member
+
+        self.push_socket = self.context.socket(zmq.PUSH) # pylint: disable=no-member
+        # self.push_socket.connect("tcp://localhost:5562")
+        self.push_socket.connect(f"tcp://{self.master_ip_address}:5562")
+
+        self.ctrl_socket = self.context.socket(zmq.DEALER) # pylint: disable=no-member
+        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, self.worker_id) # pylint: disable=no-member
+        # self.ctrl_socket.connect("tcp://localhost:5565")
+        self.ctrl_socket.connect(f"tcp://{self.master_ip_address}:5565")
+
+        self._logger.info(
+            f"Connected to ip address {self.master_ip_address}, "
+            f"on ports 5563, 5562 & 5565"
+        )
 
     def start(self):
         """Worker session
@@ -220,7 +442,7 @@ class Worker(object):
         distributed back to the worker and this occurs iteratively, to find the
         global minima for the parameter matrix.
         """
-        poller = self.setup_poller()
+        poller = self._setup_poller()
 
         self._logger.info('Started Worker %s', self.worker_id)
 
@@ -229,171 +451,20 @@ class Worker(object):
             self.n_samples = 0
             self.n_features = 0
             self.n_classes = 0
-            W = None
 
             # self.starter.send_multipart([b"READY", self.worker_id.encode()])
             # self.ctrl_socket.send(b"READY")
 
             while True:
-
                 if self.connected:
-
                     events = dict(poller.poll())
 
-                    if (self.ctrl_socket in events) \
-                        and (events.get(self.ctrl_socket) == zmq.POLLIN):
-                        command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
-                        self._logger.debug(f"Command={command}")
+                    self._handle_dealer_events(events)
 
-                        if command == b"WORK":
-                            self.receive_data(start=False)
-
-                        if command == b"HEARTBEAT":
-                            self.ctrl_socket.send(b"PONG")
-                            self._logger.debug("PONG")
-
-                    if (self.subscriber in events) and (events.get(self.subscriber) == zmq.POLLIN):
-                        # Read envelope with address
-                        self._logger.debug("Receiving contents")
-                        contents = self.subscriber.recv_multipart()
-                        _ = contents[0]
-                        cmd = contents[1]
-                        msg = contents[2:]
-                        packet_size = np.sum([len(m) for m in contents])
-
-                        self._logger.debug(f"Packet size={packet_size} bytes")
-
-                        if cmd == b"EXIT":
-                            self._logger.info("Received EXIT command")
-                            break
-                        else:
-                            if self.quantize != 1:
-
-                                # Receive parameter matrix on the subscriber socket
-                                if cmd == b"WORKNODELAY":
-                                    self.comm_period = 1
-
-                                n_items = 6
-                                # Decode multipart message
-                                for layer, i in \
-                                    zip(self.model.layers, np.arange(0, len(msg), n_items)):
-                                    
-                                    # Get data for correponding layer
-                                    Wdata, Wdtype, Wshape, bdata, bdtype, bshape = msg[i:i+n_items]
-
-                                    W = zhelpers.reconstruct_array(Wdata, Wdtype, Wshape)
-                                    b = zhelpers.reconstruct_array(bdata, bdtype, bshape)
-                                    
-                                    layer.W = Tensor(W, is_param=True)
-                                    layer.b = Tensor(b, is_param=True)
-                                
-                            elif self.quantize == 1:
-
-                                # Receive numpy struct array
-                                buf = memoryview(msg[0])
-
-                                # Reconstruct W matrix from min, max, no. of 
-                                # intervals and which bins each parameter value
-                                # falls in
-                                shape = (self.n_features, self.n_classes)
-                                W = reconstruct_approximation(buf, shape, r_dtype=np.float32)                           
-
-                            # W = Tensor(W, is_param=True)
-                            # W_g = W.copy()
-                            # self.model.layers[0].W = W
-                            # self.model.layers[0].W = W
-                            
-                            count = 1
-                            while True:
-                                epoch_loss = 0.0
-                                n_batches = 0
-                                for start in range(0, self.X.shape[0], self.model.batch_size):
-                                    end = start + self.model.batch_size
-    
-                                    X_batch = self.X[start:end]
-                                    y_batch = self.y[start:end]
-                                    # Each worker does work and we get the resulting parameters
-                                    batch_loss, most_representative = \
-                                    self.do_work(
-                                        X_batch,
-                                        y_batch,
-                                        W_g=None
-                                    )
-                                    epoch_loss += batch_loss.data
-                                    n_batches += 1
-                                epoch_loss /= n_batches
-                                # self._logger.info(
-                                # f"iteration = {self.model.iter}, Loss = {batch_loss:7.4f}"
-                                # )
-                                self._logger.info(
-                                    f"iteration = {self.model.iter}, Loss = {epoch_loss:7.4f}"
-                                )
-
-                                # Log to tensorboard
-                                if self._tf_logger is not None:
-                                    self._tf_logger.histogram(
-                                        f"W={self.worker_id}",
-                                        self.model.layers[0].W.data,
-                                        self.model.iter, bins=400
-                                    )
-                                    self._tf_logger.histogram(
-                                        f"d_W={self.worker_id}",
-                                        self.model.layers[0].W.grad.data,
-                                        self.model.iter, bins=400
-                                    )
-                                    self._tf_logger.scalar(
-                                        f"loss-{self.worker_id}",
-                                        batch_loss,
-                                        self.model.iter
-                                    )
-
-                                self.model.iter += 1
-                                if count == self.comm_period:
-                                    break
-                                count += 1
-
-                            # Get messages ready to send by converting them to
-                            # bytes format. We do not need to send the shape 
-                            # since the gradients have the same shape as W which
-                            # the master already owns
-                            if self.quantize:
-                                # d_W = linspace_quantization(d_W, interval=100)
-                                # self.model.layers[0].W = \
-                                # linspace_quantization(self.model.layers[0].W, interval=100)
-                                # d_W.data = linspace_quantization(d_W.data, interval=100)
-                                pass
-                                # self.model.layers[0].W.grad.data = \
-                                # linspace_quantization(
-                                # self.model.layers[0].W.grad.data, 
-                                # interval=100
-                                # )
-                                # self.model.layers[0].W.data = \
-                                # linspace_quantization(self.model.layers[0].W.data, interval=100)
-
-                            self._logger.debug(f"Send gradients flag={self.send_gradients}")
-                            # msg = self.model.layers[0].W.tostring()
-                            params = self.model.parameters()
-                            
-                            if self.send_gradients:
-                                # msg = d_W.tostring()
-                                # msg = self.model.layers[0].W.grad.tostring()
-                                params = self.model.parameters(grad=True)
-
-                            msg = zhelpers.multipart_params(params)
-
-                            self._logger.debug(f"Length of msg={len(msg)}")
-                                
-                            # loss = str(batch_loss).encode()
-                            loss = str(epoch_loss).encode()
-                            mr = most_representative.tostring()
-                            
-                            data = [loss, mr] + msg
-                            multipart = self.prep_multipart(data)
-                            self.push_socket.send_multipart(multipart)
-
-                            self._logger.debug("Sent work back to master")
+                    session_end = self._handle_subscriber_events(events)
+                    if session_end:
+                        break
                 else:
-
                     self._logger.info("Connecting to server")
                     self.push_socket.send_multipart([b"CONNECT", self.worker_id.encode()])
                     self._logger.info("Connected")
@@ -402,7 +473,7 @@ class Worker(object):
                     command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
 
                     if command == b"WORK":
-                        self.receive_data()
+                        self._receive_data()
 
             elapsed_time = time.time() - start_time
 
