@@ -2,14 +2,14 @@
 
 From https://gist.github.com/gyglim/1f8dfb1b5c82627ae3efcfbbadb9f514
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import tensorflow as tf
-from io import StringIO, BytesIO
+from io import BytesIO
+
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
+
 
 class TFLogger(object):
     """Logging in tensorboard without tensorflow ops."""
@@ -80,15 +80,16 @@ class TFLogger(object):
         hist.sum_squares = float(np.sum(values**2))
 
         # Requires equal number as bins, where the first goes from -DBL_MAX to bin_edges[1]
+        # pylint: disable=line-too-long
         # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto#L30
         # Thus, we drop the start of the first bin
         bin_edges = bin_edges[1:]
 
         # Add bin edges and counts
         for edge in bin_edges:
-            hist.bucket_limit.append(edge)
+            hist.bucket_limit.append(edge) # pylint: disable=no-member
         for c in counts:
-            hist.bucket.append(c)
+            hist.bucket.append(c) # pylint: disable=no-member
 
         # Create and write Summary
         summary = tf.Summary(value=[tf.Summary.Value(tag=tag, histo=hist)])

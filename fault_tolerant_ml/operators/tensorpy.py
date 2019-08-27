@@ -1,8 +1,14 @@
-import numpy as np
+"""Module containing tensor logic
+"""
 from copy import deepcopy
 from typing import Union
 
+import numpy as np
+
+
 def ensure_array(arrayable):
+    """Ensures object will be a numpy array
+    """
     if isinstance(arrayable, np.ndarray):
         return arrayable
     else:
@@ -11,13 +17,16 @@ def ensure_array(arrayable):
 Tensorable = Union['Tensor', 'float', np.ndarray]
 
 def ensure_tensor(tensorable: Tensorable):
+    """Ensures object will be a tensor
+    """
     if isinstance(tensorable, Tensor):
         return tensorable
     else:
         return Tensor(tensorable)
     
 class Tensor():
-    
+    """Tensor class
+    """
     def __init__(self, data, is_param=False):
         self.data = ensure_array(data)
         self._is_param = is_param
@@ -129,22 +138,37 @@ class Tensor():
     def sqrt(self, out=None, where=None, **kwargs):
         """Return new tensor with numpy sum along an axis
         """
+        # pylint: disable=unused-argument
         is_param = self.is_param
         return Tensor(np.sqrt(self.data), is_param=is_param)
 
     def argmax(self, axis=None, out=None):
+        """Return new tensor with numpy argmax along axis
+        """
         is_param = self.is_param
         return Tensor(np.argmax(self.data, axis=axis, out=out), is_param=is_param)
 
     def min(self, axis=None, out=None):
+        """Return new tensor with numpy min along axis
+        """
         is_param = self.is_param
         return Tensor(np.min(self.data, axis=axis, out=out), is_param=is_param)
 
     def zeros_like(self, dtype=None, order='K', subok=True):
+        """Return new tensor with numpy zerolike
+        """
         is_param = self.is_param
         if dtype is None:
             dtype = self.data.dtype
-        return Tensor(np.zeros_like(self.data, dtype=dtype, order=order, subok=subok), is_param=is_param)
+        return Tensor(
+            np.zeros_like(
+                self.data,
+                dtype=dtype,
+                order=order,
+                subok=subok
+            ),
+            is_param=is_param
+        )
 
     def tostring(self):
         """Return numpy array as byte string
@@ -158,19 +182,27 @@ class Tensor():
     
     @property
     def T(self):
+        """Return new tensor transposed
+        """
         is_param = self.is_param
         return Tensor(self.data.T, is_param=is_param)
 
     @property
     def dtype(self):
+        """Returns dtype of tensor
+        """
         return self.data.dtype
     
     @property
     def is_param(self):
+        """Returns if parameter or not
+        """
         return self._is_param
     
     @property
     def grad(self):
+        """Returns gradient of tensor
+        """
         return self._grad
     
     @grad.setter
@@ -178,4 +210,6 @@ class Tensor():
         self._grad = ensure_tensor(grad)
         
     def zero_grad(self):
+        """Zeros out gradient
+        """
         self.grad = Tensor(np.zeros_like(self.data))

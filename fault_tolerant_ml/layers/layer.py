@@ -1,15 +1,32 @@
-import numpy as np
+"""Module that implements layer logic
+"""
 import logging
-from fault_tolerant_ml.activations.activation import Sigmoid, ReLU, Linear
+
+import numpy as np
+
+from fault_tolerant_ml.activations.activation import Linear, ReLU, Sigmoid
 from fault_tolerant_ml.operators import Tensor
 
+
 class Layer(object):
-    
+    """Layer class
+
+    Attributes:
+        n_inputs (int): No. of inputs
+        n_output (int): No. of outputs
+        W (ftml.Tensor): Parameter tensor
+        b (ftml.Tensor): Bias vector
+        activation (str): Activation function
+        dtype (type): Type of tensors
+    """
     def __init__(self, n_inputs, n_outputs, W=None, b=None, activation="sigmoid", dtype=np.float32):
         
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
-        self.W = Tensor(np.random.randn(self.n_inputs, self.n_outputs).astype(dtype) * 0.01, is_param=True)
+        self.W = Tensor(
+            np.random.randn(self.n_inputs, self.n_outputs).astype(dtype) * 0.01,
+            is_param=True
+        )
         self.b = Tensor(np.zeros((1, self.n_outputs)).astype(dtype), is_param=True)
 
         self._logger = logging.getLogger(f'ftml.layers.{self.__class__.__name__}')
@@ -18,6 +35,10 @@ class Layer(object):
             self.W = W
         if b is not None:
             self.b = b
+
+        self.x = None
+        self.z = None
+        self.y = None
 
         self.activation = activation
         self.act_fn = None
@@ -46,7 +67,7 @@ class Layer(object):
         
         return self.y
 
-    def _forward(self, x, retain_derived=True):
+    def _forward(self, x):
         # Store input tensor for feedforward
         x = x
         # Store edge
