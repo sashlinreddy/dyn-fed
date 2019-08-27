@@ -1,19 +1,23 @@
-import unittest
-import numpy as np
-from copy import copy
+"""Tests for SGD
+"""
 import logging
 import os
+import unittest
+
+import numpy as np
+
 from fault_tolerant_ml.data import MNist
+from fault_tolerant_ml.lib.io import file_io
+from fault_tolerant_ml.losses import CrossEntropyLoss
 from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.optimizers import SGDOptimizer
-from fault_tolerant_ml.losses import CrossEntropyLoss
-from fault_tolerant_ml.lib.io import file_io
 from fault_tolerant_ml.utils import maths
 
 logger = logging.getLogger("ftml.optimizers.tests.test_sgd")
 
 class TestSGDOptimizer(unittest.TestCase):
-
+    """Tests for SGD
+    """
     def setUp(self):
         """Set up
         """
@@ -24,10 +28,12 @@ class TestSGDOptimizer(unittest.TestCase):
         # Get data
         filepaths = {
             "train": {
-                "images": os.path.join(data_dir, "train-images-idx3-ubyte.gz"), "labels": os.path.join(data_dir, "train-labels-idx1-ubyte.gz")
+                "images": os.path.join(data_dir, "train-images-idx3-ubyte.gz"),
+                "labels": os.path.join(data_dir, "train-labels-idx1-ubyte.gz")
             },
             "test": {
-                "images": os.path.join(data_dir, "t10k-images-idx3-ubyte.gz"), "labels": os.path.join(data_dir, "t10k-labels-idx1-ubyte.gz")
+                "images": os.path.join(data_dir, "t10k-images-idx3-ubyte.gz"),
+                "labels": os.path.join(data_dir, "t10k-labels-idx1-ubyte.gz")
             }
         }
         self.data = MNist(filepaths)
@@ -35,7 +41,6 @@ class TestSGDOptimizer(unittest.TestCase):
     def tearDown(self):
         """Tear down
         """
-        pass
 
     def test_sgd_compute_gradients(self):
         """Test computing gradients for sgd optimizer

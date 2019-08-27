@@ -1,17 +1,21 @@
-import sys
-import zmq
-from multiprocessing import Process
+"""zmq example multiprocessing
+"""
 import multiprocessing as mp
-import numpy as np
+from multiprocessing import Process
 import time
 from random import choice
-import zhelpers
+
+import numpy as np
+import zmq
+
+from fault_tolerant_ml.utils import zhelpers
+
 
 def send_array(socket, A, flags=0, copy=True, track=False):
     """send a numpy array with metadata"""
     md = dict(
-        dtype = str(A.dtype),
-        shape = A.shape,
+        dtype=str(A.dtype),
+        shape=A.shape,
     )
     socket.send_json(md, flags|zmq.SNDMORE)
     return socket.send(A, flags, copy=copy, track=track)
@@ -36,14 +40,16 @@ class Base(Process):
 class ClientTask(Base):
     """ClientTask"""
     def get_rank(self):
+        """Return process rank
+        """
         # Returns relative PID of a pool process
-        return mp.current_process()._identity[0]
+        return mp.current_process()._identity[0] # pylint: disable=protected-access
 
     def run(self):
         context = zmq.Context()
-        socket = context.socket(zmq.DEALER)
+        socket = context.socket(zmq.DEALER) # pylint: disable=no-member
         print(f"Client {self.get_rank()}")
-        # identity = 'worker-%d' % self.get_rank()
+        identity = 'worker-%d' % self.get_rank()
         # socket.setsockopt_string(zmq.IDENTITY, identity)
         zhelpers.set_id(socket)
         socket.connect('tcp://localhost:5570')
@@ -52,7 +58,7 @@ class ClientTask(Base):
         poll.register(socket, zmq.POLLIN)
         reqs = 0
         while True:
-            for i in range(5):
+            for _ in range(5):
                 sockets = dict(poll.poll(1000))
                 if socket in sockets:
                     if sockets[socket] == zmq.POLLIN:
@@ -69,12 +75,12 @@ class ServerTask(Base):
     """ServerTask"""
     def run(self):
         context = zmq.Context()
-        frontend = context.socket(zmq.ROUTER)
+        frontend = context.socket(zmq.ROUTER) # pylint: disable=no-member
         frontend.bind('tcp://*:5570')
-        backend = context.socket(zmq.DEALER)
+        backend = context.socket(zmq.DEALER) # pylint: disable=no-member
         backend.bind('inproc://backend')
         workers = []
-        for i in range(5):
+        for _ in range(5):
             worker = ServerWorker()
             worker.start()
             workers.append(worker)
@@ -105,7 +111,7 @@ class ServerWorker(Base):
     """ServerWorker"""
     def run(self):
         context = zmq.Context()
-        worker = context.socket(zmq.DEALER)
+        worker = context.socket(zmq.DEALER) # pylint: disable=no-member
         worker.connect('inproc://backend')
         print('Worker started')
         while True:
@@ -113,8 +119,8 @@ class ServerWorker(Base):
             msg = worker.recv()
             print('Worker received %s from %s' % (msg, _id))
             replies = choice(range(5))
-            for i in range(replies):
-                time.sleep(1/choice(range(1,10)))
+            for _ in range(replies):
+                time.sleep(1/choice(range(1, 10)))
                 worker.send(_id, zmq.SNDMORE)
                 worker.send(msg)
         del msg
@@ -124,7 +130,7 @@ def main():
     """main function"""
     server = ServerTask()
     server.start()
-    for i in np.arange(3):
+    for _ in np.arange(3):
         client = ClientTask()
         client.start()
         client.join()
