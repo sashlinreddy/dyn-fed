@@ -125,7 +125,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
 
     # Decide on distribution strategy
     strategy = MasterWorkerStrategy(
-        n_workers=n_workers,
+        n_workers=n_workers-1,
         config=executor_cfg,
         role=role
     )
