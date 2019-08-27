@@ -1,9 +1,21 @@
+"""Example models that can be implemented using ftml
+"""
 import fault_tolerant_ml as ft
 from fault_tolerant_ml.layers import Layer
 
-class MLP(ft.Model):
 
-    def __init__(self, optimizer, strategy=None, batch_size=64, max_iter=300, shuffle=True, verbose=10, **kwargs):
+class MLP(ft.Model):
+    """Multilayer perceptron
+    """
+    def __init__(
+            self,
+            optimizer,
+            strategy=None,
+            batch_size=64,
+            max_iter=300,
+            shuffle=True,
+            verbose=10,
+            **kwargs):
         super().__init__(
             optimizer=optimizer,
             strategy=strategy, 
@@ -18,8 +30,17 @@ class MLP(ft.Model):
         self.add(Layer(128, 10, activation="sigmoid"))
 
 class LogisticRegression(ft.Model):
-
-    def __init__(self, optimizer, strategy=None, batch_size=64, max_iter=300, shuffle=True, verbose=10, **kwargs):
+    """Logistic regression
+    """
+    def __init__(
+            self,
+            optimizer,
+            strategy=None,
+            batch_size=64,
+            max_iter=300,
+            shuffle=True,
+            verbose=10,
+            **kwargs):
         super().__init__(
             optimizer=optimizer,
             strategy=strategy, 
@@ -33,8 +54,17 @@ class LogisticRegression(ft.Model):
         self.add(Layer(784, 10, activation="sigmoid"))
 
 class LinearRegression(ft.Model):
-
-    def __init__(self, optimizer, strategy=None, batch_size=64, max_iter=300, shuffle=True, verbose=10, **kwargs):
+    """Linear regression
+    """
+    def __init__(
+            self,
+            optimizer,
+            strategy=None,
+            batch_size=64,
+            max_iter=300,
+            shuffle=True,
+            verbose=10,
+            **kwargs):
         super().__init__(
             optimizer=optimizer,
             strategy=strategy, 

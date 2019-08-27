@@ -30,7 +30,7 @@ from fault_tolerant_ml.utils import zhelpers
 class Master(object):
     """Master class for distributed machine learning system
     """
-    def __init__(self, model, verbose):
+    def __init__(self, model):
         
         # ZMQ variables
         self.ctrl_socket = None

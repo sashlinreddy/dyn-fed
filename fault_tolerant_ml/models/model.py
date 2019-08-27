@@ -114,8 +114,7 @@ class Model():
             if self.strategy.role == "master":
                 # Setup master
                 self._master = Master(
-                    model=self,
-                    verbose=self.verbose,
+                    model=self
                 )
                 self._logger.info("Connecting master sockets")
                 self._master.connect()
