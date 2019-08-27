@@ -1,15 +1,15 @@
 # encoding: utf-8
-"""
-Helper module for example applications. Mimics ZeroMQ Guide's zhelpers.h.
+"""Helper module for example applications. Mimics ZeroMQ Guide's zhelpers.h.
 """
 from __future__ import print_function
 
 import binascii
 import os
 from random import randint
-import numpy as np
 
+import numpy as np
 import zmq
+
 
 def socket_set_hwm(socket, hwm=-1):
     """libzmq 2/3/4 compatible sethwm"""
@@ -29,7 +29,7 @@ def dump(msg_or_socket):
     print("----------------------------------------")
     for part in msg:
         print("[%03d]" % len(part), end=' ')
-        is_text = True
+        # is_text = True
         try:
             print(part.decode('ascii'))
         except UnicodeDecodeError:
@@ -39,7 +39,7 @@ def dump(msg_or_socket):
 def set_id(zsocket):
     """Set simple random printable identity on socket"""
     identity = u"%04x-%04x" % (randint(0, 0x10000), randint(0, 0x10000))
-    zsocket.setsockopt_string(zmq.IDENTITY, identity)
+    zsocket.setsockopt_string(zmq.IDENTITY, identity) # pylint: disable=no-member
 
 
 def zpipe(ctx):
@@ -49,8 +49,8 @@ def zpipe(ctx):
 
     Returns a pair of PAIRs connected via inproc
     """
-    a = ctx.socket(zmq.PAIR)
-    b = ctx.socket(zmq.PAIR)
+    a = ctx.socket(zmq.PAIR) # pylint: disable=no-member
+    b = ctx.socket(zmq.PAIR) # pylint: disable=no-member
     a.linger = b.linger = 0
     a.hwm = b.hwm = 1
     iface = "inproc://%s" % binascii.hexlify(os.urandom(8))
@@ -61,8 +61,8 @@ def zpipe(ctx):
 def send_array(socket, A, flags=0, copy=True, track=False):
     """send a numpy array with metadata"""
     md = dict(
-        dtype = str(A.dtype),
-        shape = A.shape,
+        dtype=str(A.dtype),
+        shape=A.shape,
     )
     socket.send_json(md, flags|zmq.SNDMORE)
     return socket.send(A, flags, copy=copy, track=track)
@@ -75,14 +75,12 @@ def recv_array(socket, flags=0, copy=True, track=False):
     A = np.frombuffer(buf, dtype=md['dtype'])
     return A.reshape(md['shape'])
 
-
 def multipart_params(data_list):
     """Prep model parameters to send to workers.
 
-    Get parameters from each layer and append the data, dtype and shape a list to send. Also quantize parameters
-    if quantize flag = 1
+    Get parameters from each layer and append the data, dtype and shape a list
+    to send. Also quantize parameters if quantize flag = 1
     """
-
     multipart = []
     for data in data_list:
         multipart.append(data.tostring())
@@ -104,7 +102,7 @@ def reconstruct_array(data, dtype, shape):
     """
     # Decode shape byte string
     shape = shape.decode()
-    shape = eval(shape)
+    shape = eval(shape) # pylint: disable=eval-used
     # Reconstruct numpy array
     buf = memoryview(data)
     arr = np.frombuffer(buf, dtype=dtype)

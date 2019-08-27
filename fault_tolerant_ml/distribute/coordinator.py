@@ -1,7 +1,6 @@
 """Coordinator for distributed training
 """
-from __future__ import print_function
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
 import logging
 import time
@@ -10,7 +9,7 @@ import numpy as np
 import zmq.green as zmq
 
 from fault_tolerant_ml.distribute.states import DIST_PARAMS, MAP, REMAP
-from fault_tolerant_ml.utils import zhelpers
+from fault_tolerant_ml.distribute.utils import decode_params
 
 
 class Coordinator(object):
@@ -44,49 +43,6 @@ class Coordinator(object):
             wait = False
 
         return wait
-
-    def _decode_msg(self, worker_params):
-        """Decode parameters received from workers
-
-        Args:
-            worker_params (list of byte strings): W and b params received from corresponding worker
-
-        Returns:
-            W (np.ndarray): Parameter matrix as numpy array
-            b (np.ndarray): Bias matrix
-        """
-        # Get data for correponding layer
-        Wdata, Wdtype, Wshape, bdata, bdtype, bshape = worker_params
-
-        W = zhelpers.reconstruct_array(Wdata, Wdtype, Wshape)
-        b = zhelpers.reconstruct_array(bdata, bdtype, bshape)
-
-        return [W, b]
-
-    def _decode_params(self, model, parameters, worker_params, n_items=6):
-        """Collect all parameters across workers to master and decode
-
-        Args:
-            model (ftml.Model): Fault tolerant model
-            parameters (np.ndarray): Tensor where we store the collected messages
-            worker_params (byte string): Multipart message received from worker
-            n_items (int): Length of message received from worker that we need
-            to decode (default: 6). 3 messages for the W tensor 
-            (data, dtype, shape) and 3 for the bias vector (data, dtype, shape)
-
-        Returns:
-            parameters (np.ndarray): Populated parameter tensor
-        """
-
-        # Decode multipart message for each layer
-        for j, k in zip(np.arange(model.n_layers), np.arange(0, len(worker_params), n_items)):
-            
-            W, b = self._decode_msg(worker_params[k:k+n_items])
-            
-            parameters[j][0] = W
-            parameters[j][1] = b
-
-        return parameters
 
     def bcast(self, socket, data, subscribe_msg=b""):
         """Broadcasts to anyone listening on the socket
@@ -250,7 +206,7 @@ class Coordinator(object):
                     worker_params = worker_params.reshape(W.shape)
                 else:
                     # Decode parameters
-                    parameters = self._decode_params(model, parameters, worker_params)
+                    parameters = decode_params(model.n_layers, parameters, worker_params)
 
                 # Store most representative points
                 mr = np.frombuffer(mr, dtype=np.int)
