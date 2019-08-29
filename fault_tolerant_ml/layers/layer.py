@@ -76,6 +76,6 @@ class Layer(object):
         # Store output tensor for feedforward
         y = Tensor(self.act_fn(z.data))
 
-        assert np.array_equal(z.data, y.data)
+        # assert np.array_equal(z.data, y.data)
         
         return x, z, y

@@ -5,7 +5,6 @@ from __future__ import print_function
 
 import binascii
 import os
-from random import randint
 
 import numpy as np
 import zmq
@@ -38,7 +37,7 @@ def dump(msg_or_socket):
 
 def set_id(zsocket):
     """Set simple random printable identity on socket"""
-    identity = u"%04x-%04x" % (randint(0, 0x10000), randint(0, 0x10000))
+    identity = u"%04x-%04x" % (np.random.randint(0, 0x10000), np.random.randint(0, 0x10000))
     zsocket.setsockopt_string(zmq.IDENTITY, identity) # pylint: disable=no-member
 
 

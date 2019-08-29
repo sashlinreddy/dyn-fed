@@ -342,7 +342,6 @@ class Worker(object):
                 # self.model.layers[0].W = \
                 # linspace_quantization(self.model.layers[0].W, interval=100)
                 # d_W.data = linspace_quantization(d_W.data, interval=100)
-                pass
                 # self.model.layers[0].W.grad.data = \
                 # linspace_quantization(
                 # self.model.layers[0].W.grad.data, 
@@ -350,6 +349,7 @@ class Worker(object):
                 # )
                 # self.model.layers[0].W.data = \
                 # linspace_quantization(self.model.layers[0].W.data, interval=100)
+                pass
 
             self._logger.debug(f"Send gradients flag={self.send_gradients}")
             # msg = self.model.layers[0].W.tostring()
