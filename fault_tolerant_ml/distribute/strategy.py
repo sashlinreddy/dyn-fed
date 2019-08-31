@@ -14,9 +14,8 @@ class DistributionStrategy():
         to communication every iteration
     """
     def __init__(self, config):
-        assert config
-        self.strategy = config['strategy']
-        self.scenario = config['scenario']
+        self.strategy = config.get('strategy')
+        self.scenario = config.get('scenario')
 
     @property
     def name(self):
@@ -28,7 +27,7 @@ class LocalStrategy(DistributionStrategy):
     """Local strategy
     """
     def __init__(self, config):
-        super(LocalStrategy).__init__(config)
+        super().__init__(config)
 
     @property
     def name(self):
