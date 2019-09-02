@@ -249,7 +249,7 @@ class Coordinator(object):
 
         self._logger.debug("Calculated gradients")
         
-        return parameters, epoch_loss
+        return parameters, epoch_loss, self.state
 
     def _map_params(self, socket, data, params):
         """Maps model parameters
