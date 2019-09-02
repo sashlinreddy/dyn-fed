@@ -27,7 +27,7 @@ from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.utils import zhelpers
 
 
-class Master(object):
+class Master():
     """Master class for distributed machine learning system
     """
     def __init__(self, model):
@@ -126,12 +126,9 @@ class Master(object):
                 self.model.layers[i].W.data = parameters[i][0]
                 self.model.layers[i].b.data = parameters[i][1]
 
-        # y_pred = self.model.predict(self.data.X_test)
-        # y_train_pred = self.model.predict(self.data.X_train)
         y_pred = self.model.forward(self.data.X_test)
         y_train_pred = self.model.forward(self.data.X_train)
-        # train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
-        # test_acc = accuracy_scorev2(self.data.y_test, y_pred)
+        
         train_acc = accuracy_scorev2(self.data.y_train.data, y_train_pred.data)
         test_acc = accuracy_scorev2(self.data.y_test.data, y_pred.data)
 
@@ -514,10 +511,7 @@ class Master(object):
         gradient matrix. This weighted average is calculated as the number of
         samples that a worker received as a fraction of the total number of
         samples in the entire dataset.
-        """
-        # For reproducibility
-        np.random.seed(42)
-        
+        """        
         self._logger.info(f"Initialized dummy data of size {self.data}")
         self._logger.debug(f"Init W={self.model.layers[0].W}")
         
