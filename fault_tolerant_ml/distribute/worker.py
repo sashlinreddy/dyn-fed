@@ -403,6 +403,7 @@ class Worker(object):
         Returns:
             session_end (bool): Whether or not exit command was received
         """
+        session_end = False
         if (self.subscriber in events) and (events.get(self.subscriber) == zmq.POLLIN):
             # Check subsriber event
             session_end = self._check_subscriber_events()

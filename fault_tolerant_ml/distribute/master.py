@@ -104,12 +104,17 @@ class Master():
             "W": self.model.layers[0].W.data,
             "model": self.model
         }
-        parameters, epoch_loss = self.coordinator.collect(
+        parameters, epoch_loss, state = self.coordinator.collect(
             events=events, 
             socket=self.pull_socket,
             params=params,
             aggregate_mode=self.strategy.aggregate_mode
         )
+
+        self.state = state
+
+        self._logger.debug(f"State after collect = {self.state}")
+        self._logger.debug(f"Coordinator state after collect = {self.coordinator.state}")
 
         if self.strategy.send_gradients:
             for i in np.arange(self.model.n_layers):
@@ -202,6 +207,104 @@ class Master():
         self.state = COMPLETE
         end = time.time()
         self._logger.info("Time taken for %d iterations is %7.6fs", self.n_iterations, end-start)
+
+    def _remap(self):
+        """Handle remapping of data
+        """
+        self._logger.debug(f"Redistributing data")
+        # Remap = 1 is remap only points of dead worker
+        if self.strategy.remap == 1:
+            
+            # Remap only data for workers that went down in previous iteration
+            # Get indices for dead workers
+            if self.mapping:
+                dead_worker = [
+                    w for w in self.watch_dog.states 
+                    if not w.mr_idxs_used and not w.state
+                    ]
+                if dead_worker:
+                    dead_worker = dead_worker[0]
+                else:
+                    return
+
+                remap_idxs = np.hstack([
+                    [w.mapping.get(i) for i in w.most_representative]
+                    for w in self.watch_dog.states
+                    if not w.mr_idxs_used and not w.state
+                ])
+                worker_ids_down = [
+                    w.identity for w in self.watch_dog.states
+                    if not w.mr_idxs_used and not w.state
+                ]
+                self._logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
+                self._logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
+                
+                self._logger.debug(f"Remap idxs={remap_idxs.shape}")
+            else:
+                remap_idxs = np.hstack([
+                    w.most_representative for w in self.watch_dog.states
+                    if not w.mr_idxs_used and not w.state
+                ])
+
+            n_samples = remap_idxs.shape[0]
+            new_range = np.arange(n_samples)
+
+            self._logger.debug(f"N samples = {n_samples}")
+
+            self.mapping = dict(zip(new_range, remap_idxs))
+
+            self._logger.debug(f"Mapping={self.mapping}")
+
+            X_train, y_train = self.data.X_train[remap_idxs], self.data.y_train[remap_idxs]
+
+            for w in self.watch_dog.states:
+                if not w.mr_idxs_used:
+                    w.mr_idxs_used = True
+
+            data = (X_train, y_train)
+            params = self.set_params()
+            params["n_samples"] = n_samples
+
+        else:
+            # Stack all indices from current dataset that we will use to remap
+            global_idxs = np.hstack([
+                w.idxs for w in self.watch_dog.states
+                if (not w.mr_idxs_used) and (not w.idxs is None)
+            ])
+            new_range = np.arange(global_idxs.shape[0])
+            self._logger.debug(f"new data idxs shape={global_idxs.shape}")
+            self._logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+            
+            # If we have had a failure before we need to just keep track of the global indices
+            if self.mapping:
+                # The new dataset will be smaller than the original dataset. 
+                # We still would like to only use indices of the original dataset 
+                # to simplify things. This recalculates those indices
+                global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
+
+            self._logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+            self._logger.debug("Updating mapping")
+            self.mapping = dict(zip(new_range, global_idxs))
+
+            self.X_train, self.y_train = self.data.update_xy(global_idxs)
+
+            for w in self.watch_dog.states:
+                if not w.mr_idxs_used:
+                    w.mr_idxs_used = True
+
+            data = (self.X_train, self.y_train)
+            params = self.set_params()
+
+        self.coordinator.map(
+            socket=self.ctrl_socket, 
+            data=data, 
+            workers=self.watch_dog.states, 
+            params=params, 
+            gen_func=self.data.next_batch
+        )
+
+        self.state = DIST_PARAMS
+
 
     def connect(self):
         """Connects to necessary sockets
@@ -343,101 +446,8 @@ class Master():
             #     class_balance.poof()
 
         if self.state == REMAP:
-
-            self._logger.debug(f"Redistributing data")
-            if self.strategy.remap == 1:
-                
-                # Remap only data for workers that went down in previous iteration
-                # Get indices for dead workers
-                if self.mapping:
-                    dead_worker = [
-                        w for w in self.watch_dog.states 
-                        if not w.mr_idxs_used and not w.state
-                        ]
-                    if dead_worker:
-                        dead_worker = dead_worker[0]
-                    else:
-                        return
-
-                    remap_idxs = np.hstack([
-                        [w.mapping.get(i) for i in w.most_representative]
-                        for w in self.watch_dog.states
-                        if not w.mr_idxs_used and not w.state
-                    ])
-                    worker_ids_down = [
-                        w.identity for w in self.watch_dog.states
-                        if not w.mr_idxs_used and not w.state
-                    ]
-                    self._logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
-                    self._logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
-                    
-                    self._logger.debug(f"Remap idxs={remap_idxs.shape}")
-                else:
-                    remap_idxs = np.hstack([
-                        w.most_representative for w in self.watch_dog.states
-                        if not w.mr_idxs_used and not w.state
-                    ])
-
-                n_samples = remap_idxs.shape[0]
-                new_range = np.arange(n_samples)
-
-                self._logger.debug(f"N samples = {n_samples}")
-
-                self.mapping = dict(zip(new_range, remap_idxs))
-
-                self._logger.debug(f"Mapping={self.mapping}")
-
-                X_train, y_train = self.data.X_train[remap_idxs], self.data.y_train[remap_idxs]
-
-                for w in self.watch_dog.states:
-                    if not w.mr_idxs_used:
-                        w.mr_idxs_used = True
-
-                data = (X_train, y_train)
-                params = self.set_params()
-                params["n_samples"] = n_samples
-
-            else:
-                # Stack all indices from current dataset that we will use to remap
-                global_idxs = np.hstack([
-                    w.idxs for w in self.watch_dog.states
-                    if (not w.mr_idxs_used) and (not w.idxs is None)
-                ])
-                new_range = np.arange(global_idxs.shape[0])
-                self._logger.debug(f"new data idxs shape={global_idxs.shape}")
-
-                self._logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
-                
-                # If we have had a failure before we need to just keep track of the global indices
-                if self.mapping:
-                    # The new dataset will be smaller than the original dataset. 
-                    # We still would like to only use indices of the original dataset 
-                    # to simplify things. This recalculates those indices
-                    global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
-
-                self._logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
-                self._logger.debug("Updating mapping")
-                self.mapping = dict(zip(new_range, global_idxs))
-
-                self.X_train, self.y_train = self.data.update_xy(global_idxs)
-
-                for w in self.watch_dog.states:
-                    if not w.mr_idxs_used:
-                        w.mr_idxs_used = True
-
-                data = (self.X_train, self.y_train)
-                params = self.set_params()
-
-            self.coordinator.map(
-                socket=self.ctrl_socket, 
-                data=data, 
-                workers=self.watch_dog.states, 
-                params=params, 
-                gen_func=self.data.next_batch
-            )
-
-            self.state = DIST_PARAMS
-
+            self._remap()
+            
         if self.state == DIST_PARAMS:
             # self.send_heartbeat()
             self.times.append(time.time())
