@@ -474,44 +474,6 @@ class Master():
         diff = np.diff(self.times)
         self._logger.debug(f"Times={diff.mean():7.6f}s")
 
-    def plot_metrics(self):
-        """Plot distributed computing related metrics
-        """
-        if "FIGDIR" in os.environ:
-
-            from fault_tolerant_ml.viz.target import ClassBalance
-
-            figdir = os.path.join(os.environ["FIGDIR"], self.model.encode_name)
-            if not os.path.exists(figdir):
-                os.mkdir(figdir)
-
-            try:
-                self._logger.debug("Saving class balances distribution plot...")
-                worker_ids = [s.identity.decode() for s in self.watch_dog.states if s.state]
-                fname = os.path.join(figdir, f"mnist-class-balance.png")
-                class_bal = [
-                    v[1] for (k, v) in self.coordinator.labels_per_worker.items()
-                    if k.identity.decode() in worker_ids
-                ]
-                class_names = self.data.class_names
-
-                class_balance = ClassBalance(
-                    labels=worker_ids,
-                    legend=class_names,
-                    fname=fname,
-                    stacked=True,
-                    percentage=True
-                )
-                class_balance.fit(y=class_bal)
-                class_balance.poof()
-
-                fig = class_balance.fig
-
-                if self._tf_logger is not None:
-                    self._tf_logger.images("class-bal-master", [fig], self.model.iter)
-            except Exception as e:
-                self._logger.exception(e)
-
     def main_loop(self):
         """Main loop for training.
 
