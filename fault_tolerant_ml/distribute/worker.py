@@ -20,7 +20,7 @@ from fault_tolerant_ml.tools import TFLogger
 # Local
 from fault_tolerant_ml.utils import setup_logger, zhelpers
 from fault_tolerant_ml.utils.maths import reconstruct_approximation
-from fault_tolerant_ml.proto.utils import parse_setup_from_string
+from fault_tolerant_ml.proto.utils import parse_params_from_string, parse_setup_from_string
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -185,11 +185,7 @@ class Worker(object):
             if cmd == b"WORKNODELAY":
                 self.comm_period = 1
 
-            parameters = [
-                [np.zeros_like(l.W.data), np.zeros_like(l.b.data)]
-                for l in self.model.layers
-            ]
-            parameters = decode_params(self.model.n_layers, parameters, msg)
+            parameters = parse_params_from_string(msg[0])
 
             for i in np.arange(self.model.n_layers):
                 self.model.layers[i].W.data = parameters[i][0]
