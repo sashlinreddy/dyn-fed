@@ -10,6 +10,7 @@ import zmq.green as zmq
 
 from fault_tolerant_ml.distribute.states import DIST_PARAMS, MAP, REMAP
 from fault_tolerant_ml.distribute.utils import decode_params
+from fault_tolerant_ml.proto.utils import setup_to_string
 
 
 class Coordinator(object):
@@ -279,6 +280,11 @@ class Coordinator(object):
         # Distribute data/data indices to work on
         self._logger.debug("Distributor distributing data")
         X_train, y_train = data
+        state = params["state"]
+        n_samples = params["n_samples"]
+
+        self._logger.debug(f"State={state}")
+
         batch_size = int(np.ceil(params["n_samples"] / params["n_alive"]))
         batch_gen = gen_func(
             X_train,
@@ -287,16 +293,6 @@ class Coordinator(object):
             shuffle=False,
             overlap=params["overlap"]
         )
-
-        # Encode to bytes
-        enc_vars = [
-            "n_samples", "n_features", "n_classes", "state"
-        ]
-        multipart_params = self._encode(params, enc_vars)
-
-        state = params["state"]
-
-        self._logger.debug(f"State={state}")
         
         if "mapping" in params:
             mapping = params["mapping"]
@@ -315,7 +311,6 @@ class Coordinator(object):
                 X_batch = X_batch.data
                 y_batch = y_batch.data
                 self._logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
-                batch_data = np.hstack((X_batch, y_batch))
 
                 if y_batch.shape[1] > 1:
                     y_b = np.argmax(y_batch, axis=1) 
@@ -330,14 +325,12 @@ class Coordinator(object):
                 else:
                     self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
 
-                # Encode data
-                dtype = batch_data.dtype.str.encode()
-                shape = str(batch_data.shape).encode()
-                msg = batch_data.tostring()
+                # Serialize data
+                msg = [setup_to_string(X_batch, y_batch, n_samples, state)]
 
                 # Keep track of samples per worker
                 # Redistribute all data points
-                if (state == MAP) or params["remap"] != 1:
+                if (state == MAP) or params["remap"] == 2:
                     worker.n_samples = X_batch.shape[0]
                     lower_bound = X_batch.shape[0] * i
                     upper_bound = lower_bound + X_batch.shape[0]
@@ -347,7 +340,7 @@ class Coordinator(object):
                         worker.lower_bound = lower_bound
                         worker.upper_bound = upper_bound
                 # Redistribute only most representative data points for dead workers
-                else:
+                elif params["remap"] == 1:
                     worker.n_samples += X_batch.shape[0]
                     lower_bound = X_batch.shape[0] * i
                     upper_bound = lower_bound + X_batch.shape[0]
@@ -373,14 +366,18 @@ class Coordinator(object):
                     if worker.most_representative is None:
                         worker.most_representative = np.zeros((params["n_most_rep"],))
 
-                multipart_data = [msg, dtype, shape]
-
-                self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
-                self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")
+                self.send(
+                    socket=socket,
+                    worker=worker.identity,
+                    data=msg,
+                    tag=b"WORK"
+                )
 
                 i += 1
 
-        self._logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}")
+        self._logger.debug(
+            f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}"
+        )
         self._logger.debug(f"Labels per worker={self.labels_per_worker}")
 
     def map(self, socket, data, workers, params, gen_func=None):

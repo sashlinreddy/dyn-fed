@@ -20,7 +20,7 @@ from fault_tolerant_ml.tools import TFLogger
 # Local
 from fault_tolerant_ml.utils import setup_logger, zhelpers
 from fault_tolerant_ml.utils.maths import reconstruct_approximation
-
+from fault_tolerant_ml.proto.utils import parse_setup_from_string
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -112,32 +112,30 @@ class Worker(object):
             n_features (int): No. of features in the dataset
             n_classes (int): No. of classes/labels
         """
-        data, dtype, shape = self.ctrl_socket.recv_multipart() # pylint: disable=unbalanced-tuple-unpacking
-        shape = shape.decode()
-        data = np.frombuffer(data, dtype=dtype)
-        data = data.reshape(eval(shape))
+        msg = self.ctrl_socket.recv_multipart() # pylint: disable=unbalanced-tuple-unpacking
+        X, y, n_samples, state = parse_setup_from_string(msg[0])
 
         # Receive shape of X, y so we can reshape
-        _, n_samples, n_features, n_classes, state = self.ctrl_socket.recv_multipart() # pylint: disable=unbalanced-tuple-unpacking
-        self.n_samples = int(n_samples.decode())
-        self.n_features = int(n_features.decode())
-        self.n_classes = int(n_classes.decode())
-        self.state = int(state.decode())
+        self.n_samples = n_samples
+        self.n_features = X.shape[1]
+        self.n_classes = y.shape[1]
+        self.state = state
 
         if "TFDIR" in os.environ:
             logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.encoded_name}/{self.worker_id}")
             self._tf_logger = TFLogger(logdir)
 
-        self._logger.debug(f"Data size={data[:, :self.n_features].shape}")
+        self._logger.debug(f"Data size={X.shape}")
 
         if self.remap == 1 and not start and state == REMAP:
+            self._logger.debug(f"self.X.shape={self.X.shape}, X.shape={X.shape}")
             self.X, self.y = (
-                np.vstack([self.X, data[:, :self.n_features]]),
-                np.vstack([self.y, data[:, -self.n_classes:]])
+                np.vstack([self.X.data, X]),
+                np.vstack([self.y.data, y])
             )
             self._logger.debug(f"New data shape={self.X.shape}")
         else:
-            self.X, self.y = data[:, :self.n_features], data[:, -self.n_classes:]
+            self.X, self.y = X, y
 
         # Check if we need to add a new axis if the dimension of y is not 2d
         if len(self.y.shape) < 2:
@@ -332,6 +330,8 @@ class Worker(object):
             self._parse_msg(cmd, msg)
             # Do training
             epoch_loss, most_representative = self._training_loop()
+
+            self._logger.debug(f"Most_rep.shape={most_representative.shape}")
 
             # Get messages ready to send by converting them to
             # bytes format. We do not need to send the shape 

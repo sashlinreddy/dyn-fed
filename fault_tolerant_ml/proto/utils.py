@@ -7,7 +7,7 @@ import numpy as np
 from fault_tolerant_ml.proto import ftml_pb2
 
 
-def reconstruct_numpy(data, dtype, shape):
+def parse_numpy_from_string(data, dtype, shape):
     """Reconstruct numpy array from buffer given dtype and shape
 
     Args:
@@ -25,31 +25,139 @@ def reconstruct_numpy(data, dtype, shape):
 
     return arr.copy()
 
-def reconstruct_setup(msg):
-    """Reconstruct numpy array from buffer given dtype and shape
+def parse_setup_from_string(msg):
+    """Reconstruct protocol buffer message
 
     Args:
-        data (byte string): Byte array to be reconstructed
-        dtype (byte string): Data type of reconstructed array
-        shape (byte string): Shape of reconstructed array
+        msg (byte string): Byte array to be reconstructed
 
     Returns:
-        arr (numpy.ndarray): Reconstructed array of shape `shape` and type `dtype`
+        X (numpy.ndarray): Reconstructed feature matrix
+        y (numpy.ndarray): Reconstructed label matrix
+        n_samples (int): Reconstructed total no. of samples
+        state (int): Reconstructured state of learning system
+            (MAP, DIST_PARAMS, REDUCE, etc)
     """
     setup = ftml_pb2.Setup()
     setup.ParseFromString(msg)
 
     # pylint: disable=no-member
-    X = reconstruct_numpy(
+    X = parse_numpy_from_string(
         setup.X.data,
         setup.X.dtype,
         (setup.X.rows, setup.X.columns)
     )
 
-    y = reconstruct_numpy(
+    y = parse_numpy_from_string(
         setup.y.data,
         setup.y.dtype,
         (setup.y.rows, setup.y.columns)
     )
     
     return X, y, setup.n_samples, setup.state
+
+def setup_to_string(X, y, n_samples, state):
+    """Generate setup data buffer message
+
+    Args:
+        X (np.ndarray): Feature matrix
+        y (np.ndarray): Label matrix
+        n_samples (int): Total no. of samples
+        state (int): State of learning system (MAP, DIST_PARAMS, REDUCE, etc)
+
+    Returns:
+        buffer (byte string): Byte string of objects
+    """
+    X_proto = ftml_pb2.Tensor(
+        data=X.tostring(),
+        rows=X.shape[0],
+        columns=X.shape[1],
+        dtype=X.dtype.str
+    )
+
+    y_proto = ftml_pb2.Tensor(
+        data=y.tostring(),
+        rows=y.shape[0],
+        columns=y.shape[1],
+        dtype=y.dtype.str
+    )
+
+    sent_msg = ftml_pb2.Setup(
+        n_samples=n_samples,
+        state=state,
+        X=X_proto,
+        y=y_proto
+    )
+
+    buffer = sent_msg.SerializeToString()
+    
+    return buffer
+
+def params_to_string(model_layers):
+    """Parameters protobuf serialization
+
+    Args:
+        model_layers (list): List of model layers (ftml.Layer)
+
+    Returns:
+        msg (byte string): Serialized parameters
+    """
+    layers = []
+    for layer in model_layers:
+        W = ftml_pb2.Tensor(
+            data=layer.W.data.tostring(),
+            rows=layer.W.shape[0],
+            columns=layer.W.shape[1],
+            dtype=layer.W.dtype.str
+        )
+        b = ftml_pb2.Tensor(
+            data=layer.b.data.tostring(),
+            rows=layer.b.shape[0],
+            columns=layer.b.shape[1],
+            dtype=layer.b.dtype.str
+        )
+        layers.append(
+            ftml_pb2.Parameter(
+                W=W,
+                b=b
+            )
+        )
+
+    msg = ftml_pb2.Subscription(
+        layers=layers
+    )
+
+    buffer = msg.SerializeToString()
+
+    return buffer
+
+def parse_params_from_string(msg):
+    """Parameters protobuf deserialization
+
+    Args:
+        msg (byte string): Byte array to be reconstructed
+
+    Returns:
+        layers (list): List of parameters received
+    """
+    subscription = ftml_pb2.Subscription()
+    subscription.ParseFromString(msg)
+
+    layers = []
+
+    # pylint: disable=no-member
+    for layer in subscription.layers:
+        W = parse_numpy_from_string(
+            layer.W.data,
+            layer.W.dtype,
+            (layer.W.rows, layer.W.columns)
+        )
+
+        b = parse_numpy_from_string(
+            layer.b.data,
+            layer.b.dtype,
+            (layer.b.rows, layer.b.columns)
+        )
+        layers.append([W, b])
+
+    return layers

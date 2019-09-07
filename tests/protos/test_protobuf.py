@@ -9,8 +9,13 @@ logging.getLogger("tensorflow").setLevel(logging.CRITICAL)
 logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 
 # pylint: disable=wrong-import-position
-from fault_tolerant_ml.proto.ftml_pb2 import Setup, Tensor
-from fault_tolerant_ml.proto.utils import reconstruct_setup
+from fault_tolerant_ml.layers import Layer
+from fault_tolerant_ml.models import Model
+from fault_tolerant_ml.proto.utils import (params_to_string,
+                                           parse_params_from_string,
+                                           parse_setup_from_string,
+                                           setup_to_string)
+
 
 logger = logging.getLogger("ftml.optimizers.tests.protos.test_protobuf")
 
@@ -33,32 +38,11 @@ class TestProtobuf(unittest.TestCase):
         n_samples = X.shape[0]
         state = 0
 
-        X_proto = Tensor(
-            data=X.tostring(),
-            rows=X.shape[0],
-            columns=X.shape[1],
-            dtype=X.dtype.str
-        )
-
-        y_proto = Tensor(
-            data=y.tostring(),
-            rows=y.shape[0],
-            columns=y.shape[1],
-            dtype=y.dtype.str
-        )
-
-        sent_msg = Setup(
-            n_samples=n_samples,
-            state=state,
-            X=X_proto,
-            y=y_proto
-        )
-
-        buffer = sent_msg.SerializeToString()
+        buffer = setup_to_string(X, y, n_samples, state)
 
         logger.debug(f"Size of buffer={len(buffer)}")
 
-        X_p, y_p, n_samples_p, state_p = reconstruct_setup(buffer)
+        X_p, y_p, n_samples_p, state_p = parse_setup_from_string(buffer)
 
         # pylint: disable=no-member
         self.assertEqual(n_samples_p, n_samples)
@@ -68,3 +52,40 @@ class TestProtobuf(unittest.TestCase):
 
         np.testing.assert_array_equal(X_p, X, "Deserialization failed for X")
         np.testing.assert_array_equal(y_p, y, "Deserialization failed for y")
+
+    def test_one_layer_parameter_proto(self):
+        """Test parameter protobuf serialization for one layer model
+        """
+        # Setup model
+        model = Model(optimizer=None)
+        model.add(Layer(784, 10, activation="linear"))
+        
+        buffer = params_to_string(model.layers)
+
+        logger.debug(f"Size of buffer={len(buffer)}")
+
+        layers = parse_params_from_string(buffer)
+
+        self.assertTrue(len(layers) == 1)
+        np.testing.assert_array_equal(model.layers[0].W.data, layers[0][0])
+        np.testing.assert_array_equal(model.layers[0].b.data, layers[0][1])
+
+    def test_multiple_layer_linear_parameter_proto(self):
+        """Test parameter protobuf serialization for multiple layer model
+        """
+        # Setup model
+        model = Model(optimizer=None)
+        model.add(Layer(784, 128, activation="sigmoid"))
+        model.add(Layer(128, 10, activation="sigmoid"))
+        
+        buffer = params_to_string(model.layers)
+
+        logger.debug(f"Size of buffer={len(buffer)}")
+
+        layers = parse_params_from_string(buffer)
+
+        self.assertTrue(len(layers) == 2)
+        np.testing.assert_array_equal(model.layers[0].W.data, layers[0][0])
+        np.testing.assert_array_equal(model.layers[0].b.data, layers[0][1])
+        np.testing.assert_array_equal(model.layers[1].W.data, layers[1][0])
+        np.testing.assert_array_equal(model.layers[1].b.data, layers[1][1])
