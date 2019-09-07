@@ -232,7 +232,6 @@ class Coordinator(object):
         # Average parameters
         assert i > 0
         i -= n_connected
-        # epoch_loss /= i
 
         self._logger.debug("Calculated gradients")
         
