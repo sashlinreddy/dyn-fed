@@ -14,13 +14,14 @@ import zmq.green as zmq
 
 from fault_tolerant_ml.distribute import Coordinator
 from fault_tolerant_ml.distribute.states import REMAP
-from fault_tolerant_ml.distribute.utils import decode_params
 from fault_tolerant_ml.operators import Tensor
+from fault_tolerant_ml.proto.utils import (params_response_to_string,
+                                           parse_params_from_string,
+                                           parse_setup_from_string)
 from fault_tolerant_ml.tools import TFLogger
-# Local
-from fault_tolerant_ml.utils import setup_logger, zhelpers
+from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils.maths import reconstruct_approximation
-from fault_tolerant_ml.proto.utils import parse_params_from_string, parse_setup_from_string
+
 
 class Worker(object):
     """Worker class for distributed machine learning system
@@ -349,22 +350,14 @@ class Worker(object):
 
             self._logger.debug(f"Send gradients flag={self.send_gradients}")
             # msg = self.model.layers[0].W.tostring()
-            params = self.model.parameters()
             
             if self.send_gradients:
                 # msg = d_W.tostring()
                 # msg = self.model.layers[0].W.grad.tostring()
-                params = self.model.parameters(grad=True)
+                data = self.model.parameters(grad=True)
 
-            msg = zhelpers.multipart_params(params)
+            data = [params_response_to_string(self.model.layers, most_representative, epoch_loss)]
 
-            self._logger.debug(f"Length of msg={len(msg)}")
-                
-            # loss = str(batch_loss).encode()
-            loss = str(epoch_loss).encode()
-            mr = most_representative.tostring()
-            
-            data = [loss, mr] + msg
             multipart = self._prep_multipart(data)
             self.push_socket.send_multipart(multipart)
 

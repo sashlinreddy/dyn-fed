@@ -24,7 +24,6 @@ from fault_tolerant_ml.distribute.wrappers import (ftml_train,
 from fault_tolerant_ml.metrics import accuracy_scorev2
 from fault_tolerant_ml.tools import TFLogger
 # Local
-from fault_tolerant_ml.utils import zhelpers
 from fault_tolerant_ml.proto.utils import params_to_string
 
 

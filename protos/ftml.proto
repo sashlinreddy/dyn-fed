@@ -24,3 +24,9 @@ message Parameter {
 message Subscription {
     repeated Parameter layers = 1;
 }
+
+message SubscriptionResponse {
+    repeated Parameter layers = 1;
+    Tensor most_rep = 2;
+    float loss = 3;
+}
