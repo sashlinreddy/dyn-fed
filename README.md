@@ -7,6 +7,11 @@ ____
 * Free software: MIT license
 * Documentation: https://fault-tolerant-ml.readthedocs.io.
 
+## Prerequisites
+
+* python >= 3.6
+* [protocol buffers](https://github.com/protocolbuffers/protobuf/releases)
+
 ## Datasets
 
 * Occupancy data (https://archive.ics.uci.edu/ml/datasets/Occupancy+Detection+)
@@ -19,7 +24,21 @@ ____
 * Fault tolerant training - master keeps track of workers most representative data samples. If the worker goes down, the master redistributes those points to the workers that continue to do work
 * Periodic communication - Workers only communicate parameters based on a selected interval
 
-## Local development (With tmux)
+## Development
+
+```bash
+git clone https://github.com/sashlinreddy/fault-tolerant-ml.git
+```
+
+First you need to compile the protocol buffer file. The definitions are in the [ftml.proto](protos/ftml.proto) file.
+
+Compilation is executed with the following command:
+
+```bash
+protoc -I=protos/ --python_out=fault_tolerant_ml/proto/ protos/ftml.proto
+```
+
+### Local development (With tmux)
 
 ```bash
 tmux
@@ -36,7 +55,7 @@ tensorboard --logdir=logs
 
 Go to http://localhost:6006.
 
-## Running on SLURM cluster
+### Running on SLURM cluster
 
 ```bash
 sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh
@@ -48,7 +67,7 @@ The [slurm launch](slurm_launch.sh) generates a multi-prog on the fly with desir
 sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh -v 20
 ```
 
-### Setup config
+## Setup config
 
 The config of the model can be set in the [config file](config.yml). The dataset can be configured in this file as well as the following parameters:
 
@@ -75,7 +94,7 @@ The config of the model can be set in the [config file](config.yml). The dataset
     * send_gradients: Whether or not to send gradients back to master
     * shared_folder: Dataset to be used
 
-### View Results
+## View Results
 
 To view the results on tensorboard:
 
