@@ -100,21 +100,17 @@ class Optimizer():
         self.learning_rate = learning_rate
         self.loss = loss
 
-        self._role = None
         self._most_rep = None
-        self._n_most_rep = 0
-        self._mu_g = 1.0 / self.learning_rate
-        if "n_most_rep" in kwargs:
-            self._n_most_rep = kwargs["n_most_rep"]
-        if "role" in kwargs:
-            self._role = kwargs["role"]
-        if "mu_g" in kwargs:
-            self._mu_g = kwargs["mu_g"]
+        self._n_most_rep = kwargs.get("n_most_rep", 0)
+        self._role = kwargs.get("role")
+        self._mu_g = kwargs.get("mu_g", 1.0 / self.learning_rate)
 
         self._logger = logging.getLogger(f"ftml.optimizers.{self.__class__.__name__}")
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(learning_rate={self.learning_rate})"
+        return (
+            f"{self.__class__.__name__}(learning_rate={self.learning_rate}, "
+            f"n_most_rep={self.n_most_rep})")
 
     @property
     def name(self):

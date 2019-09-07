@@ -9,7 +9,7 @@ import numpy as np
 import zmq.green as zmq
 
 from fault_tolerant_ml.distribute.states import DIST_PARAMS, MAP, REMAP
-from fault_tolerant_ml.distribute.utils import decode_params
+from fault_tolerant_ml.proto.utils import setup_to_string, parse_params_response_from_string
 
 
 class Coordinator(object):
@@ -60,7 +60,14 @@ class Coordinator(object):
         multipart.extend(data)
         socket.send_multipart(multipart)
 
-    def aggregate(self, d_Wbs, errors, model, samples, n_samples, mode=0):
+    def aggregate(self,
+                  d_Wbs,
+                  errors,
+                  model,
+                  samples,
+                  n_samples,
+                  mode=0,
+                  epsilon=1e-8):
         """Aggregate received parameters
 
         Args:
@@ -74,17 +81,13 @@ class Coordinator(object):
         Returns:
             parameters (list): List of numpy matrices for each layer
         """
-        epsilon = 1e-8
+        # pylint: disable=too-many-arguments, too-many-locals
         # Iterate through workers and weight parameters by corresponding epoch loss
         parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
-        n_received_workers = len(errors)
-        # n_sample_workers = int(np.ceil(n_received_workers * c))
-        # sample_workers = np.random.choice(np.arange(n_received_workers), n_sample_workers)
-        workers = np.arange(n_received_workers)
-        # sum_es = np.sum([np.exp(errors[i]) for i in sample_workers])
         sum_es = np.sum(np.exp(errors))
-        for j in workers:
-            weight = 1.0 / n_received_workers  # Default aggregation is the average across workers
+        epoch_loss = np.mean(errors)
+        for j in np.arange(len(errors)):
+            weight = 1.0 / len(errors)  # Default aggregation is the average across workers
             # Weight by loss calculated by worker - worker with highest loss has greater weight
             if mode == 1:
                 n_samples_worker = samples[j]
@@ -104,7 +107,7 @@ class Coordinator(object):
                     else d_Wbs[j][k][1] * epsilon
                 ) # For b parameter
 
-        return parameters
+        return parameters, epoch_loss
 
     def collect(self, events, socket, params, aggregate_mode=0):
         """Receives gradients from workers
@@ -119,22 +122,13 @@ class Coordinator(object):
             epoch_loss (float): The loss for this epoch aggregated from each
             worker, also weighted according to the work each worker did
         """
+        self._logger.debug(f"Collecting gradients")
         watch_dog = params["watch_dog"]
-        strategy = params["strategy"]
         self.state: int = params["state"]
-        n_samples: int = params["n_samples"]
-        # We give x seconds to poll worker if state changed since poll event
-        timeout = params["timeout"]
-        quantize: bool = params["quantize"]
         W: np.ndarray = params["W"]
-        model = params["model"]
-        
-        # parameters: np.ndarray = np.zeros_like(W)
         epoch_loss: int = 0.0
 
-        self._logger.debug(f"Receiving gradients")
-        n_alive_workers = watch_dog.n_alive
-        self._logger.debug(f"Alive workers={n_alive_workers}")
+        self._logger.debug(f"Alive workers={watch_dog.n_alive}")
 
         i = 0
         running_time = 0
@@ -142,12 +136,17 @@ class Coordinator(object):
 
         workers_received = set()
 
-        errs = []
+        errors = []
         d_Wbs = []
         samples = []
-        parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
+        parameters = (
+            [
+                [np.zeros_like(l.W.data), np.zeros_like(l.b.data)]
+                for l in params["model"].layers
+            ]
+        )
 
-        while i < n_alive_workers:
+        while i < watch_dog.n_alive:
 
             # Timer to calculate running time for an iteration. We can then
             # calculate the running time for an iteration so that if a state
@@ -164,9 +163,9 @@ class Coordinator(object):
                         running_time += time.time() - start_i
                         wait = self._check_timeout(
                             running_time,
-                            timeout,
+                            params["timeout"],
                             watch_dog,
-                            strategy,
+                            params["strategy"],
                             workers_received
                         )
                         if not wait:
@@ -175,14 +174,12 @@ class Coordinator(object):
                         continue
 
                 if i == 0:
-                    worker, epoch_loss_temp, mr = msg[0:3]
-                    worker_params = msg[3:]
+                    worker, content = msg
                 else:
                     # Receive multipart including command message
                     cmd = msg[0]
                     if cmd == b"WORK":
-                        worker, epoch_loss_temp, mr = msg[1:4]
-                        worker_params = msg[4:]
+                        worker, content = msg[1:]
                     elif cmd == b"CONNECT":
                         # self.register_workers(msg[1])
                         watch_dog.add_worker(msg[1])
@@ -190,14 +187,8 @@ class Coordinator(object):
                         i += 1
                         continue
 
-                # Calculate weighting
-                samples_for_worker = watch_dog.states[worker].n_samples
-                # beta = (samples_for_worker / n_samples)
-                beta = 1
-                # beta = 1 / n_samples
-                # beta = samples_for_worker
-
-                if quantize:
+                # Parse parameters
+                if params["quantize"]:
                     self._logger.debug(f"Reconstructing gradients")
                     # shape = W.shape
                     # parameter_temp = reconstruct_approximation(parameter_temp,
@@ -205,13 +196,10 @@ class Coordinator(object):
                     worker_params = np.frombuffer(worker_params, dtype=W.dtype)
                     worker_params = worker_params.reshape(W.shape)
                 else:
-                    # Decode parameters
-                    parameters = decode_params(model.n_layers, parameters, worker_params)
+                    parameters, mr, loss = parse_params_response_from_string(content)
 
-                # Store most representative points
-                mr = np.frombuffer(mr, dtype=np.int)
                 # Determine current index - we will map this back to the global index if worker dies
-                if strategy.remap == 2:
+                if params["strategy"].remap == 2:
                     watch_dog.states[worker].most_representative = \
                         watch_dog.states[worker].lower_bound + mr
                     # self._logger.debug(
@@ -220,19 +208,11 @@ class Coordinator(object):
                 else:
                     watch_dog.states[worker].most_representative = \
                         np.min(watch_dog.states[worker].idxs) + mr
-                    
-                # Decode loss
-                epoch_loss_temp = float(epoch_loss_temp.decode())
 
-                # Aggregate loss
-                epoch_loss += beta * epoch_loss_temp
-
-                # Accumulate epoch loss for each worker
-                errs.append(epoch_loss_temp)
-                # Accumulate params for each worker
+                # Accumulate data for each worker
+                errors.append(loss)
                 d_Wbs.append(parameters)
-                # Accumulate samples for each worker
-                samples.append(samples_for_worker)
+                samples.append(watch_dog.states[worker].n_samples)
 
                 workers_received.add(worker)
 
@@ -240,12 +220,18 @@ class Coordinator(object):
                 running_time = 0
 
         # Aggregate with weighted average
-        parameters = self.aggregate(d_Wbs, errs, model, samples, n_samples, mode=aggregate_mode)
+        parameters, epoch_loss = self.aggregate(
+            d_Wbs,
+            errors,
+            params["model"],
+            samples,
+            params["n_samples"],
+            mode=aggregate_mode
+        )
 
         # Average parameters
         assert i > 0
         i -= n_connected
-        epoch_loss /= i
 
         self._logger.debug("Calculated gradients")
         
@@ -279,6 +265,11 @@ class Coordinator(object):
         # Distribute data/data indices to work on
         self._logger.debug("Distributor distributing data")
         X_train, y_train = data
+        state = params["state"]
+        n_samples = params["n_samples"]
+
+        self._logger.debug(f"State={state}")
+
         batch_size = int(np.ceil(params["n_samples"] / params["n_alive"]))
         batch_gen = gen_func(
             X_train,
@@ -287,16 +278,6 @@ class Coordinator(object):
             shuffle=False,
             overlap=params["overlap"]
         )
-
-        # Encode to bytes
-        enc_vars = [
-            "n_samples", "n_features", "n_classes", "state"
-        ]
-        multipart_params = self._encode(params, enc_vars)
-
-        state = params["state"]
-
-        self._logger.debug(f"State={state}")
         
         if "mapping" in params:
             mapping = params["mapping"]
@@ -315,7 +296,6 @@ class Coordinator(object):
                 X_batch = X_batch.data
                 y_batch = y_batch.data
                 self._logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
-                batch_data = np.hstack((X_batch, y_batch))
 
                 if y_batch.shape[1] > 1:
                     y_b = np.argmax(y_batch, axis=1) 
@@ -330,14 +310,12 @@ class Coordinator(object):
                 else:
                     self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
 
-                # Encode data
-                dtype = batch_data.dtype.str.encode()
-                shape = str(batch_data.shape).encode()
-                msg = batch_data.tostring()
+                # Serialize data
+                msg = [setup_to_string(X_batch, y_batch, n_samples, state)]
 
                 # Keep track of samples per worker
                 # Redistribute all data points
-                if (state == MAP) or params["remap"] != 1:
+                if (state == MAP) or params["remap"] == 2:
                     worker.n_samples = X_batch.shape[0]
                     lower_bound = X_batch.shape[0] * i
                     upper_bound = lower_bound + X_batch.shape[0]
@@ -347,7 +325,7 @@ class Coordinator(object):
                         worker.lower_bound = lower_bound
                         worker.upper_bound = upper_bound
                 # Redistribute only most representative data points for dead workers
-                else:
+                elif params["remap"] == 1:
                     worker.n_samples += X_batch.shape[0]
                     lower_bound = X_batch.shape[0] * i
                     upper_bound = lower_bound + X_batch.shape[0]
@@ -373,14 +351,18 @@ class Coordinator(object):
                     if worker.most_representative is None:
                         worker.most_representative = np.zeros((params["n_most_rep"],))
 
-                multipart_data = [msg, dtype, shape]
-
-                self.send(socket=socket, worker=worker.identity, data=multipart_data, tag=b"WORK")
-                self.send(socket=socket, worker=worker.identity, data=multipart_params, tag=b"WORK")
+                self.send(
+                    socket=socket,
+                    worker=worker.identity,
+                    data=msg,
+                    tag=b"WORK"
+                )
 
                 i += 1
 
-        self._logger.debug(f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}")
+        self._logger.debug(
+            f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}"
+        )
         self._logger.debug(f"Labels per worker={self.labels_per_worker}")
 
     def map(self, socket, data, workers, params, gen_func=None):

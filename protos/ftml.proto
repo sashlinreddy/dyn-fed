@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package ftml;
+
+message Tensor {
+    bytes data = 1;
+    int32 rows = 2;
+    int32 columns = 3;
+    string dtype = 4;
+}
+
+message Setup {
+    int32 n_samples = 1;
+    int32 state = 4;
+    Tensor X = 5;
+    Tensor y = 6;
+}
+
+message Parameter {
+    Tensor W = 1;
+    Tensor b = 2;
+}
+
+message Subscription {
+    repeated Parameter layers = 1;
+}
+
+message SubscriptionResponse {
+    repeated Parameter layers = 1;
+    Tensor most_rep = 2;
+    float loss = 3;
+}
