@@ -152,7 +152,7 @@ class Optimizer():
         """
         raise NotImplementedError("Child must override this method")
 
-    def apply_gradients(self, model):
+    def apply_gradients(self, model, **kwargs):
         """Compute gradients to be overridden by children
         """
         raise NotImplementedError("Child must override this method")
@@ -219,7 +219,7 @@ class SGD(Optimizer):
             model.layers[i].W.grad = (1 / m) * (model.layers[i].x.T @ delta)
             model.layers[i].b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
             
-    def apply_gradients(self, model):
+    def apply_gradients(self, model, **kwargs):
         """Apply gradients to the parameters in each layer
 
         Args:
@@ -239,6 +239,136 @@ class SGD(Optimizer):
 
         # Update gradients
         self.apply_gradients(model)
+
+        return batch_loss
+
+class Adam(Optimizer):
+    """Adam gradient descent optimizer
+
+    Attributes:
+        loss (ftml.Losses): Loss function
+        learning_rate (float): Learning rate
+    """
+    def __init__(self, loss, learning_rate=0.001, **kwargs):
+        super().__init__(loss, learning_rate, **kwargs)
+        self.beta_1 = kwargs.get("beta_1", 0.9)
+        self.beta_2 = kwargs.get("beta_2", 0.999)
+        self.epsilon = kwargs.get("epsilon", 1e-8)
+        self._m_t = None
+        self._v_t = None
+
+    @property
+    def name(self):
+        return "sgd"
+
+    def compute_loss(self, y, y_pred):
+        # Calculate loss between predicted and actual using selected loss function
+        batch_loss = self.loss(y, y_pred, reduce=False)
+
+        if self._role != "master":
+            # Calculate most representative data points. We regard data points that have a 
+            # high loss to be most representative
+            if batch_loss.shape[1] > 1:
+                temp = np.mean(batch_loss, axis=1).data
+                self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
+            else:
+                self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
+            # Calculate worker loss - this is aggregated
+            batch_loss = np.mean(abs(batch_loss))
+
+        return batch_loss
+        
+    def compute_gradients(self, model, y, y_pred):
+        """Compute gradients for each layer of the model and updates gradients for the parameters
+
+        Args:
+            y (fault_tolerant_ml.operators.Tensor): Actual labels
+            y_pred (fault_tolerant_ml.operators.Tensor): Predicted labels
+        """
+        n_layers = len(model.layers)
+        output_layer = model.layers[-1]
+        m = model.layers[0].x.shape[0]
+        # For each output unit, calculate it's error term
+        delta = self.loss.grad(y, y_pred) * output_layer.act_fn.grad(output_layer.z)
+        output_layer.W.grad = (1 / m) * output_layer.x.T @ delta
+        output_layer.b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
+
+        # For hidden units, calculate error term
+        for i in np.arange(n_layers - 2, -1, -1):
+            delta = (delta @ model.layers[i+1].W.T) * model.layers[i].act_fn.grad(model.layers[i].z)
+            model.layers[i].W.grad = (1 / m) * (model.layers[i].x.T @ delta)
+            model.layers[i].b.grad = (1 / m) * np.sum(delta, axis=0, keepdims=True)
+            
+    def apply_gradients(self, model, **kwargs):
+        """Apply gradients to the parameters in each layer
+
+        Args:
+            model (fault_tolerant_ml.Model): Tensor model containing multiple layers
+        """
+        iteration = kwargs.get("iteration")
+        if self._m_t is None:
+            self._m_t = (
+                [
+                    [np.zeros_like(l.W.data), np.zeros_like(l.b.data)]
+                    for l in model.layers
+                ]
+            )
+        if self._v_t is None:
+            self._v_t = (
+                [
+                    [np.zeros_like(l.b.data), np.zeros_like(l.b.data)]
+                    for l in model.layers
+                ]
+            )
+
+        for i, layer in enumerate(model.layers):
+            # Update biased first moment estimate
+            self._m_t[i][0] = (
+                self.beta_1 * self._m_t[i][0] + 
+                (1. - self.beta_1) * layer.W.grad.data
+            )
+            self._m_t[i][1] = (
+                self.beta_1 * self._m_t[i][1] +
+                (1. - self.beta_1) * layer.b.grad.data
+            )
+            # Update biased second raw moment estimate
+            self._v_t[i][0] = (
+                self.beta_2 * self._v_t[i][0] +
+                (1. - self.beta_2) * layer.W.grad.data**2
+            )
+            self._v_t[i][1] = (
+                self.beta_2 * self._v_t[i][1] +
+                (1. - self.beta_2) * layer.b.grad.data**2
+            )
+
+            # Bias correction
+            m_t_corrected_W = self._m_t[i][0] / (1. - self.beta_1**(iteration))
+            m_t_corrected_b = self._m_t[i][1] / (1. - self.beta_1**(iteration))
+            v_t_corrected_W = self._v_t[i][0] / (1. - self.beta_2**(iteration))
+            v_t_corrected_b = self._v_t[i][1] / (1. - self.beta_2**(iteration))
+
+            # Update weights
+            layer.W.data = (
+                layer.W.data - self.learning_rate * m_t_corrected_W / 
+                (np.sqrt(v_t_corrected_W) + self.epsilon)
+            )
+            layer.b.data = (
+                layer.b.data - self.learning_rate * m_t_corrected_b / 
+                (np.sqrt(v_t_corrected_b) + self.epsilon)
+            )
+
+    def minimize(self, model, y, y_pred, **kwargs):
+
+        iteration = kwargs.get("iteration")
+
+        # Compute loss
+        batch_loss = self.compute_loss(y, y_pred)
+
+        # Backprop
+        self.compute_gradients(model, y, y_pred)
+
+        # Update gradients
+        self.apply_gradients(model, iteration=iteration)
 
         return batch_loss
 

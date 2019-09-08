@@ -1,4 +1,4 @@
-"""This file will train multilayer perceptrons
+"""Linear regression example
 """
 
 import logging
@@ -16,7 +16,7 @@ from fault_tolerant_ml.distribute import MasterWorkerStrategy
 from fault_tolerant_ml.lib.io import file_io
 from fault_tolerant_ml.losses import MSELoss
 from fault_tolerant_ml.metrics import accuracy_scorev2, confusion_matrix
-from fault_tolerant_ml.optimizers import SGD
+from fault_tolerant_ml.optimizers import SGD, Adam
 from fault_tolerant_ml.utils import model_utils, setup_logger
 from ft_models import LinearRegression
 
@@ -24,7 +24,7 @@ from ft_models import LinearRegression
 @click.command()
 @click.argument('n_workers', type=int)
 @click.option('--role', '-r', default="worker", type=str)
-@click.option('--verbose', '-v', default=10, type=int)
+@click.option('--verbose', '-v', default="INFO", type=str)
 @click.option('--identity', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
 @click.option('--add', '-a', default=0, type=int)
@@ -119,8 +119,13 @@ def run(n_workers, role, verbose, identity, tmux, add):
             mu_g=opt_cfg['mu_g']
         )
     elif opt_cfg["name"] == "adam":
-        # TODO: Adapt adam optimizer to multiple weights
-        pass
+        optimizer = Adam(
+            loss=loss, 
+            learning_rate=opt_cfg['learning_rate'], 
+            role=role, 
+            n_most_rep=opt_cfg['n_most_rep'], 
+            mu_g=opt_cfg['mu_g']
+        )
 
     # Decide on distribution strategy
     strategy = MasterWorkerStrategy(
