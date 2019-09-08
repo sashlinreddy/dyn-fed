@@ -77,6 +77,10 @@ def run(n_workers, role, verbose, identity, tmux, add):
             os.environ['PROJECT_DIR'],
             executor_cfg['shared_folder']
         )
+        executor_cfg['config_folder'] = os.path.join(
+            os.environ['PROJECT_DIR'], 
+            executor_cfg['config_folder']
+        )
 
     # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)

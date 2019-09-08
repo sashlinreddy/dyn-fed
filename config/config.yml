@@ -13,13 +13,14 @@ optimizer:
 
 executor:
   strategy: "mw"
-  scenario: 4
+  scenario: 7
   remap: 1
   quantize: 0
-  overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
-  comm_period: 10
+  overlap: 0.8 # TODO: Experiment more with overlap and weighted loss
+  comm_period: 20
   aggregate_mode: 2 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
   delta_switch: 0.0004
-  timeout: 15
+  timeout: 30
   send_gradients: 0
   shared_folder: "data/"
+  config_folder: "config/"

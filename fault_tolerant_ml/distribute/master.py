@@ -76,7 +76,7 @@ class Master():
         # Setup logger
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
-        config_dir = "config/"
+        config_dir = self.strategy.config_folder
         self._logger.info(f"Master on ip={self.ip_address}")
 
         ip_filename = "ip_config.json"
