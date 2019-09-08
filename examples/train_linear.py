@@ -6,6 +6,9 @@ import os
 
 import click
 import numpy as np
+# For reproducibility
+# pylint: disable=wrong-import-position
+np.random.seed(42)
 from dotenv import find_dotenv, load_dotenv
 
 from fault_tolerant_ml.data import MNist
@@ -33,10 +36,6 @@ def run(n_workers, role, verbose, identity, tmux, add):
         verbose (int): The logger level as an integer. See more
         in the logging file for different options
     """
-
-    # For reproducibility
-    np.random.seed(42)
-
     if not "SLURM_JOBID" in os.environ:
         load_dotenv(find_dotenv())
 
