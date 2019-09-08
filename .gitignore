@@ -109,7 +109,7 @@ logs/
 .vscode
 
 # data
-ip_config_*.json
+ip_config*.json
 *.conf
 .DS_Store
 
