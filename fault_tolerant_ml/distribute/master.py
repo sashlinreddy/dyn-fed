@@ -76,7 +76,7 @@ class Master():
         # Setup logger
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
-        data_dir = self.strategy.shared_folder
+        config_dir = "config/"
         self._logger.info(f"Master on ip={self.ip_address}")
 
         ip_filename = "ip_config.json"
@@ -85,7 +85,7 @@ class Master():
             ip_filename = f"ip_config_{slurm_job_id}.json"
 
         ip_config = {"ipAddress" : self.ip_address}
-        with open(os.path.join(data_dir, ip_filename), "w") as f:
+        with open(os.path.join(config_dir, ip_filename), "w") as f:
             json.dump(ip_config, f)
 
     @ftml_train_collect

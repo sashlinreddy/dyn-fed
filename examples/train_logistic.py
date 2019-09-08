@@ -46,7 +46,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
     # Load in config to setup model
-    config_path = 'config.yml'
+    config_path = 'config/config.yml'
     if 'PROJECT_DIR' in os.environ:
         config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
         

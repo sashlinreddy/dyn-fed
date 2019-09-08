@@ -68,7 +68,7 @@ class Worker(object):
             slurm_job_id = os.environ["SLURM_JOBID"]
             ip_filename = f"ip_config_{slurm_job_id}.json"
 
-        full_path = os.path.join(self.model.strategy.shared_folder, ip_filename)
+        full_path = os.path.join("config/", ip_filename)
         if os.path.exists(full_path):
             with open(full_path, "r") as f:
                 ip_config = json.load(f)

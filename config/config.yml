@@ -1,10 +1,10 @@
 model:
   n_iterations: 100
-  shuffle: 1
+  shuffle: 0
   batch_size: 32
 
 optimizer:
-  learning_rate: 0.001
+  learning_rate: 0.99
   clip_norm: 0
   clip_val: 0
   mu_g: 0.0
@@ -13,12 +13,12 @@ optimizer:
 
 executor:
   strategy: "mw"
-  scenario: 1
+  scenario: 4
   remap: 1
   quantize: 0
-  overlap: 0.0
+  overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
   comm_period: 10
-  aggregate_mode: 1
+  aggregate_mode: 2 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
   delta_switch: 0.0004
   timeout: 15
   send_gradients: 0
