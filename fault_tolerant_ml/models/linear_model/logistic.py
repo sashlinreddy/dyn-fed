@@ -1,21 +1,39 @@
-import numpy as np
+"""Logistic regression class
+"""
 import logging
 import time
+
+import numpy as np
+
+from fault_tolerant_ml.distribute import Master, Worker
+from fault_tolerant_ml.metrics import accuracy_scorev2
 
 # Local
 from ..base import BaseEstimator
 from .base import LinearClassifierMixin
-from fault_tolerant_ml.metrics import accuracy_scorev2
-from fault_tolerant_ml.distribute import Master, Worker
+
 
 class LogisticRegression(BaseEstimator, LinearClassifierMixin):
+    """Logistic regression class
 
-    def __init__(self, optimizer, strategy, max_iter=300, shuffle=True, verbose=10, encode_name=None):
+    Attributes:
+        max_iter (int): Max no. of iterations
+        shuffle (bool): Whether or not to shuffle dataset
+        iter (int): Current iteration
+        verbose (int): Verbose for logging
+        encode_name (str): Encoded name for logging
+    """
+    def __init__(self, optimizer, strategy, max_iter=300,
+                 shuffle=True, verbose=10, encode_name=None):
         super().__init__(optimizer, strategy, encode_name=encode_name)
         self.max_iter = max_iter
         self.shuffle = shuffle
         self.iter = 0
         self.verbose = verbose
+
+        # Model params
+        self.W: np.ndarray = None
+        self.classes_: np.ndarray = None
 
         self._logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
 
@@ -44,7 +62,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
                 self._worker = Worker(
                     model=self,
                     verbose=self.verbose,
-                    id=self.strategy.identity
+                    identity=self.strategy.identity
                 )
 
                 self._worker.connect()
@@ -57,7 +75,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
         n_classes = len(self.classes_)
 
         # Initialize parameters
-        self.theta = (np.random.randn(n_features, n_classes) * 0.01).astype(np.float32)
+        self.W = (np.random.randn(n_features, n_classes) * 0.01).astype(np.float32)
         
         i = 0
         delta = 1.0
@@ -69,18 +87,21 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             #     X = X[idxs]
             #     y = y[idxs]
                 
-            # Create a copy of theta so we can calculate change in theta
-            theta_p = self.theta.copy()
-            # Get predictions for current theta
+            # Create a copy of W so we can calculate change in W
+            W_p = self.W.copy()
+            # Get predictions for current W
             y_pred = self.predict(X)
             # Calculate and apply gradients
-            self.theta, d_theta, epoch_loss = self.optimizer.minimize(X, y, y_pred, self.theta)
-            # Calculate change in theta
-            delta = np.max(np.abs(theta_p - self.theta))
-            acc = accuracy_scorev2(y, y_pred)
+            self.W, epoch_loss = self.optimizer.minimize(X, y, y_pred, self.W)
+            # Calculate change in W
+            delta = np.max(np.abs(W_p - self.W))
+            acc = accuracy_scorev2(y.data, y_pred.data)
 
             if i % 100 == 0:
-                print(f"Iteration={i}, delta={delta:.3f}, loss={epoch_loss:.3f}, train acc={acc:.3f}")
+                self._logger.info(
+                    f"Iteration={i}, delta={delta:.3f}, "
+                    f"loss={epoch_loss:.3f}, train acc={acc:.3f}"
+                )
 
             i += 1
 
@@ -89,10 +110,10 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
         """
         if self.strategy.role == "master":
             # Master training
-            self._master.train(X)
+            self._master.start(X)
         else:
             # Worker training
-            self._worker.train()
+            self._worker.start()
 
     def fit(self, X=None, y=None):
         """Training for estimating parameters
@@ -103,10 +124,12 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             self._fit_mw(X, y)
         
     def predict_proba(self, X):
-        pass
+        """Returns predicted probabilities
+        """
 
     def predict_log_proba(self, X):
-        pass
+        """Predicts predicted log probabilities
+        """
 
     def plot_metrics(self):
         """Plots metrics

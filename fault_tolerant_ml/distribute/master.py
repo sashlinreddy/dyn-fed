@@ -1,47 +1,52 @@
-"""Contains all master logic for fault tolerant ml. 
+"""Contains all master logic for fault tolerant ml.
 
 Any master devices should run the master logic.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import time
-import zmq.green as zmq
-import numpy as np
-import logging
-import click
-import gevent
-import signal
-import os
-import socket
 import json
+import logging
+import os
+import signal
+import socket
+import time
 
-# Local
-from fault_tolerant_ml.utils import zhelpers
-from fault_tolerant_ml.utils import setup_logger
-from fault_tolerant_ml.metrics import confusion_matrix, accuracy_scorev2
-from fault_tolerant_ml.utils.maths import linspace_quantization
+import gevent
+import numpy as np
+import zmq.green as zmq
+
+from fault_tolerant_ml.distribute import Coordinator, WatchDog
+from fault_tolerant_ml.distribute.states import (COMPLETE, DIST_PARAMS, MAP,
+                                                 REDUCE, REMAP, START)
+from fault_tolerant_ml.distribute.wrappers import (ftml_train,
+                                                   ftml_train_collect,
+                                                   ftml_trainv2)
+from fault_tolerant_ml.metrics import accuracy_scorev2
 from fault_tolerant_ml.tools import TFLogger
-from fault_tolerant_ml.distribute import WatchDog
-from fault_tolerant_ml.distribute.distributor import Distributor
-from fault_tolerant_ml.distribute.wrappers import ftml_train, ftml_train_collect, ftml_trainv2
-from fault_tolerant_ml.distribute.states import *
+# Local
+from fault_tolerant_ml.proto.utils import params_to_string
 
-class Master(object):
+
+class Master():
     """Master class for distributed machine learning system
     """
-    def __init__(self, model, verbose):
+    def __init__(self, model):
         
         # ZMQ variables
         self.ctrl_socket = None
         self.publisher = None
-        self.context   = zmq.Context()
+        self.context = zmq.Context()
 
         self.mapping = {}
 
         self.watch_dog = WatchDog()
-        self.distributor = Distributor()
+        self.coordinator = Coordinator()
+
+        # Define sockets
+        self.pull_socket = None
+        self.ctrl_socket = None
+        self.publisher = None
+        self.poller = None
 
         # Distributed environ variables
         self.state = START
@@ -55,9 +60,11 @@ class Master(object):
 
         # Model variables
         self.n_iterations = int(np.ceil(self.model.max_iter / self.strategy.comm_period))
-        self.learning_rate = self.model.optimizer.learning_rate
-        self.mu_g = self.model.optimizer.mu_g
         self.optimizer = self.model.optimizer
+        self.data = None
+        self.X_train = None
+        self.y_train = None
+
 
         # Tracking variables
         self.times = []
@@ -67,10 +74,10 @@ class Master(object):
             self._tf_logger = TFLogger(logdir)
 
         # Setup logger
-        self.logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
+        self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
-        data_dir = self.strategy.shared_folder
-        self.logger.info(f"Master on ip={self.ip_address}")
+        config_dir = self.strategy.config_folder
+        self._logger.info(f"Master on ip={self.ip_address}")
 
         ip_filename = "ip_config.json"
         if "SLURM_JOBID" in os.environ:
@@ -78,59 +85,79 @@ class Master(object):
             ip_filename = f"ip_config_{slurm_job_id}.json"
 
         ip_config = {"ipAddress" : self.ip_address}
-        with open(os.path.join(data_dir, ip_filename), "w") as f:
+        with open(os.path.join(config_dir, ip_filename), "w") as f:
             json.dump(ip_config, f)
 
     @ftml_train_collect
     def _train_iteration(self, events):
-        theta_p = self.model.theta.copy()
+        W_p = self.model.layers[0].W.copy()
         # Receive updated parameters from workers
-        # d_theta, epoch_loss = self.gather(events, timeout=10)
+        # d_W, epoch_loss = self.gather(events, timeout=10)
         params = {
             "watch_dog": self.watch_dog,
             "strategy": self.strategy,
             "state": self.state,
             "n_samples": self.data.n_samples,
-            "timeout": 10,
+            "timeout": 20,
             "quantize": self.strategy.quantize,
-            "theta": self.model.theta
+            # "W": self.model.layers[0].W
+            "W": self.model.layers[0].W.data,
+            "model": self.model
         }
-        d_theta, epoch_loss = self.distributor.collect(
+        parameters, epoch_loss, state = self.coordinator.collect(
             events=events, 
             socket=self.pull_socket,
-            params=params
+            params=params,
+            aggregate_mode=self.strategy.aggregate_mode
         )
 
-        if self.strategy.send_gradients:
-            # Update the global parameters with weighted error
-            self.model.theta = \
-            self.optimizer.minimize(
-                X=self.X_train, 
-                y=None, 
-                y_pred=None, 
-                theta=self.model.theta, 
-                precomputed_gradients=d_theta
-            )
-        else:
-            self.model.theta = d_theta
+        self.state = state
 
-        y_pred = self.model.predict(self.data.X_test)
-        y_train_pred = self.model.predict(self.data.X_train)
-        train_acc = accuracy_scorev2(self.data.y_train, y_train_pred)
-        test_acc = accuracy_scorev2(self.data.y_test, y_pred)
+        self._logger.debug(f"State after collect = {self.state}")
+        self._logger.debug(f"Coordinator state after collect = {self.coordinator.state}")
+
+        if self.strategy.send_gradients:
+            for i in np.arange(self.model.n_layers):
+                self.model.layers[i].W.grad.data = parameters[i][0]
+                self.model.layers[i].b.grad.data = parameters[i][1]
+            # Update the global parameters with aggregated parameters
+            self.optimizer.apply_gradients(self.model)
+        else:
+            # self.logger.info(f"parameters.dtype={parameters.dtype}")
+            # self.model.layers[0].W.data = parameters
+            # self.logger.info(f"type(self.model.layers[0].W.data)=
+            # {self.model.layers[0].W.data.dtype}")
+            for i in np.arange(self.model.n_layers):
+                self.model.layers[i].W.data = parameters[i][0]
+                self.model.layers[i].b.data = parameters[i][1]
+
+        y_pred = self.model.forward(self.data.X_test)
+        y_train_pred = self.model.forward(self.data.X_train)
+        
+        train_acc = accuracy_scorev2(self.data.y_train.data, y_train_pred.data)
+        test_acc = accuracy_scorev2(self.data.y_test.data, y_pred.data)
 
         if self._tf_logger is not None:
-            self._tf_logger.histogram("theta-master", self.model.theta, self.model.iter, bins=self.n_iterations)
+            self._tf_logger.histogram(
+                "W-master", self.model.layers[0].W.data, 
+                self.model.iter, bins=self.n_iterations
+            )
             self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
             self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
             self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
-            grad_l2_norm = np.linalg.norm(d_theta)
+            grad_l2_norm = np.linalg.norm(parameters)
             self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.model.iter)
 
-        delta = np.max(np.abs(theta_p - self.model.theta))
+        # delta = np.max(np.abs(W_p - self.model.layers[0].W))
+        delta = np.max(np.abs(W_p.data - self.model.layers[0].W.data))
 
-        # self.logger.info(f"iteration = {self.strategy.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
-        self.logger.info(f"iteration = {self.model.iter}, delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%")
+        # self.logger.info(f"iteration = {self.strategy.model.iter}, 
+        # delta = {delta:7.4f}, Loss = {epoch_loss:7.4f}")
+        self._logger.info(
+            f"iteration = {self.model.iter}, delta = {delta:7.4f}, "
+            f"Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, "
+            f"test acc={test_acc*100:7.4f}%"
+        )
 
         return delta
         
@@ -151,7 +178,7 @@ class Master(object):
     def _training_loop(self):
         """Not being used at the moment
         """
-        delta = 1.0
+        # delta = 1.0
         start = time.time()
 
         while self.model.iter < self.n_iterations:
@@ -160,7 +187,7 @@ class Master(object):
             events = dict(self.poller.poll())
 
             # If we have more than 1 worker
-            if len(self.watch_dog.states) > 0:
+            if len(self.watch_dog.states) > 0: # pylint: disable=len-as-condition
                 # Map tasks
                 self.map()
 
@@ -179,23 +206,123 @@ class Master(object):
         self.done()
         self.state = COMPLETE
         end = time.time()
-        self.logger.info("Time taken for %d iterations is %7.6fs" % (self.n_iterations, end-start))
+        self._logger.info("Time taken for %d iterations is %7.6fs", self.n_iterations, end-start)
+
+    def _remap(self):
+        """Handle remapping of data
+        """
+        self._logger.debug(f"Redistributing data")
+        # Remap = 1 is remap only points of dead worker
+        if self.strategy.remap == 1:
+            
+            # Remap only data for workers that went down in previous iteration
+            # Get indices for dead workers
+            if self.mapping:
+                dead_worker = [
+                    w for w in self.watch_dog.states 
+                    if not w.mr_idxs_used and not w.state
+                    ]
+                if dead_worker:
+                    dead_worker = dead_worker[0]
+                else:
+                    return
+
+                remap_idxs = np.hstack([
+                    [w.mapping.get(i) for i in w.most_representative]
+                    for w in self.watch_dog.states
+                    if not w.mr_idxs_used and not w.state
+                ])
+                worker_ids_down = [
+                    w.identity for w in self.watch_dog.states
+                    if not w.mr_idxs_used and not w.state
+                ]
+                self._logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
+                self._logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
+                
+                self._logger.debug(f"Remap idxs={remap_idxs.shape}")
+            else:
+                remap_idxs = np.hstack([
+                    w.most_representative for w in self.watch_dog.states
+                    if not w.mr_idxs_used and not w.state
+                ])
+
+            n_samples = remap_idxs.shape[0]
+            new_range = np.arange(n_samples)
+
+            self._logger.debug(f"N samples = {n_samples}")
+
+            self.mapping = dict(zip(new_range, remap_idxs))
+
+            self._logger.debug(f"Mapping={self.mapping}")
+
+            X_train, y_train = self.data.X_train[remap_idxs], self.data.y_train[remap_idxs]
+
+            for w in self.watch_dog.states:
+                if not w.mr_idxs_used:
+                    w.mr_idxs_used = True
+
+            data = (X_train, y_train)
+            params = self.set_params()
+            params["n_samples"] = n_samples
+
+        else:
+            # Stack all indices from current dataset that we will use to remap
+            global_idxs = np.hstack([
+                w.idxs for w in self.watch_dog.states
+                if (not w.mr_idxs_used) and (not w.idxs is None)
+            ])
+            new_range = np.arange(global_idxs.shape[0])
+            self._logger.debug(f"new data idxs shape={global_idxs.shape}")
+            self._logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+            
+            # If we have had a failure before we need to just keep track of the global indices
+            if self.mapping:
+                # The new dataset will be smaller than the original dataset. 
+                # We still would like to only use indices of the original dataset 
+                # to simplify things. This recalculates those indices
+                global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
+
+            self._logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
+            self._logger.debug("Updating mapping")
+            self.mapping = dict(zip(new_range, global_idxs))
+
+            self.X_train, self.y_train = self.data.update_xy(global_idxs)
+
+            for w in self.watch_dog.states:
+                if not w.mr_idxs_used:
+                    w.mr_idxs_used = True
+
+            data = (self.X_train, self.y_train)
+            params = self.set_params()
+
+        self.coordinator.map(
+            socket=self.ctrl_socket, 
+            data=data, 
+            workers=self.watch_dog.states, 
+            params=params, 
+            gen_func=self.data.next_batch
+        )
+
+        self.state = DIST_PARAMS
+
 
     def connect(self):
         """Connects to necessary sockets
         """
         # Prepare our context and publisher
-        self.publisher = self.context.socket(zmq.PUB)
+        self.publisher = self.context.socket(zmq.PUB) # pylint: disable=no-member
         self.publisher.bind("tcp://*:5563")
 
-        self.pull_socket = self.context.socket(zmq.PULL)
+        self.pull_socket = self.context.socket(zmq.PULL) # pylint: disable=no-member
         self.pull_socket.bind("tcp://*:5562")
 
-        self.ctrl_socket = self.context.socket(zmq.ROUTER)
-        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, 'MASTER')
+        self.ctrl_socket = self.context.socket(zmq.ROUTER) # pylint: disable=no-member
+        self.ctrl_socket.setsockopt_string(zmq.IDENTITY, 'MASTER') # pylint: disable=no-member
         self.ctrl_socket.bind("tcp://*:5565")
     
     def setup_poller(self):
+        """Setup poller
+        """
         poller = zmq.Poller()
         poller.register(self.pull_socket, zmq.POLLIN | zmq.POLLERR)
         poller.register(self.ctrl_socket, zmq.POLLIN | zmq.POLLERR)
@@ -204,12 +331,16 @@ class Master(object):
         return poller
 
     def send_heartbeat(self):
+        """Send heartbeat - not using this at the moment
+        """
         for worker in self.watch_dog.states:
-            self.logger.debug('PING')
+            self._logger.debug('PING')
             worker.state = False
             self.ctrl_socket.send_multipart([worker.identity, b'HEARTBEAT'])
 
     def heartbeat_loop(self):
+        """Heartbeat thread
+        """
         while self.state != COMPLETE:
             self.send_heartbeat()
             gevent.sleep(0.5)
@@ -223,12 +354,14 @@ class Master(object):
         self.watch_dog.add_worker(worker_id)
 
     def detect_workers(self):
-        """Detects workers by polling whoever has sent through the CONNECT command along with their worker ids
+        """Detects workers by polling whoever has sent through the
+        CONNECT command along with their worker ids
         """
         timeout = self.strategy.worker_timeout # 10 second time out
         start = time.time()
+        n_workers_found = 0
 
-        while True:
+        while n_workers_found < self.strategy.n_workers:
             events = dict(self.poller.poll())
 
             if (self.pull_socket in events) and (events.get(self.pull_socket) == zmq.POLLIN):
@@ -236,21 +369,19 @@ class Master(object):
 
                 if command == b"CONNECT":
                     self.register_workers()
-                    # start = time.time()
+                    n_workers_found = len(self.watch_dog.states)
             else:
         
                 end = time.time()
-                # if round(end - start, 2) % 1 == 0:
-                #     self.logger.debug(end-start)
                 if end-start > timeout:
-                    self.logger.info(f"{timeout} second timeout - no more workers found")
+                    self._logger.info(f"{timeout} second timeout - no more workers found")
                     break
 
-        self.logger.info(f"Signed up all {len(self.watch_dog.states)} workers")
-        self.logger.debug(f"Signed up all workers = {self.watch_dog.states}")
+        self._logger.info(f"Signed up all {len(self.watch_dog.states)} workers")
+        self._logger.debug(f"Signed up all workers = {self.watch_dog.states}")
 
     def set_params(self):
-        """Prepares parameters to be sent by the distributor
+        """Prepares parameters to be sent by the coordinator
         """
         params = {}
         params["state"] = self.state
@@ -267,8 +398,7 @@ class Master(object):
             params["n_features"] = self.data.n_features
             params["n_classes"] = self.data.n_classes
             params["n_most_rep"] = self.optimizer.n_most_rep
-            params["learning_rate"] = self.learning_rate
-            params["mu_g"] = self.mu_g
+            params["overlap"] = self.strategy.overlap
             params["send_gradients"] = self.strategy.send_gradients
             params["comm_period"] = self.strategy.comm_period
             params["mapping"] = self.mapping
@@ -277,8 +407,8 @@ class Master(object):
     def map(self):
         """Starts new task depending on the state of the system.
 
-        Possible states range from mapping of data, remapping of data (if worker dies or another worker is added),
-        or distributing parameters.
+        Possible states range from mapping of data, remapping of data 
+        (if worker dies or another worker is added), or distributing parameters.
         """
         if self.state == START:
 
@@ -288,7 +418,7 @@ class Master(object):
             data = (self.X_train, self.y_train)
             params = self.set_params()
 
-            self.distributor.map(
+            self.coordinator.map(
                 socket=self.ctrl_socket, 
                 data=data, 
                 workers=self.watch_dog.states, 
@@ -307,101 +437,28 @@ class Master(object):
 
             #     worker_ids = list(self.watch_dog.states.keys())
             #     fname = os.path.join(figdir, f"class-balance.png")
-            #     class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items()]
+            #     class_bal = [v[1] for (k, v) in self.coordinator.labels_per_worker.items()]
             #     class_names = self.data.class_names
 
-            #     class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
+            #     class_balance = ClassBalance(labels=worker_ids, legend=class_names, 
+            #     fname=fname, stacked=True, percentage=True)
             #     class_balance.fit(y=class_bal)
             #     class_balance.poof()
 
         if self.state == REMAP:
-
-            self.logger.debug(f"Redistributing data")
-            if self.strategy.remap == 1:
-                
-                # Remap only data for workers that went down in previous iteration
-                # Get indices for dead workers
-                if self.mapping:
-                    dead_worker = [w for w in self.watch_dog.states if not w.mr_idxs_used and not w.state]
-                    if dead_worker:
-                        dead_worker = dead_worker[0]
-                    else:
-                        return
-
-                    remap_idxs = np.hstack([[w.mapping.get(i) for i in w.most_representative] for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
-                    worker_ids_down = [w.identity for w in self.watch_dog.states if not w.mr_idxs_used and not w.state]
-                    self.logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
-                    self.logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
-                    
-                    self.logger.debug(f"Remap idxs={remap_idxs.shape}")
-                else:
-                    remap_idxs = np.hstack([w.most_representative for w in self.watch_dog.states if not w.mr_idxs_used and not w.state])
-
-                n_samples = remap_idxs.shape[0]
-                new_range = np.arange(n_samples)
-
-                self.logger.debug(f"N samples = {n_samples}")
-
-                self.mapping = dict(zip(new_range, remap_idxs))
-
-                self.logger.debug(f"Mapping={self.mapping}")
-
-                X_train, y_train = self.data.X_train[remap_idxs], self.data.y_train[remap_idxs]
-
-                for w in self.watch_dog.states:
-                    if not w.mr_idxs_used:
-                        w.mr_idxs_used = True
-
-                data =(X_train, y_train)
-                params = self.set_params()
-                params["n_samples"] = n_samples
-
-            else:
-                # Stack all indices from current dataset that we will use to remap
-                global_idxs = np.hstack([w.idxs for w in self.watch_dog.states if (not w.mr_idxs_used) and (not w.idxs is None)])
-                new_range = np.arange(global_idxs.shape[0])
-                self.logger.debug(f"new data idxs shape={global_idxs.shape}")
-
-                self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
-                
-                # If we have had a failure before we need to just keep track of the global indices
-                if self.mapping:
-                    # The new dataset will be smaller than the original dataset. We still would like to only 
-                    # use indices of the original dataset to simplify things. This recalculates those indices
-                    global_idxs = np.array([self.mapping.get(i) for i in global_idxs])
-
-                self.logger.debug(f"Min={global_idxs.min()}, Max={global_idxs.max()}")
-                self.logger.debug("Updating mapping")
-                self.mapping = dict(zip(new_range, global_idxs))
-
-                self.X_train, self.y_train = self.data.update_xy(global_idxs)
-
-                for w in self.watch_dog.states:
-                    if not w.mr_idxs_used:
-                        w.mr_idxs_used = True
-
-                data = (self.X_train, self.y_train)
-                params = self.set_params()
-
-            self.distributor.map(
-                    socket=self.ctrl_socket, 
-                    data=data, 
-                    workers=self.watch_dog.states, 
-                    params=params, 
-                    gen_func=self.data.next_batch
-                )
-
-            self.state = DIST_PARAMS
-
+            self._remap()
+            
         if self.state == DIST_PARAMS:
             # self.send_heartbeat()
             self.times.append(time.time())
 
-            data = self.model.theta if self.strategy.quantize != 1 else linspace_quantization(self.model.theta, interval=100)
+            # data = self.model.layers[0].W.data if self.strategy.quantize != 1 
+            # else linspace_quantization(self.model.layers[0].W.data, interval=200)
+            data = [params_to_string(self.model.layers)]
             workers = None
             params = self.set_params()
 
-            self.distributor.map(
+            self.coordinator.map(
                 socket=self.publisher, 
                 data=data, 
                 workers=workers, 
@@ -411,76 +468,36 @@ class Master(object):
             self.state = REDUCE
 
     def print_metrics(self):
-        
+        """Print metrics relating to communication times
+        """
         # Print avg loop iteration time
         diff = np.diff(self.times)
-        self.logger.debug(f"Times={diff.mean():7.6f}s")
-
-        # Print confusion matrix
-        y_pred = self.model.predict(self.data.X_test)
-        conf_matrix = confusion_matrix(self.data.y_test, y_pred)
-        self.logger.info(f"Confusion matrix=\n{conf_matrix}")
-
-        # Accuracy
-        acc = accuracy_scorev2(self.data.y_test, y_pred)
-        self.logger.info(f"Accuracy={acc * 100:7.4f}%")
-
-    def plot_metrics(self):
-
-        if "FIGDIR" in os.environ:
-
-            import pandas as pd
-            from fault_tolerant_ml.viz.target import ClassBalance
-
-            figdir = os.path.join(os.environ["FIGDIR"], self.model.encode_name)
-            if not os.path.exists(figdir):
-                os.mkdir(figdir)
-
-            try:
-                self.logger.debug("Saving class balances distribution plot...")
-                worker_ids = [s.identity.decode() for s in self.watch_dog.states if s.state]
-                fname = os.path.join(figdir, f"mnist-class-balance.png")
-                class_bal = [v[1] for (k, v) in self.distributor.labels_per_worker.items() if k.identity.decode() in worker_ids]
-                class_names = self.data.class_names
-
-                class_balance = ClassBalance(labels=worker_ids, legend=class_names, fname=fname, stacked=True, percentage=True)
-                class_balance.fit(y=class_bal)
-                class_balance.poof()
-
-                fig = class_balance.fig
-
-                if self._tf_logger is not None:
-                    self._tf_logger.images("class-bal-master", [fig], self.model.iter)
-            except Exception as e:
-                self.logger.exception(e)
+        self._logger.debug(f"Times={diff.mean():7.6f}s")
 
     def main_loop(self):
         """Main loop for training.
 
-        First detects workers who are willing to do work. Then distributes the data accordingly. Then we perform 
-        gradient descent iteratively. We parallelize the gradient calculation and calculate a weighted average
-        gradient matrix. This weighted average is calculated as the number of samples that a worker received as a 
-        fraction of the total number of samples in the entire dataset.
-        """
-        # For reproducibility
-        np.random.seed(42)
-        
-        self.logger.info(f"Initialized dummy data of size {self.data}")
-
-        self.model.theta = \
-        np.random.randn(self.data.n_features, self.data.n_classes).astype(self.data.X_train.dtype) * 0.01
-        self.logger.debug(f"Init theta={self.model.theta}")
+        First detects workers who are willing to do work. Then distributes
+        the data accordingly. Then we perform gradient descent iteratively. 
+        We parallelize the gradient calculation and calculate a weighted average
+        gradient matrix. This weighted average is calculated as the number of
+        samples that a worker received as a fraction of the total number of
+        samples in the entire dataset.
+        """        
+        self._logger.info(f"Initialized dummy data of size {self.data}")
+        self._logger.debug(f"Init W={self.model.layers[0].W}")
         
         self.poller = self.setup_poller()
 
         # self.training_loop()
-        self._train()
+        self._train() # pylint: disable=no-value-for-parameter
         # self.train_iter()
 
         self.print_metrics()
         
-    def train(self, data):
-        """Starts work of master. First connects to workers and then performs machine learning training
+    def start(self, data):
+        """Starts work of master. First connects to workers and then performs
+        machine learning training
         """
         self.data = data
         self.X_train, self.y_train = self.data.X_train, self.data.y_train

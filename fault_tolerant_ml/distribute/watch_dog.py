@@ -1,20 +1,30 @@
+"""Watch dog for workers joining and leaving
+"""
 import logging
 
 class WorkerState(object):
     """Keeps track of workers state for multiple different things.
     
-    Has a unique identifier, the state (whether or not the worker is alive), their most representative data points for when they die, the lower and upper bounds for the indices they have, their data indices, the number of samples, and the mapping from the new data point indices to the original data point indices.
+    Has a unique identifier, the state (whether or not the worker is alive),
+    their most representative data points for when they die, the lower and upper
+    bounds for the indices they have, their data indices, the number of samples,
+    and the mapping from the new data point indices to the original data point
+    indices.
     
     Attributes:
         identity (byte string): Unique identifier of the worker
         state (bool): Whether or not the worker is alive
-        most_representative (numpy.ndarray): A vector of the indices of the most                representative data points
+        most_representative (numpy.ndarray): A vector of the indices of the
+        most representative data points
         lower_bound (int): The lower bound data index the worker contains
         upper_bound (int): The upper bound data index the worker contains
         idxs (numpy.ndarray): The indices the worker contains
         n_samples (int): The number of samples the worker has
-        mr_idxs_used (bool): Whether or not a worker's most representative indices have         already been distributed. This applies when to only workers that are dead
-        mapping (dict): A mapping from the new data point indices to the original data          indices. This will be the same for workers that haven't died.
+        mr_idxs_used (bool): Whether or not a worker's most representative
+        indices have already been distributed. This applies when to only workers
+        that are dead
+        mapping (dict): A mapping from the new data point indices to the original
+        data indices. This will be the same for workers that haven't died.
     """
     def __init__(self, identity):
         self.identity = identity
@@ -58,7 +68,9 @@ class WorkerStates(object):
         return rep
 
     def keys(self):
-        return [s.decode() for s in self._states.keys()]
+        """Returns worker state keys
+        """
+        return [s.decode() for s in self._states]
 
     def add(self, worker):
         """Add worker state to dictionary
@@ -69,6 +81,8 @@ class WorkerStates(object):
         self._states[worker] = WorkerState(worker)
 
     def update_state(self, worker, state):
+        """Updates worker state
+        """
         self._states[worker] = state
 
 class WatchDog(object):
@@ -85,6 +99,8 @@ class WatchDog(object):
 
     @property
     def states(self):
+        """Returns worker states
+        """
         return self._worker_states
 
     @property
@@ -99,6 +115,8 @@ class WatchDog(object):
 
     @property
     def active_workers(self):
+        """Returns activate workers
+        """
         return [w.identity for w in self.states if w.state]
 
     def add_worker(self, worker):
@@ -111,9 +129,7 @@ class WatchDog(object):
             self.logger.info(f"Worker Registered: {worker}")
             self.states.add(worker)
         elif not self.states()[worker].state:
+            self.logger.info(f"Worker {worker} alive again")
             self.states[worker].state = True
         else:
             self.logger.debug("Worker asking for work again?")
-
-
-    

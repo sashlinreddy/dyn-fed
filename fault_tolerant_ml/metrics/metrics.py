@@ -30,7 +30,7 @@ def get_key(key_value, targets):
         if targets[key] == key_value:
             return key
 
-def test_hypothesis(X, y, theta):
+def test_hypothesis(X, y, W):
     """Tests the learned hypothesis.
     
     This function tests the learned hypothesis, and produces
@@ -41,19 +41,19 @@ def test_hypothesis(X, y, theta):
     Args:
         X (numpy.ndarray): Feature matrix
         y (numpy.ndarray): Label matrix
-        theta (numpy.ndarray): dxc matrix where d is the number of features and c is the        number of classes
+        W (numpy.ndarray): dxc matrix where d is the number of features and c is the        number of classes
 
     Returns:
         confusion_matrix (numpy.ndarray): Confusion matrix of learned hypothesis
     """
-    h = hyp.log_hypothesis(X, theta)
+    h = hyp.log_hypothesis(X, W)
 
     binary_classification = False
-    if theta.shape[1] == 1:
+    if W.shape[1] == 1:
         binary_classification = True
 
     if not binary_classification:
-        num_features, num_classes = theta.shape
+        num_features, num_classes = W.shape
         confusion_matrix = np.zeros((num_classes, num_classes), dtype=int)
 
         h_class_index = np.argmax(h,axis=1)
@@ -72,8 +72,8 @@ def test_hypothesis(X, y, theta):
 
     return confusion_matrix
 
-def accuracy(X, y, theta, hypothesis):
-    y_pred = hypothesis(X, theta)
+def accuracy(X, y, W, hypothesis):
+    y_pred = hypothesis(X, W)
     y_pred[y_pred>0.5] = 1
     y_pred[y_pred<=0.5] = 0
     return np.sum(y_pred==y) / y.shape[0]

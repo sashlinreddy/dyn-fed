@@ -1,8 +1,9 @@
+"""General utility functions such as a logger
+"""
 import sys
 import logging
 import pprint
 import os
-import shutil as sh
 
 pp = pprint.PrettyPrinter()
 
@@ -50,7 +51,7 @@ def log_config(msg):
     pp.pprint(f"{msg}")
     log("-" * 25 + "CONFIG" + "-" * 25 + "\n")
 
-def setup_logger(filename='logfile.log', level=10, console_logging=True):
+def setup_logger(filename='logfile.log', level="INFO", console_logging=True):
     """
     Setups logger
 
@@ -82,8 +83,10 @@ def setup_logger(filename='logfile.log', level=10, console_logging=True):
     # Setting level
     logger.setLevel(level)
 
-    formatter = logging.Formatter('%(asctime)s - %(name)s.%(funcName)s() - %(levelname)s - %(message)s',
-                                  "%Y-%m-%d %H:%M:%S")
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s.%(funcName)s() - %(levelname)s - %(message)s',
+        "%Y-%m-%d %H:%M:%S"
+    )
 
     # FileHandler
     fh = logging.FileHandler(path, mode='w')
@@ -101,6 +104,8 @@ def setup_logger(filename='logfile.log', level=10, console_logging=True):
     return logger
 
 def shut_down_logger(logger):
+    """Shuts down logger
+    """
     logger.handlers = []
     logging.shutdown()
 
@@ -123,7 +128,7 @@ def convert_to_human_bytes(b):
     tb = float(kb ** 4) # 1,099,511,627,776
 
     if b < kb:
-        return '{0} {1}'.format(b,'Bytes' if 0 == b > 1 else 'Byte')
+        return '{0} {1}'.format(b, 'Bytes' if 0 == b > 1 else 'Byte')
     elif kb <= b < mb:
         return '{0:.2f} KB'.format(b/kb)
     elif mb <= b < gb:

@@ -24,7 +24,7 @@ class ftml_train(ftml_wrapper):
                 # Detect all workers by polling by whoevers sending their worker ids
                 self.obj.detect_workers()
                 if not self.obj.watch_dog.states:
-                    self.obj.logger.info("No workers found")
+                    self.obj._logger.info("No workers found")
                     raise KeyboardInterrupt
 
                 self.decorated(self.obj)
@@ -32,12 +32,12 @@ class ftml_train(ftml_wrapper):
             except KeyboardInterrupt as e:
                 pass
             except zmq.ZMQError as zmq_err:
-                self.obj.logger.error(zmq_err)
+                self.obj._logger.error(zmq_err)
                 self.obj.done()
             except Exception as e:
-                self.obj.logger.exception(e)
+                self.obj._logger.exception(e)
             finally:
-                self.obj.logger.info("Exiting peacefully. Cleaning up...")
+                self.obj._logger.info("Exiting peacefully. Cleaning up...")
 
 class ftml_trainv2(ftml_wrapper):
 
@@ -47,7 +47,7 @@ class ftml_trainv2(ftml_wrapper):
             # Detect all workers by polling by whoevers sending their worker ids
             self.obj.detect_workers()
             if not self.obj.watch_dog.states:
-                self.obj.logger.info("No workers found")
+                self.obj._logger.info("No workers found")
                 raise KeyboardInterrupt
             # self.obj.model.iter = 0
             # i = 0
@@ -73,17 +73,17 @@ class ftml_trainv2(ftml_wrapper):
             self.obj.done()
             self.obj.state = COMPLETE
             end = time.time()
-            self.obj.logger.info("Time taken for %d iterations is %7.6fs" % (self.obj.n_iterations, end-start))
+            self.obj._logger.info("Time taken for %d iterations is %7.6fs" % (self.obj.n_iterations, end-start))
 
         except KeyboardInterrupt as e:
             pass
         except zmq.ZMQError as zmq_err:
-            self.obj.logger.error(zmq_err)
+            self.obj._logger.error(zmq_err)
             self.obj.done()
         except Exception as e:
-            self.obj.logger.exception(e)
+            self.obj._logger.exception(e)
         finally:
-            self.obj.logger.info("Exiting peacefully. Cleaning up...")
+            self.obj._logger.info("Exiting peacefully. Cleaning up...")
 
 class ftml_train_collect(ftml_wrapper):
 
@@ -93,7 +93,7 @@ class ftml_train_collect(ftml_wrapper):
         if (self.obj.ctrl_socket in events) and (events.get(self.obj.ctrl_socket) == zmq.POLLIN):
             address, msg = self.obj.ctrl_socket.recv_multipart()
             self.obj.watch_dog.states[address].state = True
-            self.obj.logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
+            self.obj._logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
 
         if (self.obj.pull_socket in events) and (events.get(self.obj.pull_socket) == zmq.POLLIN):
             # Don't use the results if they've already been counted
@@ -113,4 +113,4 @@ class ftml_train_collect(ftml_wrapper):
                 if delta < self.obj.strategy.delta_switch and self.obj.strategy.comm_period > 1 and not self.obj.delay_change:
                     self.obj.delay_change = True
                     self.obj.n_iterations = self.obj.model.iter + (self.obj.n_iterations - self.obj.model.iter) * self.obj.strategy.comm_period
-                    self.obj.logger.debug(f"Iterations now = {self.obj.n_iterations}")
+                    self.obj._logger.debug(f"Iterations now = {self.obj.n_iterations}")

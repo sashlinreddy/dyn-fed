@@ -1,20 +1,33 @@
-from .base_model import Dataset
-import pandas as pd
+"""Occupancy dataset
+"""
+from __future__ import absolute_import, print_function
+
 import numpy as np
+import pandas as pd
 from imblearn.over_sampling import SMOTE
-from sklearn import datasets
 
 from fault_tolerant_ml.preprocessing import preprocessor as pre
-class OccupancyData(Dataset):
 
+from .base import Dataset
+
+
+class OccupancyData(Dataset):
+    """Occupancy dataset
+    """
     def __init__(self, filepath, n_stacks=1):
         super().__init__(filepath)
         self.n_stacks = n_stacks
-        self.target_names = {'occupied'   :   1,
-                        'unoccupied' :   0}
+        self.target_names = {
+            'occupied': 1,
+            'unoccupied': 0
+        }
 
-        self.feature_names = ["Temperature","Humidity","Light","CO2","HumidityRatio"]
-
+        self.feature_names = [
+            "Temperature", "Humidity", "Light", "CO2", "HumidityRatio"
+        ]
+        self.n_samples: int = 0
+        self.n_features: int = 0
+        self.n_classes: int = 0
         self.raw_data = self.read_data()
         self.X, self.y = self.prepare_data()
 
@@ -22,11 +35,13 @@ class OccupancyData(Dataset):
         return f'<{self.__class__.__name__} X={self.X.shape}, y={self.y.shape}>'
 
     def read_data(self):
+        """Reads dataset from disk
+        """
         return pd.read_csv(self.filepath, delimiter=',')
 
     def prepare_data(self):
-
-        X = self.raw_data[["Temperature","Humidity","Light","CO2","HumidityRatio"]].values
+        features = ["Temperature", "Humidity", "Light", "CO2", "HumidityRatio"]
+        X = self.raw_data[features].values
         y = self.raw_data[["Occupancy"]].values
 
         sm = SMOTE(random_state=42)
@@ -40,17 +55,20 @@ class OccupancyData(Dataset):
         return X_res, y_res
 
     def update_xy(self, idxs):
+        """Update xy given new indices
+        """
         X_train = self.X_train[idxs]
         y_train = self.y_train[idxs]
         self.n_samples = X_train.shape[0]
         return X_train, y_train
 
     def transform(self):
-
+        """Transforms dataset and prepares it
+        """
         # Train test split
         data = self.do_split(self.X, self.y)
         # Normalize data
-        norm_params = pre.normalize_datasets(data)
+        _ = pre.normalize_datasets(data)
 
         self.X_train = data["training"]["features"]
         self.y_train = data["training"]["labels"]
