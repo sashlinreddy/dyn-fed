@@ -1,13 +1,14 @@
-import numpy as np
-
-# Local
-from ..base import BaseEstimator, ClassifierMixin
+"""Base class for estimators
+"""
 from fault_tolerant_ml.utils import maths
+from ..base import BaseEstimator, ClassifierMixin
+
 
 class LinearModel(BaseEstimator):
     """Base class for Linear Models
     """
     def __init__(self):
+        super().__init__(optimizer=None)
         self.W = None
 
     def _hypothesis(self, X):
@@ -15,23 +16,29 @@ class LinearModel(BaseEstimator):
         return X @ self.W
 
     def fit(self, X, y):
+        """Fit data and train
+        """
         raise NotImplementedError("Child must override")
 
     def predict(self, X):
+        """Predict labels for given dataset
+        """
         return self._hypothesis(X)
 
 class LinearRegression(LinearModel):
-
+    """Linear Regression
+    """
     def __init__(self):
-        pass
+        super(LinearRegression).__init__()
 
     def fit(self, X, y):
         pass
 
 class LinearClassifierMixin(ClassifierMixin):
-
+    """LinearClassiferMixin
+    """
     def __init__(self):
-        pass
+        super(LinearClassifierMixin).__init__()
 
     def _hypothesis(self, X):
         # s = np.dot(X, self.W)
@@ -41,6 +48,8 @@ class LinearClassifierMixin(ClassifierMixin):
         return maths.sigmoid(s)
 
     def predict(self, X):
+        """Predict labels given dataset X
+        """
         scores = self._hypothesis(X)
         # labels = np.argmax(scores, axis=1)
         return scores

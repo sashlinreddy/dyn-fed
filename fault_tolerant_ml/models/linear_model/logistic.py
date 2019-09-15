@@ -47,8 +47,7 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             if self.strategy.role == "master":
                 # Setup master
                 self._master = Master(
-                    model=self,
-                    verbose=self.verbose,
+                    model=self
                 )
 
                 self._logger.info("Connecting master sockets")
@@ -130,9 +129,3 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
     def predict_log_proba(self, X):
         """Predicts predicted log probabilities
         """
-
-    def plot_metrics(self):
-        """Plots metrics
-        """
-        if self.strategy.name == "master_worker":
-            self._master.plot_metrics()
