@@ -1,10 +1,21 @@
+"""Wrappers for distribute
+"""
+import logging
 import time
-import zmq.green as zmq
-from fault_tolerant_ml.distribute.states import *
-class ftml_wrapper(object):
 
+import zmq.green as zmq
+
+from fault_tolerant_ml.distribute.states import (COMPLETE, DIST_PARAMS, MAP,
+                                                 REMAP)
+
+logger = logging.getLogger("ftml.distribute.wrappers")
+class ftml_wrapper():
+    """Base class for ftml wrappers
+    """
     def __init__(self, decorated):
         self.decorated = decorated
+        self.cls = None
+        self.obj = None
 
     def __get__(self, instance, owner):
         self.cls = owner
@@ -17,37 +28,39 @@ class ftml_wrapper(object):
 
 
 class ftml_train(ftml_wrapper):
-
-        def __call__(self, *args, **kwargs):
-
-            try:
-                # Detect all workers by polling by whoevers sending their worker ids
-                self.obj.detect_workers()
-                if not self.obj.watch_dog.states:
-                    self.obj._logger.info("No workers found")
-                    raise KeyboardInterrupt
-
-                self.decorated(self.obj)
-        
-            except KeyboardInterrupt as e:
-                pass
-            except zmq.ZMQError as zmq_err:
-                self.obj._logger.error(zmq_err)
-                self.obj.done()
-            except Exception as e:
-                self.obj._logger.exception(e)
-            finally:
-                self.obj._logger.info("Exiting peacefully. Cleaning up...")
-
-class ftml_trainv2(ftml_wrapper):
-
+    """Distributed training wrapper
+    """
     def __call__(self, *args, **kwargs):
 
         try:
             # Detect all workers by polling by whoevers sending their worker ids
             self.obj.detect_workers()
             if not self.obj.watch_dog.states:
-                self.obj._logger.info("No workers found")
+                logger.info("No workers found")
+                raise KeyboardInterrupt
+
+            self.decorated(self.obj)
+    
+        except KeyboardInterrupt as e:
+            pass
+        except zmq.ZMQError as zmq_err:
+            logger.error(zmq_err)
+            self.obj.done()
+        except Exception as e:
+            logger.exception(e)
+        finally:
+            logger.info("Exiting peacefully. Cleaning up...")
+
+class ftml_trainv2(ftml_wrapper):
+    """Distributed training wrapper version 2
+    """
+    def __call__(self, *args, **kwargs):
+
+        try:
+            # Detect all workers by polling by whoevers sending their worker ids
+            self.obj.detect_workers()
+            if not self.obj.watch_dog.states:
+                logger.info("No workers found")
                 raise KeyboardInterrupt
             # self.obj.model.iter = 0
             # i = 0
@@ -59,10 +72,11 @@ class ftml_trainv2(ftml_wrapper):
 
                 events = dict(self.obj.poller.poll())
 
-                if len(self.obj.watch_dog.states) > 0:
+                if self.obj.watch_dog.states:
                     self.decorated(self.obj, events)
                 else:
-                    if (self.obj.pull_socket in events) and (events.get(self.obj.pull_socket) == zmq.POLLIN):
+                    if (self.obj.pull_socket in events) and \
+                        (events.get(self.obj.pull_socket) == zmq.POLLIN):
                         # Don't use the results if they've already been counted
                         command = self.obj.pull_socket.recv(flags=zmq.SNDMORE)
 
@@ -73,27 +87,32 @@ class ftml_trainv2(ftml_wrapper):
             self.obj.done()
             self.obj.state = COMPLETE
             end = time.time()
-            self.obj._logger.info("Time taken for %d iterations is %7.6fs" % (self.obj.n_iterations, end-start))
+            logger.info(
+                "Time taken for %d iterations is %7.6fs",
+                self.obj.n_iterations,
+                end-start
+            )
 
         except KeyboardInterrupt as e:
             pass
         except zmq.ZMQError as zmq_err:
-            self.obj._logger.error(zmq_err)
+            logger.error(zmq_err)
             self.obj.done()
         except Exception as e:
-            self.obj._logger.exception(e)
+            logger.exception(e)
         finally:
-            self.obj._logger.info("Exiting peacefully. Cleaning up...")
+            logger.info("Exiting peacefully. Cleaning up...")
 
 class ftml_train_collect(ftml_wrapper):
-
+    """Collect wrapper for master
+    """
     def __call__(self, *args, **kwargs):
         events = args[0]
         # Check heartbeat
         if (self.obj.ctrl_socket in events) and (events.get(self.obj.ctrl_socket) == zmq.POLLIN):
             address, msg = self.obj.ctrl_socket.recv_multipart()
             self.obj.watch_dog.states[address].state = True
-            self.obj._logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
+            logger.debug(f"Address={address.decode()}, Msg={msg.decode()}")
 
         if (self.obj.pull_socket in events) and (events.get(self.obj.pull_socket) == zmq.POLLIN):
             # Don't use the results if they've already been counted
@@ -110,7 +129,10 @@ class ftml_train_collect(ftml_wrapper):
                     self.obj.state = DIST_PARAMS
                 
                 self.obj.model.iter += 1
-                if delta < self.obj.strategy.delta_switch and self.obj.strategy.comm_period > 1 and not self.obj.delay_change:
+                if delta < self.obj.strategy.delta_switch and \
+                    self.obj.strategy.comm_period > 1 and not self.obj.delay_change:
                     self.obj.delay_change = True
-                    self.obj.n_iterations = self.obj.model.iter + (self.obj.n_iterations - self.obj.model.iter) * self.obj.strategy.comm_period
-                    self.obj._logger.debug(f"Iterations now = {self.obj.n_iterations}")
+                    self.obj.n_iterations = self.obj.model.iter + \
+                        (self.obj.n_iterations - self.obj.model.iter) * \
+                            self.obj.strategy.comm_period
+                    logger.debug(f"Iterations now = {self.obj.n_iterations}")
