@@ -1,14 +1,14 @@
 #!/bin/bash
-while [ "$1" != "" ]; do
-    case $1 in
-        -n| --NWORKERS )         shift
-                                NWORKERS="$1"
-                                ;;
+NWORKERS=$1
+echo "No of workers: $NWORKERS"
+
+while [ "$2" != "" ]; do
+    case $2 in
         -v| --VERBOSE )         shift
-                                VERBOSE="-v $1"
+                                VERBOSE="-v $2"
                                 ;;
         -m| --MODEL )         shift
-                                MODEL="$1"
+                                MODEL="$2"
                                 ;;
         -h | --help )           usage
                                 exit
@@ -25,8 +25,8 @@ if [ "$MODEL" == "LINEAR" ]; then
     pythonw examples/train_linear.py $NWORKERS -r worker -i $TMUX_PANE -t 1
 elif [ "$MODEL" == "LOGISTIC" ]; then
     echo "Running Logistic Model"
-    pythonw examples/train_logistic.py 8 -r worker -i $TMUX_PANE -t 1
+    pythonw examples/train_logistic.py $NWORKERS -r worker -i $TMUX_PANE -t 1
 elif [ "$MODEL" == "NN" ]; then
     echo "Running NN Model"
-    pythonw examples/train_nn.py 8 -r worker -i $TMUX_PANE -t 1
+    pythonw examples/train_nn.py $NWORKERS -r worker -i $TMUX_PANE -t 1
 fi

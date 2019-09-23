@@ -113,9 +113,5 @@ ip_config*.json
 *.conf
 .DS_Store
 
-# local master/worker files
-master_local.sh
-worker_local.sh
-
 # Protobuf
 *_pb2.py
