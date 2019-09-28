@@ -154,7 +154,7 @@ class Server():
                 events = dict(self.poller.poll())
                 if (self.heart_ctrl_socket in events) and (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
                     msg = self.heart_ctrl_socket.recv_multipart()
-                    logger.info(f"Msg={msg}")
+                    # logger.info(f"Msg={msg}")
                     self.handle_pong(msg)
     
     def beat(self):
@@ -196,7 +196,7 @@ class Server():
         elif msg[1].decode() == str(self.lifetime):
             self.responses.add(msg[0])
         else:
-            print("got bad heartbeat (possibly old?): %s"%msg[1])
+            logger.info("got bad heartbeat (possibly old?): %s", msg[1])
 
     def handle_new_heart(self, heart):
         """Handle new heart
@@ -252,7 +252,7 @@ class Server():
         #         self.iteration += 1
 
         while True:
-            # gevent.sleep(0.000000001)
+            gevent.sleep(0.000000001)
 
             if self.state == MAP:
                 logger.info("Sending work to workers")
@@ -267,9 +267,9 @@ class Server():
                 self.state = DIST_PARAMS
 
             if self.state == DIST_PARAMS:
-                while self.iteration < self.n_iterations:
+                while True:
 
-                    gevent.sleep(0.0000000001)
+                    gevent.sleep(0.00000001)
                     logger.info(f"Iteration={self.iteration}")
                     # Map params
                     B = np.random.randn(5, 1)
@@ -280,18 +280,28 @@ class Server():
                     logger.info("Recv work")
                     # Recv work
                     i = 0
-                    while i < len(self.hearts):
-                        msg = self.pull.recv_multipart()
-                        logger.info(msg)
-                        cmd = msg[0]
-                        worker = msg[1]
-                        content = msg[2]
-                        if cmd == b"WORK":
-                            buf = memoryview(content)
-                            arr = np.frombuffer(buf, dtype=np.float).copy()
-                            print(f"Received work from {worker}, content.shape={arr.shape}")
+                    events = dict(self.poller.poll())
+                    hearts = len(self.hearts)
+                    while i < hearts:
+                        gevent.sleep(0.0000001)
+                        events = dict(self.poller.poll())
+                        if (self.pull in events) and (events.get(self.pull) == zmq.POLLIN):
+                            msg = self.pull.recv_multipart()
+                            logger.info(msg)
+                            cmd = msg[0]
+                            worker = msg[1]
+                            content = msg[2]
+                            if cmd == b"WORK":
+                                buf = memoryview(content)
+                                arr = np.frombuffer(buf, dtype=np.float).copy()
+                                logger.info(
+                                    f"Received work from {worker}, content.shape={arr.shape}"
+                                )
 
-                        i += 1
+                            i += 1
+
+                        if hearts != len(self.hearts):
+                            hearts = len(self.hearts)
 
                     self.iteration += 1
 

@@ -62,6 +62,11 @@ class Client():
 
             # Do some work
             arr = arr * 2
+            A = np.random.random((2**11, 2**11))
+            tic = time.time()
+            np.dot(A, A.transpose())
+            logger.info("blocked for %.3f s"%(time.time() - tic))
+
             self.push.send_multipart(
                 [b"WORK", self.worker_id.encode(), arr.tostring()]
             )
