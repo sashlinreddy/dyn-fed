@@ -381,7 +381,7 @@ class Worker(object):
 
             if command == b"HEARTBEAT":
                 self.ctrl_socket.send(b"PONG")
-                self._logger.debug("PONG")
+                self._logger.info("PONG")
 
     def _handle_subscriber_events(self, events):
         """Handles subscriber events
@@ -460,7 +460,11 @@ class Worker(object):
                     self._logger.info("Connected")
                     self.connected = True
 
+                    self._logger.info(f"Attempting to receive work command")
+
                     command = self.ctrl_socket.recv(flags=zmq.SNDMORE)
+
+                    self._logger.info(f"Received command")
 
                     if command == b"WORK":
                         self._receive_data()
