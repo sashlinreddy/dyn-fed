@@ -15,16 +15,16 @@ import gevent
 import numpy as np
 import zmq.green as zmq
 
+from fault_tolerant_ml.data.utils import next_batch
 from fault_tolerant_ml.distribute import Coordinator, WatchDog
-from fault_tolerant_ml.distribute.states import (COMPLETE, MAP_PARAMS, MAP,
+from fault_tolerant_ml.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
                                                  REDUCE, REMAP, START)
 from fault_tolerant_ml.distribute.wrappers import (ftml_train,
                                                    ftml_train_collect,
                                                    ftml_trainv2)
 from fault_tolerant_ml.metrics import accuracy_scorev2
-from fault_tolerant_ml.tools import TFLogger
 from fault_tolerant_ml.proto.utils import params_to_string
-from fault_tolerant_ml.data.utils import next_batch
+from fault_tolerant_ml.tools import TFLogger
 
 
 class Master():
