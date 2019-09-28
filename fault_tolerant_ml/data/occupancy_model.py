@@ -7,6 +7,7 @@ import pandas as pd
 from imblearn.over_sampling import SMOTE
 
 from fault_tolerant_ml.preprocessing import preprocessor as pre
+from fault_tolerant_ml.data.utils import do_split
 
 from .base import Dataset
 
@@ -54,19 +55,11 @@ class OccupancyData(Dataset):
 
         return X_res, y_res
 
-    def update_xy(self, idxs):
-        """Update xy given new indices
-        """
-        X_train = self.X_train[idxs]
-        y_train = self.y_train[idxs]
-        self.n_samples = X_train.shape[0]
-        return X_train, y_train
-
     def transform(self):
         """Transforms dataset and prepares it
         """
         # Train test split
-        data = self.do_split(self.X, self.y)
+        data = do_split(self.X, self.y)
         # Normalize data
         _ = pre.normalize_datasets(data)
 
