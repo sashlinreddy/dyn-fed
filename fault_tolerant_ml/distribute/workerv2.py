@@ -10,12 +10,14 @@ from zmq import devices
 from zmq.eventloop import zmqstream
 from tornado import ioloop
 
+from fault_tolerant_ml.proto.utils import parse_setup_from_string
+
 logging.basicConfig(level="INFO")
 logger = logging.getLogger()
 
 # pylint: disable=no-member
 
-class Worker():
+class WorkerV2():
     """Client class
     """
     def __init__(self, worker_id):
@@ -26,9 +28,17 @@ class Worker():
         self.loop = None
         self.worker_id = worker_id
 
+        # Model variables
+        self.X = None
+        self.y = None
+        self.n_samples: int = None
+        self.n_features: int = None
+        self.n_classes: int = None
+        self.state = None
+
         logger.info("Setting up...")
 
-    def connect(self):
+    def _connect(self):
         """Connect to sockets
         """
         logger.info("Connecting sockets...")
@@ -68,7 +78,7 @@ class Worker():
     def start(self):
         """Start session
         """
-        self.connect()
+        self._connect()
 
     def kill(self):
         """Kills sockets
@@ -83,9 +93,19 @@ class Worker():
         logger.info("Receiving work...")
         cmd = msg[0]
         if cmd == b"WORK_DATA":
-            buf = memoryview(msg[1])
-            arr = np.frombuffer(buf, dtype=np.float)
-            logger.info(f"Data.shape={arr.shape}")
+            # buf = memoryview(msg[1])
+            # arr = np.frombuffer(buf, dtype=np.float)
+            # logger.info(f"Data.shape={arr.shape}")
+            X, y, n_samples, state = parse_setup_from_string(msg[1])
+
+            self.n_samples = n_samples
+            self.n_features = X.shape[1]
+            self.n_classes = y.shape[1]
+            self.state = state
+            self.X = X
+            self.y = y
+
+            logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
             # self.ctrl.stop_on_recv()
             # After receiving data we can recv params
             self.sub.on_recv(self.recv_params)
@@ -93,10 +113,11 @@ class Worker():
     def recv_params(self, msg):
         """Recv params
         """
-        cmd = msg[0]
+        _ = msg[0] # Topic
+        cmd = msg[1]
         if cmd == b"WORK_PARAMS":
             logger.info("Receiving params...")
-            buf = memoryview(msg[1])
+            buf = memoryview(msg[2])
             arr = np.frombuffer(buf, dtype=np.float).copy()
             logger.info(f"Params.shape={arr.shape}")
 
@@ -111,6 +132,10 @@ class Worker():
                 [b"WORK", self.worker_id.encode(), arr.tostring()]
             )
 
+        if cmd == b"EXIT":
+            logger.info("Ending session")
+            self.kill()
+
 
 if __name__ == "__main__":
 
@@ -119,7 +144,7 @@ if __name__ == "__main__":
 
     try:
 
-        worker = Worker(identity)
+        worker = WorkerV2(identity)
         worker.start()
 
     except KeyboardInterrupt:
