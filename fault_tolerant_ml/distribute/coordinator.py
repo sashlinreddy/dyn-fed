@@ -8,8 +8,9 @@ import time
 import numpy as np
 import zmq.green as zmq
 
-from fault_tolerant_ml.distribute.states import MAP_PARAMS, MAP, REMAP
-from fault_tolerant_ml.proto.utils import setup_to_string, parse_params_response_from_string
+from fault_tolerant_ml.distribute.states import MAP, MAP_PARAMS, REMAP
+from fault_tolerant_ml.proto.utils import (parse_params_response_from_string,
+                                           setup_to_string)
 
 
 class Coordinator(object):
