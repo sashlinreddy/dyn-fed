@@ -26,6 +26,9 @@ if [ "$MODEL" == "LINEAR" ]; then
 elif [ "$MODEL" == "LOGISTIC" ]; then
     echo "Running Logistic Model"
     pythonw examples/train_logistic.py $NWORKERS -r worker -i $TMUX_PANE -t 1
+elif [ "$MODEL" == "LOG2" ]; then
+    echo "Running Logistic Model"
+    pythonw examples/train_logisticv2.py $NWORKERS -r worker -i $TMUX_PANE -t 1
 elif [ "$MODEL" == "NN" ]; then
     echo "Running NN Model"
     pythonw examples/train_nn.py $NWORKERS -r worker -i $TMUX_PANE -t 1

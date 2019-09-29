@@ -12,21 +12,21 @@ from tornado import ioloop
 
 from fault_tolerant_ml.proto.utils import parse_setup_from_string
 
-logging.basicConfig(level="INFO")
-logger = logging.getLogger()
-
 # pylint: disable=no-member
-
 class WorkerV2():
     """Client class
     """
-    def __init__(self, worker_id):
+    def __init__(self, model, identity=None, verbose="INFO"):
         self.io_loop = None
+        self.context = None
         self.sub = None
         self.push = None
         self.ctrl = None
         self.loop = None
-        self.worker_id = worker_id
+        self.identity = \
+            str(uuid.uuid4()) if identity is None else f"worker-{identity}"
+
+        self.model = model
 
         # Model variables
         self.X = None
@@ -36,33 +36,35 @@ class WorkerV2():
         self.n_classes: int = None
         self.state = None
 
-        logger.info("Setting up...")
+        self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
+
+        self._logger.info("Setting up...")
 
     def _connect(self):
         """Connect to sockets
         """
-        logger.info("Connecting sockets...")
+        self._logger.info("Connecting sockets...")
         self.loop = ioloop.IOLoop()
-        context = zmq.Context()
+        self.context = zmq.Context()
 
         dev = devices.ThreadDevice(zmq.FORWARDER, zmq.SUB, zmq.DEALER)
         dev.setsockopt_in(zmq.SUBSCRIBE, b"")
-        dev.setsockopt_out(zmq.IDENTITY, identity.encode())
+        dev.setsockopt_out(zmq.IDENTITY, self.identity.encode())
         dev.connect_in('tcp://127.0.0.1:5564')
-        dev.connect_out('tcp://127.0.0.1:5565')
+        dev.connect_out('tcp://127.0.0.1:5561')
         dev.start()
 
-        subscriber = context.socket(zmq.SUB) # pylint: disable=no-member
-        subscriber.connect("tcp://localhost:5563")
+        subscriber = self.context.socket(zmq.SUB) # pylint: disable=no-member
+        subscriber.connect("tcp://localhost:5560")
         # subscriber.connect(f"tcp://{master_ip_address}:5563")
         subscriber.setsockopt(zmq.SUBSCRIBE, b"") # pylint: disable=no-member
 
-        self.push = context.socket(zmq.PUSH) # pylint: disable=no-member
-        self.push.connect("tcp://localhost:5562")
+        self.push = self.context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.push.connect("tcp://localhost:5567")
         # push_socket.connect(f"tcp://{master_ip_address}:5562")
 
-        ctrl_socket = context.socket(zmq.DEALER) # pylint: disable=no-member
-        ctrl_socket.setsockopt_string(zmq.IDENTITY, identity) # pylint: disable=no-member
+        ctrl_socket = self.context.socket(zmq.DEALER) # pylint: disable=no-member
+        ctrl_socket.setsockopt_string(zmq.IDENTITY, self.identity) # pylint: disable=no-member
         ctrl_socket.connect("tcp://localhost:5566")
         # ctrl_socket.connect(f"tcp://{master_ip_address}:5565")
 
@@ -73,29 +75,28 @@ class WorkerV2():
         # wait for connections
         time.sleep(1)
 
-        self.loop.start()
-
     def start(self):
         """Start session
         """
-        self._connect()
-
-    def kill(self):
-        """Kills sockets
-        """
-        self.sub.close()
-        self.ctrl.close()
-        self.loop.stop()
+        try:
+            self._connect()
+            self.loop.start()
+        except KeyboardInterrupt:
+            self._logger.info("Keyboard quit")
+        except zmq.ZMQError:
+            self._logger.info("ZMQError")
+        finally:
+            self.kill()
 
     def recv_work(self, msg):
         """Receive work
         """
-        logger.info("Receiving work...")
+        self._logger.info("Receiving work...")
         cmd = msg[0]
         if cmd == b"WORK_DATA":
             # buf = memoryview(msg[1])
             # arr = np.frombuffer(buf, dtype=np.float)
-            # logger.info(f"Data.shape={arr.shape}")
+            # self._logger.info(f"Data.shape={arr.shape}")
             X, y, n_samples, state = parse_setup_from_string(msg[1])
 
             self.n_samples = n_samples
@@ -105,7 +106,7 @@ class WorkerV2():
             self.X = X
             self.y = y
 
-            logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
+            self._logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
             # self.ctrl.stop_on_recv()
             # After receiving data we can recv params
             self.sub.on_recv(self.recv_params)
@@ -116,40 +117,28 @@ class WorkerV2():
         _ = msg[0] # Topic
         cmd = msg[1]
         if cmd == b"WORK_PARAMS":
-            logger.info("Receiving params...")
+            self._logger.info("Receiving params...")
             buf = memoryview(msg[2])
             arr = np.frombuffer(buf, dtype=np.float).copy()
-            logger.info(f"Params.shape={arr.shape}")
+            self._logger.info(f"Params.shape={arr.shape}")
 
             # Do some work
             arr = arr * 2
             A = np.random.random((2**11, 2**11))
             tic = time.time()
             np.dot(A, A.transpose())
-            logger.info("blocked for %.3f s", (time.time() - tic))
+            self._logger.info("blocked for %.3f s", (time.time() - tic))
 
             self.push.send_multipart(
-                [b"WORK", self.worker_id.encode(), arr.tostring()]
+                [b"WORK", self.identity.encode(), arr.tostring()]
             )
 
         if cmd == b"EXIT":
-            logger.info("Ending session")
+            self._logger.info("Ending session")
             self.kill()
 
-
-if __name__ == "__main__":
-
-    time.sleep(1)
-    identity = str(uuid.uuid4())
-
-    try:
-
-        worker = WorkerV2(identity)
-        worker.start()
-
-    except KeyboardInterrupt:
-        logger.info("Keyboard quit")
-    except zmq.ZMQError:
-        logger.info("ZMQError")
-    finally:
-        worker.kill()
+    def kill(self):
+        """Kills sockets
+        """
+        self._logger.info("Cleaning up")
+        self.loop.stop()

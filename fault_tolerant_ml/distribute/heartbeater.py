@@ -5,8 +5,6 @@ import logging
 
 from fault_tolerant_ml.distribute.states import START, MAP
 
-logger = logging.getLogger('ftml')
-
 class Heartbeater():
     """Heartbeater class
     """
@@ -20,15 +18,17 @@ class Heartbeater():
         self.lifetime = 0
         self.tic = time.time()
 
+        self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
+
     def beat(self, socket, state):
         """Handle single heartbeat
         """
         toc = time.time()
         self.lifetime += toc-self.tic
         self.tic = toc
-        logger.info(self.lifetime)
+        self._logger.info(self.lifetime)
         # self.message = str(self.lifetime)
-        # logger.info(f"Responses={self.responses}")
+        # self._logger.info(f"Responses={self.responses}")
         goodhearts = self.hearts.intersection(self.responses)
         heartfailures = self.hearts.difference(goodhearts)
         newhearts = self.responses.difference(goodhearts)
@@ -42,12 +42,12 @@ class Heartbeater():
 
         # If we have 
         self.responses = set()
-        logger.info("%i beating hearts: %s", len(self.hearts), self.hearts)
+        self._logger.info("%i beating hearts: %s", len(self.hearts), self.hearts)
         if state == START:
-            logger.info("Sending connect")
+            self._logger.info("Sending connect")
             socket.send_multipart([b"CONNECT", str(self.lifetime).encode()])
         else:
-            logger.info("Normal heartbeat")
+            self._logger.info("Normal heartbeat")
             socket.send(str(self.lifetime).encode())
 
         return state
@@ -59,16 +59,16 @@ class Heartbeater():
         elif msg[1].decode() == str(self.lifetime):
             self.responses.add(msg[0])
         else:
-            logger.info("got bad heartbeat (possibly old?): %s", msg[1])
+            self._logger.info("got bad heartbeat (possibly old?): %s", msg[1])
 
     def handle_new_heart(self, heart):
         """Handle new heart
         """
-        logger.info("yay, got new heart %s!", heart)
+        self._logger.info("yay, got new heart %s!", heart)
         self.hearts.add(heart)
 
     def handle_heart_failure(self, heart):
         """Handle heart failure
         """
-        logger.info("Heart %s failed :(", heart)
+        self._logger.info("Heart %s failed :(", heart)
         self.hearts.remove(heart)

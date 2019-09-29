@@ -7,9 +7,9 @@ import logging
 import time
 
 from fault_tolerant_ml.distribute import Master, Worker
-# from fault_tolerant_ml.distribute.masterv2 import MasterV2
+from fault_tolerant_ml.distribute.masterv2 import MasterV2
 from fault_tolerant_ml.distribute.strategy import LocalStrategy
-# from fault_tolerant_ml.distribute.workerv2 import WorkerV2
+from fault_tolerant_ml.distribute.workerv2 import WorkerV2
 from fault_tolerant_ml.layers import Layer
 from fault_tolerant_ml.operators import Tensor
 
@@ -249,26 +249,25 @@ class ModelV2():
         elif self.strategy.name == "master_worker":
             if self.strategy.role == "master":
                 # Setup master
-                # self._master = Master(
-                #     model=self
-                # )
-                # self._logger.info("Connecting master sockets")
+                self._master = MasterV2(
+                    model=self
+                )
+                self._logger.info("Connecting master sockets")
                 # self._master.connect()
-                pass
             else:
 
-                time.sleep(3)
+                # time.sleep(3)
 
-                # self._worker = Worker(
-                #     model=self,
-                #     verbose=self.verbose,
-                #     identity=self.strategy.identity
-                # )
+                self._worker = WorkerV2(
+                    model=self,
+                    identity=self.strategy.identity,
+                    verbose=self.verbose
+                )
 
-                # self._logger.info("Connecting worker sockets")
+                self._logger.info("Connecting worker sockets")
                 # self._worker.connect()
 
-    def _fit_mw(self, X=None, y=None):
+    def _fit_mw(self, X=None, y=None, X_valid=None, y_valid=None):
         """Training logistic regression using the master worker strategy
 
         Args:
@@ -277,12 +276,11 @@ class ModelV2():
         """
         if self.strategy.role == "master":
             # Master training
-            # self._master.start(X)
-            pass
+            self._master.setup(X, y, X_valid, y_valid)
+            self._master.start()
         else:
             # Worker training
-            # self._worker.start()
-            pass
+            self._worker.start()
 
     def add(self, layers):
         """Add new layer(s) to model
@@ -314,13 +312,13 @@ class ModelV2():
                     if v.is_param:
                         v.zero_grad()
 
-    def fit(self, X=None, y=None):
+    def fit(self, X=None, y=None, X_valid=None, y_valid=None):
         """Training for estimating parameters
         """
         if self.strategy.name == 'local':
             pass # TODO: Add local strategy
         elif self.strategy.name == "master_worker":
-            self._fit_mw(X, y)
+            self._fit_mw(X, y, X_valid, y_valid)
             
     def forward(self, x):
         """Feedforward through network given input x
