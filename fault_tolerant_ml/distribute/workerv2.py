@@ -10,6 +10,7 @@ from zmq import devices
 from zmq.eventloop import zmqstream
 from tornado import ioloop
 
+from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.proto.utils import (parse_params_from_string,
                                            parse_setup_from_string,
                                            params_response_to_string)
@@ -29,6 +30,7 @@ class WorkerV2():
             str(uuid.uuid4()) if identity is None else f"worker-{identity}"
 
         self.model = model
+        self.strategy = self.model.strategy
 
         # Model variables
         self.X = None
@@ -37,6 +39,12 @@ class WorkerV2():
         self.n_features: int = None
         self.n_classes: int = None
         self.state = None
+
+        # Executor params
+        self.remap = self.model.strategy.remap
+        self.quantize = self.model.strategy.quantize
+        self.comm_period = self.model.strategy.comm_period
+        self.send_gradients = self.model.strategy.send_gradients
 
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
@@ -77,6 +85,69 @@ class WorkerV2():
         # wait for connections
         time.sleep(1)
 
+    def _do_work(self, X, y, W_g=None):
+        """Worker doing the heavy lifting of calculating gradients and
+        calculating loss
+
+        Args:
+            W_g (numpy.ndarray): Global parameters
+
+        Returns:
+            batch_loss (float): Loss for this iteration
+            most_representative (numpy.ndarray): Vector of most representative
+            data samples for a particular iteration. Most representative is 
+            determined by the data points that have the highest loss.
+        """
+        # Get predictions
+        y_pred = self.model.forward(X)
+
+        batch_loss = self.model.optimizer.minimize(
+            self.model,
+            y, 
+            y_pred, 
+            iteration=self.model.iter + 1,
+            N=X.shape[0],
+            W_g=None)
+        most_representative = self.model.optimizer.most_rep
+        
+        return batch_loss, most_representative
+
+    def _training_loop(self):
+        """Perform training loop
+
+        Returns:
+            epoch_loss (float): Loss for corresponding epoch
+            most_representative(np.ndarray): Most representative data points
+        """
+        for _ in range(self.comm_period):
+            epoch_loss = 0.0
+            n_batches = 0
+            # self._logger.debug(
+            #     f"layers[0].W.data before mini={self.model.layers[0].W.data}"
+            # )
+            for start in range(0, self.X.shape[0], self.model.batch_size):
+                end = start + self.model.batch_size
+
+                X_batch = self.X[start:end]
+                y_batch = self.y[start:end]
+                # Each worker does work and we get the resulting parameters
+                batch_loss, most_representative = \
+                self._do_work(
+                    X_batch,
+                    y_batch,
+                    W_g=None
+                )
+                epoch_loss += batch_loss.data
+                n_batches += 1
+            epoch_loss /= n_batches
+            self._logger.info(
+                f"iteration = {self.model.iter}, Loss = {epoch_loss:7.4f}"
+            )
+
+            self.model.iter += 1
+
+        return epoch_loss, most_representative
+
     def start(self):
         """Start session
         """
@@ -107,6 +178,8 @@ class WorkerV2():
             self.state = state
             self.X = X
             self.y = y
+            self.X = Tensor(self.X)
+            self.y = Tensor(self.y)
 
             self._logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
             # self.ctrl.stop_on_recv()
@@ -132,13 +205,10 @@ class WorkerV2():
             )
 
             # Do some work
-            A = np.random.random((2**11, 2**11))
             tic = time.time()
-            np.dot(A, A.transpose())
+            epoch_loss, most_representative = self._training_loop()
+            self._logger.info(f"Batch_loss={epoch_loss}")
             self._logger.info("blocked for %.3f s", (time.time() - tic))
-
-            most_representative = np.random.randint(0, 100, (100, ))
-            epoch_loss = 0.5
 
             data = [
                 params_response_to_string(
