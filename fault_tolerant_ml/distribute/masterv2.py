@@ -92,50 +92,6 @@ class MasterV2():
 
         return poller
 
-    def setup(self, X, y, X_valid=None, y_valid=None):
-        """Setup master with data
-        """
-        self.X = X
-        self.y = y
-        self.X_valid = X_valid
-        self.y_valid = y_valid
-
-    def heart_loop(self):
-        """Heart loop
-        """
-        self._logger.info("Starting heart beater")
-        while self.state != COMPLETE:
-            # Send beat
-            self.state = self.heartbeater.beat(self.heart_pub_socket, self.state)
-            # Receive responses
-            gevent.sleep(1)
-            events = dict(self.poller.poll())
-            while (self.heart_ctrl_socket in events) and \
-                (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
-                events = dict(self.poller.poll())
-                if (self.heart_ctrl_socket in events) and \
-                    (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
-                    # Handle pong
-                    msg = self.heart_ctrl_socket.recv_multipart()
-                    self.heartbeater.handle_pong(msg)
-
-    def start(self):
-        """Start server
-        """
-        self._connect()
-
-        gevent.signal(signal.SIGQUIT, gevent.kill)
-
-        heart_loop = gevent.spawn(self.heart_loop)
-        server_loop = gevent.spawn(self.train_loop)
-        
-        gevent.joinall([
-            heart_loop,
-            server_loop
-        ])
-
-        self.kill()
-
     def _map(self):
         """Map data to workers
         """
@@ -280,6 +236,44 @@ class MasterV2():
 
         return errors, d_Wbs
 
+    def _check_responses(self, n_responses):
+        """Check if expected responses need to changed based on heartbeats
+
+        Args:
+            n_responses: No. of expected responses
+
+        Returns:
+            n_responses: Updated no. of responses
+        """
+        if n_responses > len(self.heartbeater.hearts):
+            self._logger.info(
+                f"Changed no of hearts from {n_responses} to {self.heartbeater.hearts}"
+                )
+            n_responses = len(self.heartbeater.hearts)
+        return n_responses
+
+    def _poll(self, i, errors, d_Wbs):
+        """Poll for events from worker
+        """
+        events = dict(self.poller.poll())
+        if (self.pull_socket in events) and \
+            (events.get(self.pull_socket) == zmq.POLLIN):
+            msg = self.pull_socket.recv_multipart()
+            cmd = msg[0]
+            worker = msg[1]
+            content = msg[2]
+            if cmd == b"WORK":
+                errors, d_Wbs = self._gather(
+                    worker,
+                    content,
+                    errors,
+                    d_Wbs
+                )
+
+                i += 1
+
+        return i, errors, d_Wbs
+
     def _recv(self):
         """Reduce params from workers
         """
@@ -289,31 +283,16 @@ class MasterV2():
             i = 0
             errors = []
             d_Wbs = []
-            hearts = len(self.heartbeater.hearts)
-            while i < hearts:
-                gevent.sleep(0.000001)
-                events = dict(self.poller.poll())
-                if (self.pull_socket in events) and \
-                    (events.get(self.pull_socket) == zmq.POLLIN):
-                    msg = self.pull_socket.recv_multipart()
-                    cmd = msg[0]
-                    worker = msg[1]
-                    content = msg[2]
-                    if cmd == b"WORK":
-                        errors, d_Wbs = self._gather(
-                            worker,
-                            content,
-                            errors,
-                            d_Wbs
-                        )
+            n_responses = len(self.heartbeater.hearts)
+            while i < n_responses:
+                # Need to sleep gevent to be able to have heartbeat thread
+                gevent.sleep(0.00000001)
 
-                        i += 1
+                # Poll messages from workers and collect them
+                i, errors, d_Wbs = self._poll(i, errors, d_Wbs)
 
-                if hearts > len(self.heartbeater.hearts):
-                    self._logger.info(
-                        f"Changed no of hearts from {hearts} to {self.heartbeater.hearts}"
-                        )
-                    hearts = len(self.heartbeater.hearts)
+                # Update no. of expected responses to end the while loop
+                n_responses = self._check_responses(n_responses)
 
             # Aggregate parameters
             parameters, epoch_loss = self._reduce(
@@ -339,6 +318,34 @@ class MasterV2():
 
             self.model.iter += 1
 
+
+    def setup(self, X, y, X_valid=None, y_valid=None):
+        """Setup master with data
+        """
+        self.X = X
+        self.y = y
+        self.X_valid = X_valid
+        self.y_valid = y_valid
+
+    def heart_loop(self):
+        """Heart loop
+        """
+        self._logger.info("Starting heart beater")
+        while self.state != COMPLETE:
+            # Send beat
+            self.state = self.heartbeater.beat(self.heart_pub_socket, self.state)
+            # Receive responses
+            gevent.sleep(1)
+            events = dict(self.poller.poll())
+            while (self.heart_ctrl_socket in events) and \
+                (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
+                events = dict(self.poller.poll())
+                if (self.heart_ctrl_socket in events) and \
+                    (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
+                    # Handle pong
+                    msg = self.heart_ctrl_socket.recv_multipart()
+                    self.heartbeater.handle_pong(msg)
+
     def train_loop(self):
         """Machine learning training loop
         """
@@ -363,6 +370,23 @@ class MasterV2():
         finally:
             self._logger.info("Exiting peacefully")
             # self.kill()
+
+    def start(self):
+        """Start server
+        """
+        self._connect()
+
+        gevent.signal(signal.SIGQUIT, gevent.kill)
+
+        heart_loop = gevent.spawn(self.heart_loop)
+        server_loop = gevent.spawn(self.train_loop)
+        
+        gevent.joinall([
+            heart_loop,
+            server_loop
+        ])
+
+        self.kill()
 
     def done(self):
         """Sends exit signal to workers
