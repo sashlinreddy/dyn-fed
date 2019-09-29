@@ -207,7 +207,6 @@ class WorkerV2():
             # Do some work
             tic = time.time()
             epoch_loss, most_representative = self._training_loop()
-            self._logger.info(f"Batch_loss={epoch_loss}")
             self._logger.info("blocked for %.3f s", (time.time() - tic))
 
             data = [

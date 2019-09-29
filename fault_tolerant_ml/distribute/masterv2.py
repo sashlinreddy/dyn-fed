@@ -12,6 +12,7 @@ from fault_tolerant_ml.data.utils import next_batch
 from fault_tolerant_ml.distribute.heartbeater import Heartbeater
 from fault_tolerant_ml.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
                                                  START)
+from fault_tolerant_ml.metrics import accuracy_scorev2
 from fault_tolerant_ml.proto.utils import (params_to_string,
                                            parse_params_response_from_string,
                                            setup_to_string)
@@ -40,8 +41,9 @@ class MasterV2():
         self.n_workers = self.strategy.n_workers
 
         # Model variables
-        self.n_iterations = 5
-        self.iteration = 0
+        self.n_iterations = int(
+            np.ceil(self.model.max_iter / self.strategy.comm_period)
+        )
         self.X = None
         self.y = None
         self.X_valid = None
@@ -175,13 +177,118 @@ class MasterV2():
             self._logger.info("Sending params")
             self.pub_socket.send_multipart(multipart)
 
-    def _reduce(self):
+    def _check_metrics(self):
+        """Checks metrics on training and validation dataset
+
+        Returns:
+            train_acc (float): Training accuracy
+            test_acc (float): Test accuracy
+        """
+        y_pred = self.model.forward(self.X_valid)
+        y_train_pred = self.model.forward(self.X)
+        
+        train_acc = accuracy_scorev2(self.y.data, y_train_pred.data)
+        test_acc = accuracy_scorev2(self.y_valid.data, y_pred.data)
+
+        return train_acc, test_acc
+
+    def _update_model(self, parameters):
+        """Update model given new parameters
+
+        Args:
+            parameters (list): List of numpy matrices for each layer
+        """
+        deltas = []
+        for i in np.arange(self.model.n_layers):
+            deltas.append(
+                np.max(
+                    np.abs(
+                        self.model.layers[i].W.data - parameters[i][0]
+                    )
+                )
+            )
+            self.model.layers[i].W.data = parameters[i][0]
+            self.model.layers[i].b.data = parameters[i][1]
+
+        delta = np.max(deltas)
+        return delta
+
+    def _reduce(self,
+                d_Wbs,
+                errors,
+                model,
+                samples,
+                n_samples,
+                mode=0,
+                epsilon=1e-8):
+        """Aggregate received parameters
+
+        Args:
+            d_Wbs (list): List of parameters received
+            errors (list): List of losses for each worker
+            model (ftml.Model): Model being used
+            samples (list): List containing number of samples for each worker
+            n_samples (int): Total number of samples
+            mode (int): Aggregation mode (default: 0)
+
+        Returns:
+            parameters (list): List of numpy matrices for each layer
+            epoch_loss (float): Aggregated epoch loss
+        """
+        # pylint: disable=too-many-arguments, too-many-locals
+        # Iterate through workers and weight parameters by corresponding epoch loss
+        parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
+        sum_es = np.sum(np.exp(errors))
+        epoch_loss = np.mean(errors)
+        for j in np.arange(len(errors)):
+            weight = 1.0 / len(errors)  # Default aggregation is the average across workers
+            # Weight by loss calculated by worker - worker with highest loss has greater weight
+            if mode == 1:
+                pass # TODO: Add number of samples for each worker to heartbeat version
+                # n_samples_worker = samples[j]
+                # weight = n_samples_worker / n_samples
+            elif mode == 2:
+                weight = np.exp(errors[j]) / sum_es
+            self._logger.debug(f"worker={j}, weight={weight}, loss={errors[j]}")
+            for k in np.arange(model.n_layers):
+                parameters[k][0] += (
+                    d_Wbs[j][k][0] * weight
+                    if weight > 0
+                    else d_Wbs[j][k][0] * epsilon
+                ) # For W parameter
+                parameters[k][1] += (
+                    d_Wbs[j][k][1] * weight
+                    if weight > 0
+                    else d_Wbs[j][k][1] * epsilon
+                ) # For b parameter
+
+        return parameters, epoch_loss
+
+    def _gather(self, worker, content, errors, d_Wbs):
+        """Gather parameters from worker
+        """
+        parameters, mr, loss = \
+            parse_params_response_from_string(content)
+
+        self._logger.info(
+            f"Received work from {worker}, mr.shape={mr.shape}"
+        )
+
+        # Collect loss and parameters
+        errors.append(loss)
+        d_Wbs.append(parameters)
+
+        return errors, d_Wbs
+
+    def _recv(self):
         """Reduce params from workers
         """
         if self.state == MAP_PARAMS:
             self._logger.info("Recv work")
             # Recv work
             i = 0
+            errors = []
+            d_Wbs = []
             hearts = len(self.heartbeater.hearts)
             while i < hearts:
                 gevent.sleep(0.000001)
@@ -193,15 +300,14 @@ class MasterV2():
                     worker = msg[1]
                     content = msg[2]
                     if cmd == b"WORK":
-                        parameters, mr, loss = \
-                            parse_params_response_from_string(content)
-                        # buf = memoryview(content)
-                        # arr = np.frombuffer(buf, dtype=np.float).copy()
-                        self._logger.info(
-                            f"Received work from {worker}, mr.shape={mr.shape}"
+                        errors, d_Wbs = self._gather(
+                            worker,
+                            content,
+                            errors,
+                            d_Wbs
                         )
 
-                    i += 1
+                        i += 1
 
                 if hearts > len(self.heartbeater.hearts):
                     self._logger.info(
@@ -209,15 +315,35 @@ class MasterV2():
                         )
                     hearts = len(self.heartbeater.hearts)
 
-            self._logger.info(f"Iteration={self.iteration}")
+            # Aggregate parameters
+            parameters, epoch_loss = self._reduce(
+                d_Wbs,
+                errors,
+                self.model,
+                None,
+                None,
+                self.strategy.aggregate_mode
+            )
 
-            self.iteration += 1
+            # Update model with these parameters
+            delta = self._update_model(parameters)
+
+            # Check metrics
+            train_acc, test_acc = self._check_metrics()
+
+            self._logger.info(
+                f"iteration = {self.model.iter}, delta = {delta:7.4f}, "
+                f"Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, "
+                f"test acc={test_acc*100:7.4f}%"
+            )
+
+            self.model.iter += 1
 
     def train_loop(self):
         """Machine learning training loop
         """
         try:
-            while self.iteration < self.n_iterations:
+            while self.model.iter < self.n_iterations:
                 # Need to have a small sleep to enable gevent threading
                 gevent.sleep(0.00000001)
                 
@@ -225,11 +351,12 @@ class MasterV2():
                 self._map()
 
                 # Aggregate params
-                self._reduce()
+                self._recv()
 
             self.done()
         except KeyboardInterrupt:
             self._logger.info("Keyboard quit")
+            self.done()
         except zmq.ZMQError:
             self._logger.info("ZMQError")
             self.done()
