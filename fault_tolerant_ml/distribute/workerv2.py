@@ -10,14 +10,16 @@ from zmq import devices
 from zmq.eventloop import zmqstream
 from tornado import ioloop
 
-from fault_tolerant_ml.proto.utils import parse_setup_from_string
+from fault_tolerant_ml.proto.utils import (parse_params_from_string,
+                                           parse_setup_from_string,
+                                           params_response_to_string)
+
 
 # pylint: disable=no-member
 class WorkerV2():
     """Client class
     """
-    def __init__(self, model, identity=None, verbose="INFO"):
-        self.io_loop = None
+    def __init__(self, model, identity=None):
         self.context = None
         self.sub = None
         self.push = None
@@ -83,9 +85,9 @@ class WorkerV2():
             self.loop.start()
         except KeyboardInterrupt:
             self._logger.info("Keyboard quit")
+            self.kill()
         except zmq.ZMQError:
             self._logger.info("ZMQError")
-        finally:
             self.kill()
 
     def recv_work(self, msg):
@@ -118,20 +120,38 @@ class WorkerV2():
         cmd = msg[1]
         if cmd == b"WORK_PARAMS":
             self._logger.info("Receiving params...")
-            buf = memoryview(msg[2])
-            arr = np.frombuffer(buf, dtype=np.float).copy()
-            self._logger.info(f"Params.shape={arr.shape}")
+            parameters = parse_params_from_string(msg[2])
+            # buf = memoryview(msg[2])
+            # arr = np.frombuffer(buf, dtype=np.float).copy()
+            for i in np.arange(self.model.n_layers):
+                self.model.layers[i].W.data = parameters[i][0]
+                self.model.layers[i].b.data = parameters[i][1]
+
+            self._logger.info(
+                f"W[0].shape.shape={self.model.layers[0].W.data.shape}"
+            )
 
             # Do some work
-            arr = arr * 2
             A = np.random.random((2**11, 2**11))
             tic = time.time()
             np.dot(A, A.transpose())
             self._logger.info("blocked for %.3f s", (time.time() - tic))
 
-            self.push.send_multipart(
-                [b"WORK", self.identity.encode(), arr.tostring()]
-            )
+            most_representative = np.random.randint(0, 100, (100, ))
+            epoch_loss = 0.5
+
+            data = [
+                params_response_to_string(
+                    self.model.layers,
+                    most_representative,
+                    epoch_loss
+                )
+            ]
+
+            multipart = [b"WORK", self.identity.encode()]
+            multipart.extend(data)
+
+            self.push.send_multipart(multipart)
 
         if cmd == b"EXIT":
             self._logger.info("Ending session")

@@ -260,9 +260,8 @@ class ModelV2():
 
                 self._worker = WorkerV2(
                     model=self,
-                    identity=self.strategy.identity,
-                    verbose=self.verbose
-                )
+                    identity=self.strategy.identity
+                    )
 
                 self._logger.info("Connecting worker sockets")
                 # self._worker.connect()

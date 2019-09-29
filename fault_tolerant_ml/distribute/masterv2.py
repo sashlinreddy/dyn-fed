@@ -12,7 +12,9 @@ from fault_tolerant_ml.data.utils import next_batch
 from fault_tolerant_ml.distribute.heartbeater import Heartbeater
 from fault_tolerant_ml.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
                                                  START)
-from fault_tolerant_ml.proto.utils import setup_to_string
+from fault_tolerant_ml.proto.utils import (params_to_string,
+                                           parse_params_response_from_string,
+                                           setup_to_string)
 
 # pylint: disable=no-member
 
@@ -165,10 +167,13 @@ class MasterV2():
             self.state = MAP_PARAMS
         if self.state == MAP_PARAMS:
             # Map params
-            B = np.random.randn(5, 1)
-            msg = B.tostring()
+            msg = [params_to_string(self.model.layers)]
+            multipart = [b"", b"WORK_PARAMS"]
+            multipart.extend(msg)
+            # B = np.random.randn(5, 1)
+            # msg = B.tostring()
             self._logger.info("Sending params")
-            self.pub_socket.send_multipart([b"", b"WORK_PARAMS", msg])
+            self.pub_socket.send_multipart(multipart)
 
     def _reduce(self):
         """Reduce params from workers
@@ -188,10 +193,12 @@ class MasterV2():
                     worker = msg[1]
                     content = msg[2]
                     if cmd == b"WORK":
-                        buf = memoryview(content)
-                        arr = np.frombuffer(buf, dtype=np.float).copy()
+                        parameters, mr, loss = \
+                            parse_params_response_from_string(content)
+                        # buf = memoryview(content)
+                        # arr = np.frombuffer(buf, dtype=np.float).copy()
                         self._logger.info(
-                            f"Received work from {worker}, content.shape={arr.shape}"
+                            f"Received work from {worker}, mr.shape={mr.shape}"
                         )
 
                     i += 1

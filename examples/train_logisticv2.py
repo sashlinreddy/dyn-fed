@@ -158,7 +158,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
     )
 
     try:
-        logger = logging.getLogger("ftml.scripts.train")
+        logger = logging.getLogger("ftml.examples.train_logisticv2")
         logger.info(f"Starting run: {encoded_run_name}")
         logger.info(f"Optimizer={optimizer}")
 
