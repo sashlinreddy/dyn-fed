@@ -107,7 +107,7 @@ class WorkerV2():
             y_pred, 
             iteration=self.model.iter + 1,
             N=X.shape[0],
-            W_g=None)
+            W_g=W_g)
         most_representative = self.model.optimizer.most_rep
         
         return batch_loss, most_representative
@@ -148,18 +148,14 @@ class WorkerV2():
 
         return epoch_loss, most_representative
 
-    def start(self):
-        """Start session
+    def _svd(self, X):
+        """Returns singular values sum
+
+        Returns:
+            svd_sum: (Sum of singular values of 95 percentile)
         """
-        try:
-            self._connect()
-            self.loop.start()
-        except KeyboardInterrupt:
-            self._logger.info("Keyboard quit")
-            self.kill()
-        except zmq.ZMQError:
-            self._logger.info("ZMQError")
-            self.kill()
+        u, s, v = np.linalg.svd(X, full_matrices=False)
+        
 
     def recv_work(self, msg):
         """Receive work
@@ -224,6 +220,19 @@ class WorkerV2():
 
         if cmd == b"EXIT":
             self._logger.info("Ending session")
+            self.kill()
+
+    def start(self):
+        """Start session
+        """
+        try:
+            self._connect()
+            self.loop.start()
+        except KeyboardInterrupt:
+            self._logger.info("Keyboard quit")
+            self.kill()
+        except zmq.ZMQError:
+            self._logger.info("ZMQError")
             self.kill()
 
     def kill(self):

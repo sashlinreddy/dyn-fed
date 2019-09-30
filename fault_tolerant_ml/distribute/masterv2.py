@@ -128,8 +128,7 @@ class MasterV2():
             msg = [params_to_string(self.model.layers)]
             multipart = [b"", b"WORK_PARAMS"]
             multipart.extend(msg)
-            # B = np.random.randn(5, 1)
-            # msg = B.tostring()
+
             self._logger.info("Sending params")
             self.pub_socket.send_multipart(multipart)
 

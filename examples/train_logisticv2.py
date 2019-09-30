@@ -2,7 +2,6 @@
 """
 import logging
 import os
-import traceback
 
 import click
 import numpy as np
@@ -10,7 +9,6 @@ import numpy as np
 # pylint: disable=wrong-import-position
 np.random.seed(42)
 from dotenv import find_dotenv, load_dotenv
-import zmq.green as zmq
 
 from fault_tolerant_ml.data import MNist
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
@@ -176,18 +174,18 @@ def run(n_workers, role, verbose, identity, tmux, add):
         logger.info("COMPLETED TRAINING")
         logger.info("*******************************")
 
-        # if role == "master":
+        if role == "master":
             
-        #     # Print confusion matrix
-        #     y_pred = model.forward(data.X_test)
-        #     # conf_matrix = confusion_matrix(self.data.y_test, y_pred)
-        #     conf_matrix = confusion_matrix(data.y_test.data, y_pred.data)
-        #     logger.info(f"Confusion matrix=\n{conf_matrix}")
+            # Print confusion matrix
+            y_pred = model.forward(data.X_test)
+            # conf_matrix = confusion_matrix(self.data.y_test, y_pred)
+            conf_matrix = confusion_matrix(data.y_test.data, y_pred.data)
+            logger.info(f"Confusion matrix=\n{conf_matrix}")
 
-        #     # Accuracy
-        #     # acc = accuracy_scorev2(self.data.y_test, y_pred)
-        #     acc = accuracy_scorev2(data.y_test.data, y_pred.data)
-        #     logger.info(f"Accuracy={acc * 100:7.4f}%")
+            # Accuracy
+            # acc = accuracy_scorev2(self.data.y_test, y_pred)
+            acc = accuracy_scorev2(data.y_test.data, y_pred.data)
+            logger.info(f"Accuracy={acc * 100:7.4f}%")
 
             # Plot metrics
             # model.plot_metrics()
