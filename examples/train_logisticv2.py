@@ -113,7 +113,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
 
         # time.sleep(2)
     else:
-        setup_logger(filename=f'log-{d_identity}.log', level=verbose)
+        setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
 
     # Define loss
     loss = CrossEntropyLoss()
