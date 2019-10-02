@@ -2,10 +2,13 @@
 """
 from __future__ import print_function
 
+import logging
+
 import numpy as np
 
 from fault_tolerant_ml.proto import ftml_pb2
 
+logger = logging.getLogger('ftml.proto.utils')
 
 def setup_to_string(X, y, n_samples, state):
     """Generate setup data buffer message
@@ -38,6 +41,23 @@ def setup_to_string(X, y, n_samples, state):
         state=state,
         X=X_proto,
         y=y_proto
+    )
+
+    buffer = sent_msg.SerializeToString()
+    
+    return buffer
+
+def setup_reponse_to_string(svd_idx):
+    """Generate setup data buffer message
+
+    Args:
+        svd_idx (float): Worker SVD 95 percentile index
+
+    Returns:
+        buffer (byte string): Byte string of objects
+    """
+    sent_msg = ftml_pb2.SetupResponse(
+        svd_idx=svd_idx
     )
 
     buffer = sent_msg.SerializeToString()
@@ -183,6 +203,22 @@ def parse_setup_from_string(msg):
     )
     
     return X, y, setup.n_samples, setup.state
+
+def parse_setup_response_from_string(msg):
+    """Reconstruct protocol buffer message
+
+    Args:
+        msg (byte string): Byte array to be reconstructed
+
+    Returns:
+        svd_idx (float): Worker SVD 95 percentile index
+    """
+    # pylint: disable=no-member
+    setup_response = ftml_pb2.SetupResponse()
+    setup_response.ParseFromString(msg)
+
+    
+    return setup_response.svd_idx
 
 def parse_params_from_string(msg):
     """Parameters protobuf deserialization

@@ -50,7 +50,7 @@ class Heartbeater():
             self._logger.info("Normal heartbeat")
             socket.send(str(self.lifetime).encode())
 
-        return state
+        return state, newhearts, heartfailures
 
     def handle_pong(self, msg):
         "if heart is beating"

@@ -11,9 +11,11 @@ from zmq.eventloop import zmqstream
 from tornado import ioloop
 
 from fault_tolerant_ml.operators import Tensor
-from fault_tolerant_ml.proto.utils import (parse_params_from_string,
+from fault_tolerant_ml.proto.utils import (params_response_to_string,
+                                           parse_params_from_string,
                                            parse_setup_from_string,
-                                           params_response_to_string)
+                                           setup_reponse_to_string)
+from fault_tolerant_ml.utils.maths import arg_svd
 
 
 # pylint: disable=no-member
@@ -148,24 +150,12 @@ class WorkerV2():
 
         return epoch_loss, most_representative
 
-    def _svd(self, X):
-        """Returns singular values sum
-
-        Returns:
-            svd_sum: (Sum of singular values of 95 percentile)
-        """
-        u, s, v = np.linalg.svd(X, full_matrices=False)
-        
-
     def recv_work(self, msg):
         """Receive work
         """
         self._logger.info("Receiving work...")
         cmd = msg[0]
         if cmd == b"WORK_DATA":
-            # buf = memoryview(msg[1])
-            # arr = np.frombuffer(buf, dtype=np.float)
-            # self._logger.info(f"Data.shape={arr.shape}")
             X, y, n_samples, state = parse_setup_from_string(msg[1])
 
             self.n_samples = n_samples
@@ -178,7 +168,22 @@ class WorkerV2():
             self.y = Tensor(self.y)
 
             self._logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
-            # self.ctrl.stop_on_recv()
+
+            tic = time.time()
+            idx_95 = arg_svd(X)
+            self._logger.info(
+                f"Time to calculate svd idx {(time.time() - tic):.3f} s"
+            )
+
+            data = [setup_reponse_to_string(idx_95)]
+            multipart = [b"SVD", self.identity.encode()]
+            multipart.extend(data)
+
+            self.push.send_multipart(multipart)
+
+            # Send back idx_95 to determine dynamic communication strategy
+
+            
             # After receiving data we can recv params
             self.sub.on_recv(self.recv_params)
 
@@ -190,8 +195,9 @@ class WorkerV2():
         if cmd == b"WORK_PARAMS":
             self._logger.info("Receiving params...")
             parameters = parse_params_from_string(msg[2])
-            # buf = memoryview(msg[2])
-            # arr = np.frombuffer(buf, dtype=np.float).copy()
+            packet_size = len(msg[2])
+            self._logger.debug(f"Packet size of params={packet_size}")
+            
             for i in np.arange(self.model.n_layers):
                 self.model.layers[i].W.data = parameters[i][0]
                 self.model.layers[i].b.data = parameters[i][1]

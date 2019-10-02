@@ -9,12 +9,14 @@ import numpy as np
 import zmq.green as zmq
 
 from fault_tolerant_ml.data.utils import next_batch
+from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.heartbeater import Heartbeater
 from fault_tolerant_ml.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
                                                  START)
 from fault_tolerant_ml.metrics import accuracy_scorev2
 from fault_tolerant_ml.proto.utils import (params_to_string,
                                            parse_params_response_from_string,
+                                           parse_setup_response_from_string,
                                            setup_to_string)
 
 # pylint: disable=no-member
@@ -50,6 +52,7 @@ class MasterV2():
         self.y_valid = None
 
         self.heartbeater = Heartbeater(self.n_workers, period)
+        self.watch_dog = WatchDog()
 
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
@@ -92,6 +95,53 @@ class MasterV2():
 
         return poller
 
+    def _poll_svd(self, i):
+        """Poll for the SVD index from workers
+        """
+        # Poll messages from workers and collect them
+        events = dict(self.poller.poll())
+        if (self.pull_socket in events) and \
+            (events.get(self.pull_socket) == zmq.POLLIN):
+            # Receive svd info
+            msg = self.pull_socket.recv_multipart()
+            cmd = msg[0]
+            if cmd == b"SVD":
+                worker = msg[1]
+                content = msg[2]
+                svd_idx = parse_setup_response_from_string(content)
+                self._logger.info(
+                    f"SVD_idx for worker {worker} is {svd_idx}"
+                )
+                self.watch_dog.states[worker].svd_idx = svd_idx
+                i += 1
+        return i
+
+    def _calculate_dynamic_comms(self):
+        """Calculate dynamic comm period
+        """
+        i = 0
+        n_responses = len(self.heartbeater.hearts)
+        while i < n_responses:
+            # Need to sleep gevent to be able to have heartbeat thread
+            gevent.sleep(0.00000001)
+
+            i = self._poll_svd(i)
+
+            # Update no. of expected responses to end the while loop
+            n_responses = self._check_responses(n_responses)
+
+        # Normalize svd idx
+        svds = np.array([state.svd_idx for state in self.watch_dog.states])
+        max_svd = np.max(svds)
+        normalized_svds = svds / max_svd
+        comm_iterations = np.floor(normalized_svds * self.n_iterations).astype(int)
+
+        for i, worker in enumerate(self.watch_dog.states):
+            worker.comm_iterations = comm_iterations[i]
+
+        self._logger.debug(f"Comm iterations={comm_iterations}")
+
+
     def _map(self):
         """Map data to workers
         """
@@ -111,6 +161,8 @@ class MasterV2():
                 overlap=0.0
             )
 
+            self._logger.debug(f"Workerstates={self.watch_dog.states}")
+
             for heart in self.heartbeater.hearts:
                 X_batch, y_batch = next(batch_gen)
                 X_batch = X_batch.data
@@ -123,6 +175,9 @@ class MasterV2():
                 self.ctrl_socket.send_multipart(multipart)
 
             self.state = MAP_PARAMS
+
+            self._calculate_dynamic_comms()
+
         if self.state == MAP_PARAMS:
             # Map params
             msg = [params_to_string(self.model.layers)]
@@ -332,7 +387,12 @@ class MasterV2():
         self._logger.info("Starting heart beater")
         while self.state != COMPLETE:
             # Send beat
-            self.state = self.heartbeater.beat(self.heart_pub_socket, self.state)
+            self.state, newhearts, heartfailures = \
+                self.heartbeater.beat(self.heart_pub_socket, self.state)
+            if newhearts:
+                list(map(self.watch_dog.add_worker, newhearts))
+            if heartfailures:
+                list(map(self.watch_dog.pop, heartfailures))
             # Receive responses
             gevent.sleep(1)
             events = dict(self.poller.poll())
@@ -349,6 +409,7 @@ class MasterV2():
         """Machine learning training loop
         """
         try:
+            start = time.time()
             while self.model.iter < self.n_iterations:
                 # Need to have a small sleep to enable gevent threading
                 gevent.sleep(0.00000001)
@@ -360,6 +421,13 @@ class MasterV2():
                 self._recv()
 
             self.done()
+            end = time.time()
+            elapsed = end - start
+            self._logger.info(
+                "Time taken for %d iterations is %7.6fs",
+                self.n_iterations,
+                elapsed
+            )
         except KeyboardInterrupt:
             self._logger.info("Keyboard quit")
             self.done()

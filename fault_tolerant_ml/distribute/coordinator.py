@@ -13,7 +13,7 @@ from fault_tolerant_ml.proto.utils import (parse_params_response_from_string,
                                            setup_to_string)
 
 
-class Coordinator(object):
+class Coordinator():
     """Responsible for distributing data
     """
     
