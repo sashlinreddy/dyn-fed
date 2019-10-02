@@ -3,6 +3,8 @@
 import logging
 import time
 import uuid
+import os
+import json
 
 import numpy as np
 import zmq
@@ -16,6 +18,7 @@ from fault_tolerant_ml.proto.utils import (params_response_to_string,
                                            parse_setup_from_string,
                                            setup_reponse_to_string)
 from fault_tolerant_ml.utils.maths import arg_svd
+from fault_tolerant_ml.lib.io.file_io import FileWatcher
 
 
 # pylint: disable=no-member
@@ -28,6 +31,7 @@ class WorkerV2():
         self.push = None
         self.ctrl = None
         self.loop = None
+        self.master_ip_address = None
         self.identity = \
             str(uuid.uuid4()) if identity is None else f"worker-{identity}"
 
@@ -52,32 +56,58 @@ class WorkerV2():
 
         self._logger.info("Setting up...")
 
+    def _load_master_ip(self):
+        """Load master IP from shared folder
+        """
+        self._logger.info("Loading in Master IP")
+        ip_filename = "ip_config.json"
+        if "SLURM_JOBID" in os.environ:
+            slurm_job_id = os.environ["SLURM_JOBID"]
+            ip_filename = f"ip_config_{slurm_job_id}.json"
+
+        full_path = os.path.join(self.strategy.config_folder, ip_filename)
+        if os.path.exists(full_path):
+            with open(full_path, "r") as f:
+                ip_config = json.load(f)
+        else:
+            file_watcher = FileWatcher(self.model.strategy.config_folder, full_path)
+            file_found = file_watcher.run(timeout=30)
+            if file_found:
+                self._logger.info("Found IP Address file. Loading...")
+                with open(full_path, "r") as f:
+                    ip_config = json.load(f)
+            else:
+                raise FileNotFoundError("IP Config file not found")
+
+        self.master_ip_address = ip_config["ipAddress"]
+
     def _connect(self):
         """Connect to sockets
         """
-        self._logger.info("Connecting sockets...")
+        self._load_master_ip()
+        self._logger.info(f"Connecting sockets on {self.master_ip_address}")
         self.loop = ioloop.IOLoop()
         self.context = zmq.Context()
 
         dev = devices.ThreadDevice(zmq.FORWARDER, zmq.SUB, zmq.DEALER)
         dev.setsockopt_in(zmq.SUBSCRIBE, b"")
         dev.setsockopt_out(zmq.IDENTITY, self.identity.encode())
-        dev.connect_in('tcp://127.0.0.1:5564')
-        dev.connect_out('tcp://127.0.0.1:5561')
+        dev.connect_in(f'tcp://{self.master_ip_address}:5564')
+        dev.connect_out(f'tcp://{self.master_ip_address}:5561')
         dev.start()
 
         subscriber = self.context.socket(zmq.SUB) # pylint: disable=no-member
-        subscriber.connect("tcp://localhost:5560")
+        subscriber.connect(f"tcp://{self.master_ip_address}:5560")
         # subscriber.connect(f"tcp://{master_ip_address}:5563")
         subscriber.setsockopt(zmq.SUBSCRIBE, b"") # pylint: disable=no-member
 
         self.push = self.context.socket(zmq.PUSH) # pylint: disable=no-member
-        self.push.connect("tcp://localhost:5567")
+        self.push.connect(f"tcp://{self.master_ip_address}:5567")
         # push_socket.connect(f"tcp://{master_ip_address}:5562")
 
         ctrl_socket = self.context.socket(zmq.DEALER) # pylint: disable=no-member
         ctrl_socket.setsockopt_string(zmq.IDENTITY, self.identity) # pylint: disable=no-member
-        ctrl_socket.connect("tcp://localhost:5566")
+        ctrl_socket.connect(f"tcp://{self.master_ip_address}:5566")
         # ctrl_socket.connect(f"tcp://{master_ip_address}:5565")
 
         self.sub = zmqstream.ZMQStream(subscriber, self.loop)

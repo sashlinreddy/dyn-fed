@@ -3,6 +3,9 @@
 import logging
 import signal
 import time
+import socket
+import os
+import json
 
 import gevent
 import numpy as np
@@ -51,10 +54,31 @@ class MasterV2():
         self.X_valid = None
         self.y_valid = None
 
+        # Get ipaddress for workers to connect to
+
         self.heartbeater = Heartbeater(self.n_workers, period)
         self.watch_dog = WatchDog()
 
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
+
+        self._save_ip()
+
+    def _save_ip(self):
+        """Save IP address to shared folder
+        """
+        self.hostname = socket.gethostname()
+        self.ip_address = socket.gethostbyname(self.hostname)
+
+        self._logger.info(f"Master on ip={self.ip_address}")
+
+        ip_filename = "ip_config.json"
+        if "SLURM_JOBID" in os.environ:
+            slurm_job_id = os.environ["SLURM_JOBID"]
+            ip_filename = f"ip_config_{slurm_job_id}.json"
+
+        ip_config = {"ipAddress" : self.ip_address}
+        with open(os.path.join(self.strategy.config_folder, ip_filename), "w") as f:
+            json.dump(ip_config, f)
 
     def _connect(self):
         """Connect sockets

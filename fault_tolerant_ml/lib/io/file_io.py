@@ -1,16 +1,15 @@
 """Functions to accomplish basic File IO operations.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import os
 import datetime
-import yaml
 import logging
+import os
 import time
-from watchdog.observers import Observer
+
+import yaml
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 logger = logging.getLogger("ftml.lib.io.file_io")
 
@@ -37,35 +36,47 @@ def flush_dir(dir, ignore_dir=[], mins=1, hours=0):
                     os.remove(curpath)
 
 def load_model_config(path):
+    """Load model config given path
+
+    Args:
+        path (str): Path to model config file
+
+    Returns:
+        cfg (dict): Config dictionary
+    """
     with open(path, 'r') as ymlfile:
         cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
     return cfg
 
 class Handler(FileSystemEventHandler):
-
+    """Watchdog handler
+    """
     def __init__(self, watcher):
         self.watcher = watcher
         self.observer = self.watcher.observer
         self.filename = self.watcher.filename
 
     def on_any_event(self, event):
+        """Overridden on any event method
+        """
         if event.is_directory:
             return None
 
-        elif event.event_type == 'created':
+        if event.event_type == 'created':
             # Take any action here when a file is first created.
-            logger.debug("Received created event - %s." % event.src_path)
+            logger.debug("Received created event - %s.", event.src_path)
             if event.src_path == self.filename:
                 self.watcher.file_found = True
                 self.observer.stop()
 
         elif event.event_type == 'modified':
             # Taken any action here when a file is modified.
-            logger.debug("Received modified event - %s." % event.src_path)
+            logger.debug("Received modified event - %s.", event.src_path)
 
 class FileWatcher:
-
+    """File watching class
+    """
     def __init__(self, dir_to_watch, filename):
         self.observer = Observer()
         self.file_found = False
@@ -73,9 +84,12 @@ class FileWatcher:
         self.dir_to_watch = dir_to_watch
 
     def run(self, timeout=20, recursive=False):
+        """Run file watcher
+        """
         start = time.time()
         running_time = 0
         event_handler = Handler(self)
+        logger.debug(f"Watching {self.dir_to_watch}")
         self.observer.schedule(event_handler, self.dir_to_watch, recursive=recursive)
         self.observer.start()
         try:
