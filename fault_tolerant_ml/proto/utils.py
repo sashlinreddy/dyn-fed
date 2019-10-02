@@ -64,6 +64,23 @@ def setup_reponse_to_string(svd_idx):
     
     return buffer
 
+def comms_setup_to_string(n_iterations):
+    """Generate setup data buffer message
+
+    Args:
+        n_iterations (int): Worker comm period
+
+    Returns:
+        buffer (byte string): Byte string of objects
+    """
+    sent_msg = ftml_pb2.CommSetup(
+        n_iterations=n_iterations
+    )
+
+    buffer = sent_msg.SerializeToString()
+    
+    return buffer
+
 def params_to_string(model_layers):
     """Parameters protobuf serialization
 
@@ -219,6 +236,22 @@ def parse_setup_response_from_string(msg):
 
     
     return setup_response.svd_idx
+
+def parse_comm_setup_from_string(msg):
+    """Reconstruct protocol buffer message
+
+    Args:
+        msg (byte string): Byte array to be reconstructed
+
+    Returns:
+        n_iterations (int): Worker comm iterations
+    """
+    # pylint: disable=no-member
+    comm_setup = ftml_pb2.CommSetup()
+    comm_setup.ParseFromString(msg)
+
+    
+    return comm_setup.n_iterations
 
 def parse_params_from_string(msg):
     """Parameters protobuf deserialization

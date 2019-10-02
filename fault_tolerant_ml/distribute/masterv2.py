@@ -20,7 +20,8 @@ from fault_tolerant_ml.metrics import accuracy_scorev2
 from fault_tolerant_ml.proto.utils import (params_to_string,
                                            parse_params_response_from_string,
                                            parse_setup_response_from_string,
-                                           setup_to_string)
+                                           setup_to_string,
+                                           comms_setup_to_string)
 
 # pylint: disable=no-member
 
@@ -165,6 +166,13 @@ class MasterV2():
 
         self._logger.debug(f"Comm iterations={comm_iterations}")
 
+        for heart in self.heartbeater.hearts:
+            worker = self.watch_dog.states[heart]
+            msg = [comms_setup_to_string(worker.comm_iterations)]
+            multipart = [heart, b"COMM_INFO"]
+            multipart.extend(msg)
+            self.ctrl_socket.send_multipart(multipart)
+
 
     def _map(self):
         """Map data to workers
@@ -304,7 +312,7 @@ class MasterV2():
         parameters, mr, loss = \
             parse_params_response_from_string(content)
 
-        self._logger.info(
+        self._logger.debug(
             f"Received work from {worker}, mr.shape={mr.shape}"
         )
 
@@ -362,6 +370,19 @@ class MasterV2():
             errors = []
             d_Wbs = []
             n_responses = len(self.heartbeater.hearts)
+            # Get all workers who are skipping comms this iteration
+            start_comm_iters = np.array([
+                self.n_iterations - worker.comm_iterations
+                for worker in self.watch_dog.states
+            ])
+
+            self._logger.debug(f"start_comm_iters={start_comm_iters}, model iter={self.model.iter}")
+
+            self._logger.debug(f"Where={np.where(start_comm_iters > self.model.iter)}")
+            n_skip = np.count_nonzero(start_comm_iters > self.model.iter)
+            self._logger.debug(f"Skipping={n_skip}")
+            # n_responses = n_responses - n_skip
+
             while i < n_responses:
                 # Need to sleep gevent to be able to have heartbeat thread
                 gevent.sleep(0.00000001)

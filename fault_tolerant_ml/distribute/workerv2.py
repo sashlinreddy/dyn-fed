@@ -16,7 +16,8 @@ from fault_tolerant_ml.operators import Tensor
 from fault_tolerant_ml.proto.utils import (params_response_to_string,
                                            parse_params_from_string,
                                            parse_setup_from_string,
-                                           setup_reponse_to_string)
+                                           setup_reponse_to_string,
+                                           parse_comm_setup_from_string)
 from fault_tolerant_ml.utils.maths import arg_svd
 from fault_tolerant_ml.lib.io.file_io import FileWatcher
 
@@ -45,6 +46,8 @@ class WorkerV2():
         self.n_features: int = None
         self.n_classes: int = None
         self.state = None
+        self.comm_iterations = None
+        self.start_comms_iter = None
 
         # Executor params
         self.remap = self.model.strategy.remap
@@ -205,15 +208,22 @@ class WorkerV2():
                 f"Time to calculate svd idx {(time.time() - tic):.3f} s"
             )
 
+            # Send back idx_95 to determine dynamic communication strategy
             data = [setup_reponse_to_string(idx_95)]
             multipart = [b"SVD", self.identity.encode()]
             multipart.extend(data)
 
             self.push.send_multipart(multipart)
-
-            # Send back idx_95 to determine dynamic communication strategy
-
             
+            # # After receiving data we can recv params
+            # self.sub.on_recv(self.recv_params)
+
+        if cmd == b"COMM_INFO":
+            self.comm_iterations = parse_comm_setup_from_string(msg[1])
+            self.start_comms_iter = self.model.max_iter - \
+                self.comm_iterations
+            self._logger.debug(f"Comm iterations={self.comm_iterations}")
+
             # After receiving data we can recv params
             self.sub.on_recv(self.recv_params)
 
@@ -249,6 +259,7 @@ class WorkerV2():
                 )
             ]
 
+            # if self.model.iter >= self.start_comms_iter:
             multipart = [b"WORK", self.identity.encode()]
             multipart.extend(data)
 
