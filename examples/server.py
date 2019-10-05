@@ -2,18 +2,15 @@
 """
 import logging
 import time
-import threading
 import signal
 
 import numpy as np
 import zmq.green as zmq
-from zmq.eventloop import zmqstream
 import gevent
 
 from tornado import ioloop
-# import tornado
 
-from fault_tolerant_ml.distribute.states import MAP, MAP_PARAMS, REDUCE, START
+from fault_tolerant_ml.distribute.states import MAP, MAP_PARAMS, START
 
 logging.basicConfig(level="INFO")
 logger = logging.getLogger()
