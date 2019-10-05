@@ -11,9 +11,13 @@ message Tensor {
 
 message Setup {
     int32 n_samples = 1;
-    int32 state = 4;
-    Tensor X = 5;
-    Tensor y = 6;
+    int32 state = 2;
+    Tensor X = 3;
+    Tensor y = 4;
+}
+
+message SetupResponse {
+    float svd_idx = 1;
 }
 
 message CommSetup {

@@ -13,7 +13,11 @@ logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 
 # Need to disable capturing for tensorflow and matplotlib
 # before importing from dataset
-from fault_tolerant_ml.data import Dataset # pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-position
+from fault_tolerant_ml.data import \
+    Dataset
+from fault_tolerant_ml.data.utils import next_batch
+
 
 class TestPartition(unittest.TestCase):
     """Tests for Partioning algorithm"""
@@ -33,7 +37,7 @@ class TestPartition(unittest.TestCase):
         overlap = 0.0
         X = np.random.randint(0, n_samples, size=(n_samples, 784))
         y = np.random.randint(0, 2, size=(n_samples, 10))
-        generator = Dataset.next_batch(X, y, batch_size, overlap=overlap)
+        generator = next_batch(X, y, batch_size, overlap=overlap)
 
         for _ in np.arange(n_workers):
             X_batch, y_batch = next(generator)
@@ -50,11 +54,10 @@ class TestPartition(unittest.TestCase):
         overlap = 0.2
         X = np.random.randint(0, n_samples, size=(n_samples, 784))
         y = np.random.randint(0, 2, size=(n_samples, 10))
-        generator = Dataset.next_batch(X, y, batch_size, overlap=overlap)
+        generator = next_batch(X, y, batch_size, overlap=overlap)
 
         for _ in np.arange(n_workers):
             X_batch, y_batch = next(generator)
             # All shapes should be 720 since we have an overlap
             self.assertEqual(X_batch.shape, (720, 784))
             self.assertEqual(y_batch.shape, (720, 10))
-        
