@@ -1,3 +1,6 @@
+
+"""Maths utilities
+"""
 import numpy as np
 
 def sigmoid(s):
@@ -26,18 +29,31 @@ def linspace_quantization(matrix, interval=8):
     struct_field_types = [np.float32, np.float32, np.int32, 'b']
     struct_field_shapes = [1, 1, 1, (matrix.shape)]
 
-    msg = np.zeros(1, dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes))))
+    msg = np.zeros(
+        1,
+        dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
+    )
     msg[0] = (min_W_val, max_W_val, interval, W_bins)
 
     return msg
 
 def reconstruct_approximation(buf, shape, r_dtype=np.float32):
+    """Reconstruct linear space appromixation
+
+    Args:
+        buf: Buffer to be reconstructed
+        shape (tuple): Shape to be reconstructed to
+        r_dtype (np.type): Type of reconstructed array
+
+    Returns:
+        matrix (numpy.ndarray): Reconstructed array
+    """
     # Reconstruct W matrix from min, max, no. of intervals and which bins
     # each parameter value falls in
     struct_field_names = ["min_val", "max_val", "interval", "bins"]
     struct_field_types = [np.float32, np.float32, np.int32, 'b']
     struct_field_shapes = [1, 1, 1, (shape)]
-    dtype=(list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
+    dtype = (list(zip(struct_field_names, struct_field_types, struct_field_shapes)))
                                     
     data = np.frombuffer(buf, dtype=dtype)
     min_W_val, max_W_val, interval, matrix_bins = data[0]
@@ -47,3 +63,17 @@ def reconstruct_approximation(buf, shape, r_dtype=np.float32):
     matrix = bins[matrix_bins].reshape(shape)
 
     return matrix
+
+def arg_svd(X, percentile=0.95):
+    """Returns index of feature where there is 95% of the variance of the
+    data
+
+    Returns:
+        idx_95: (Sum of singular values of 95 percentile)
+    """
+    # Only interested in the singular values
+    _, s, _ = np.linalg.svd(X, full_matrices=False)
+
+    idx_95 = np.argwhere(np.cumsum(s) / np.sum(s) >= percentile).flatten()[0]
+
+    return idx_95

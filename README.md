@@ -43,8 +43,8 @@ protoc -I=protos/ --python_out=fault_tolerant_ml/proto/ protos/ftml.proto
 ```bash
 tmux
 export LOGDIR=${PWD}/logs
-pythonw tests/run_master.py $n_workers # Run in separate window
-pythonw tests/run_worker.py $n_workers -i $TMUX_PANE -t 1 # Set "setw synchronize-panes on" as a tmux setting. Use Ctrl+B,: for insert mode
+./scripts/master_local.sh $N_WORKERS -v INFO -m $MODEL_TYPE # Run in separate window
+./scripts/worker_local.sh $N_WORKERS -v INFO -m $MODEL_TYPE # Set "setw synchronize-panes on" as a tmux setting. Use Ctrl+B,: for insert mode
 ```
 
 To view the results on tensorboard assuming you are in the parent directory:

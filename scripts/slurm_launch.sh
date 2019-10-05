@@ -11,6 +11,8 @@ while [ "$1" != "" ]; do
         -v| --verbose )         shift
                                 verbose="-v $1"
                                 ;;
+        -m| --MODEL )           shift
+                                MODEL="$1"
         -h | --help )           usage
                                 exit
                                 ;;
@@ -20,9 +22,23 @@ while [ "$1" != "" ]; do
     shift
 done
 
+# Decide on the type of model
+EXE_PATH=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_logistic.py
+
+if [ "$MODEL" == "LINEAR" ]; then
+    echo "Running Linear Model"
+    EXE_PATH=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_linear.py
+elif [ "$MODEL" == "LOG2" ]; then
+    echo "Running Logistic 2 Model"
+    EXE_PATH=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_logisticv2.py
+elif [ "$MODEL" == "NN" ]; then
+    echo "Running NN Model"
+    EXE_PATH=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_nn.py
+fi
+
 export PYTHON_EXE=/home-mscluster/sreddy/miniconda3/envs/ftml/bin/python3
-export MASTER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_linear.py
-export WORKER_EXE=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_linear.py
+export MASTER_EXE=$EXE_PATH
+export WORKER_EXE=$EXE_PATH
 export DATA_DIR=/home-mscluster/sreddy/fault-tolerant-ml/data/fashion-mnist
 
 echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r master $verbose > /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
