@@ -2,7 +2,6 @@
 """
 import unittest
 import logging
-import os
 from pathlib import Path
 
 logging.getLogger("tensorflow").setLevel(logging.CRITICAL)
