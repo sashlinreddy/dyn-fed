@@ -3,9 +3,10 @@
 import logging
 import time
 
+import gevent
 import zmq.green as zmq
 
-from fault_tolerant_ml.distribute.states import (COMPLETE, DIST_PARAMS, MAP,
+from fault_tolerant_ml.distribute.states import (COMPLETE, MAP_PARAMS, MAP,
                                                  REMAP)
 
 logger = logging.getLogger("ftml.distribute.wrappers")
@@ -69,7 +70,7 @@ class ftml_trainv2(ftml_wrapper):
 
             # while i < self.n_iterations:
             while self.obj.model.iter < self.obj.n_iterations:
-
+                gevent.sleep(0.000000000001)
                 events = dict(self.obj.poller.poll())
 
                 if self.obj.watch_dog.states:
@@ -126,7 +127,7 @@ class ftml_train_collect(ftml_wrapper):
                 delta = self.decorated(self.obj, events)
 
                 if self.obj.state != REMAP:
-                    self.obj.state = DIST_PARAMS
+                    self.obj.state = MAP_PARAMS
                 
                 self.obj.model.iter += 1
                 if delta < self.obj.strategy.delta_switch and \

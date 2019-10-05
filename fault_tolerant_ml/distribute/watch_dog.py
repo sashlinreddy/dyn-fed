@@ -1,8 +1,10 @@
 """Watch dog for workers joining and leaving
 """
+from __future__ import print_function
+
 import logging
 
-class WorkerState(object):
+class WorkerState():
     """Keeps track of workers state for multiple different things.
     
     Has a unique identifier, the state (whether or not the worker is alive),
@@ -36,15 +38,41 @@ class WorkerState(object):
         self.n_samples = None
         self.mr_idxs_used = False
         self.mapping = {}
+        self.svd_idx = 0
+        self._comm_iterations = 1
 
     def __repr__(self):
         return f"<WorkerState identity={self.identity.decode()}>"
+
+    def __hash__(self):
+        return hash(self.identity)
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.identity == other.identity
+
+    @property
+    def comm_iterations(self):
+        """Returns comm period
+        """
+        return self._comm_iterations
+
+    @comm_iterations.setter
+    def comm_iterations(self, comm_iterations):
+        """Updates worker comm period
+        """
+        self._comm_iterations = comm_iterations
 
 class WorkerStates(object):
     """Wraps dictionary of WorkerState objects to manipulate easily
     """
     def __init__(self):
         self._states = {}
+
+        self.logger = logging.getLogger(
+            f"ftml.distribute.{self.__class__.__name__}"
+        )
 
     def __call__(self):
         return self._states
@@ -80,6 +108,15 @@ class WorkerStates(object):
         """
         self._states[worker] = WorkerState(worker)
 
+    def pop(self, worker):
+        """Remove worker from dictionary
+        
+        Args:
+            worker (byte string): Worker identifier
+        """
+        self.logger.debug(f"{worker} failed :( Removing this guy...")
+        self._states.pop(worker, None)
+
     def update_state(self, worker, state):
         """Updates worker state
         """
@@ -95,7 +132,9 @@ class WatchDog(object):
         self._worker_states = WorkerStates()
         self._n_alive = 0
 
-        self.logger = logging.getLogger("ftml")
+        self.logger = logging.getLogger(
+            f"ftml.distribute.{self.__class__.__name__}"
+        )
 
     @property
     def states(self):
@@ -133,3 +172,8 @@ class WatchDog(object):
             self.states[worker].state = True
         else:
             self.logger.debug("Worker asking for work again?")
+
+    def pop(self, worker):
+        """Remove worker
+        """
+        self._worker_states.pop(worker)

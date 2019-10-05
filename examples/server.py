@@ -13,7 +13,7 @@ import gevent
 from tornado import ioloop
 # import tornado
 
-from fault_tolerant_ml.distribute.states import MAP, DIST_PARAMS, REDUCE, START
+from fault_tolerant_ml.distribute.states import MAP, MAP_PARAMS, REDUCE, START
 
 logging.basicConfig(level="INFO")
 logger = logging.getLogger()
@@ -139,22 +139,19 @@ class Server():
         """Heart
         """
         logger.info("Starting heart beater")
-        # self.pub.on_send(self.send_work)
-        # asyncio.set_event_loop(asyncio.new_event_loop())
-        # self.caller = ioloop.PeriodicCallback(self.beat, self.period)
-        # self.caller.start()
-        # self.io_loop.add_callback(self.beat)
         while True:
             # Send beat
             self.beat()
             # Receive
             gevent.sleep(1)
             events = dict(self.poller.poll())
-            while (self.heart_ctrl_socket in events) and (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
+            while (self.heart_ctrl_socket in events) and \
+                (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
                 events = dict(self.poller.poll())
-                if (self.heart_ctrl_socket in events) and (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
+                if (self.heart_ctrl_socket in events) and \
+                    (events.get(self.heart_ctrl_socket) == zmq.POLLIN):
+                    # Handle pong
                     msg = self.heart_ctrl_socket.recv_multipart()
-                    # logger.info(f"Msg={msg}")
                     self.handle_pong(msg)
     
     def beat(self):
@@ -264,9 +261,9 @@ class Server():
                     msg = A.tostring()
                     self.ctrl_socket.send_multipart([heart, b"WORK_DATA", msg])
 
-                self.state = DIST_PARAMS
+                self.state = MAP_PARAMS
 
-            if self.state == DIST_PARAMS:
+            if self.state == MAP_PARAMS:
                 while True:
 
                     gevent.sleep(0.00000001)
@@ -280,7 +277,6 @@ class Server():
                     logger.info("Recv work")
                     # Recv work
                     i = 0
-                    events = dict(self.poller.poll())
                     hearts = len(self.hearts)
                     while i < hearts:
                         gevent.sleep(0.0000001)

@@ -68,13 +68,6 @@ def setup_logger(filename='logfile.log', level="INFO", console_logging=True):
         logger: logging instance
             Logger with desired config
     """
-    # Creating log directory if it doesn't exist
-
-    if "LOGDIR" in os.environ:
-        logdir = os.environ["LOGDIR"]
-    else:
-        logdir = "logs"
-    path = os.path.join(logdir, filename)
     # # Clear old logs
     # for f in os.listdir("logs"):
     #     os.remove(f)
@@ -88,11 +81,20 @@ def setup_logger(filename='logfile.log', level="INFO", console_logging=True):
         "%Y-%m-%d %H:%M:%S"
     )
 
-    # FileHandler
-    fh = logging.FileHandler(path, mode='w')
-    fh.setLevel(level)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
+    # Creating log directory if it doesn't exist
+
+    if filename is not None:
+        if "LOGDIR" in os.environ:
+            logdir = os.environ["LOGDIR"]
+        else:
+            logdir = "logs"
+        path = os.path.join(logdir, filename)
+
+        # FileHandler
+        fh = logging.FileHandler(path, mode='w')
+        fh.setLevel(level)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
 
     # StreamHandler which outputs to the console
     if console_logging:
