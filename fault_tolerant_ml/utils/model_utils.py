@@ -16,13 +16,15 @@ def encode_run_name(n_workers, config):
     """
     encode_vars = [
         "n_workers", "scenario", "remap", "quantize",
-        "comm_period", "send_gradients", "mu_g", "n_most_rep",
-        "overlap", "aggregate_mode"
+        "send_gradients", "mu_g", "n_most_rep", "overlap",
+        "aggregate_mode", "interval", "mode"
     ]
 
     global_cfg = {"n_workers": n_workers}
     global_cfg.update(config["executor"])
     global_cfg.update(config["optimizer"])
+    global_cfg.update(config["comms"])
+    global_cfg.update(config["distribute"])
     encode_name = string_utils.dict_to_str(global_cfg, encode_vars)
 
     if "LOGDIR" in os.environ:

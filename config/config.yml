@@ -4,23 +4,28 @@ model:
   batch_size: 32
 
 optimizer:
-  learning_rate: 0.99
+  learning_rate: 0.1
   clip_norm: 0
   clip_val: 0
   mu_g: 0.0
   n_most_rep: 100
   name: "sgd"
 
-executor:
+comms:
+  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
+  interval: 1
+
+distribute:
   strategy: "mw"
-  scenario: 7
   remap: 1
   quantize: 0
-  overlap: 0.8 # TODO: Experiment more with overlap and weighted loss
-  comm_period: 20
-  aggregate_mode: 2 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
+  overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
+  aggregate_mode: 0 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
   delta_switch: 0.0004
   timeout: 30
   send_gradients: 0
+
+executor:
+  scenario: 7
   shared_folder: "data/"
   config_folder: "config/"

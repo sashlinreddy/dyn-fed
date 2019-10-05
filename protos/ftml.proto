@@ -16,6 +16,10 @@ message Setup {
     Tensor y = 6;
 }
 
+message CommSetup {
+    int32 n_iterations = 1;
+}
+
 message Parameter {
     Tensor W = 1;
     Tensor b = 2;
