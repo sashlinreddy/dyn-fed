@@ -15,16 +15,16 @@ import gevent
 import numpy as np
 import zmq.green as zmq
 
+from fault_tolerant_ml.data.utils import next_batch
 from fault_tolerant_ml.distribute import Coordinator, WatchDog
-from fault_tolerant_ml.distribute.states import (COMPLETE, DIST_PARAMS, MAP,
+from fault_tolerant_ml.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
                                                  REDUCE, REMAP, START)
 from fault_tolerant_ml.distribute.wrappers import (ftml_train,
                                                    ftml_train_collect,
                                                    ftml_trainv2)
 from fault_tolerant_ml.metrics import accuracy_scorev2
-from fault_tolerant_ml.tools import TFLogger
-# Local
 from fault_tolerant_ml.proto.utils import params_to_string
+from fault_tolerant_ml.tools import TFLogger
 
 
 class Master():
@@ -286,7 +286,11 @@ class Master():
             self._logger.debug("Updating mapping")
             self.mapping = dict(zip(new_range, global_idxs))
 
-            self.X_train, self.y_train = self.data.update_xy(global_idxs)
+            self.X_train, self.y_train, self.data.n_samples = self.data.update_xy(
+                self.X_train,
+                self.y_train,
+                global_idxs
+            )
 
             for w in self.watch_dog.states:
                 if not w.mr_idxs_used:
@@ -300,10 +304,10 @@ class Master():
             data=data, 
             workers=self.watch_dog.states, 
             params=params, 
-            gen_func=self.data.next_batch
+            gen_func=next_batch
         )
 
-        self.state = DIST_PARAMS
+        self.state = MAP_PARAMS
 
 
     def connect(self):
@@ -342,8 +346,9 @@ class Master():
         """Heartbeat thread
         """
         while self.state != COMPLETE:
-            self.send_heartbeat()
-            gevent.sleep(0.5)
+            gevent.sleep(1)
+            if self.state != START:
+                self.send_heartbeat()
 
     def register_workers(self, worker_id=None):
         """Registers workers in a round robin fashion
@@ -389,7 +394,7 @@ class Master():
         params["remap"] = self.strategy.remap
         params["quantize"] = self.strategy.quantize
 
-        if self.state == DIST_PARAMS:
+        if self.state == MAP_PARAMS:
             params["delay_change"] = self.delay_change
         else:
             params["n_alive"] = self.watch_dog.n_alive
@@ -423,9 +428,9 @@ class Master():
                 data=data, 
                 workers=self.watch_dog.states, 
                 params=params, 
-                gen_func=self.data.next_batch
+                gen_func=next_batch
             )
-            self.state = DIST_PARAMS
+            self.state = MAP_PARAMS
 
             # # Plot class balances
             # if "FIGDIR" in os.environ:
@@ -448,7 +453,7 @@ class Master():
         if self.state == REMAP:
             self._remap()
             
-        if self.state == DIST_PARAMS:
+        if self.state == MAP_PARAMS:
             # self.send_heartbeat()
             self.times.append(time.time())
 
@@ -503,12 +508,12 @@ class Master():
         self.X_train, self.y_train = self.data.X_train, self.data.y_train
         gevent.signal(signal.SIGQUIT, gevent.kill)
 
-        main_loop = gevent.spawn(self.main_loop)
         # heartbeat_loop = gevent.spawn(self.heartbeat_loop)
+        main_loop = gevent.spawn(self.main_loop)
         
         gevent.joinall([
-            main_loop, 
             # heartbeat_loop,
+            main_loop
         ])
 
         self.kill()

@@ -8,11 +8,12 @@ import time
 import numpy as np
 import zmq.green as zmq
 
-from fault_tolerant_ml.distribute.states import DIST_PARAMS, MAP, REMAP
-from fault_tolerant_ml.proto.utils import setup_to_string, parse_params_response_from_string
+from fault_tolerant_ml.distribute.states import MAP, MAP_PARAMS, REMAP
+from fault_tolerant_ml.proto.utils import (parse_params_response_from_string,
+                                           setup_to_string)
 
 
-class Coordinator(object):
+class Coordinator():
     """Responsible for distributing data
     """
     
@@ -381,7 +382,7 @@ class Coordinator(object):
         state = params["state"]
 
         # Publish parameters
-        if state == DIST_PARAMS:
+        if state == MAP_PARAMS:
             self._map_params(socket, data, params)
         else:
             self._map(socket, data, workers, params, gen_func)

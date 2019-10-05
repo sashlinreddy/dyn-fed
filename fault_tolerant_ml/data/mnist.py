@@ -6,6 +6,7 @@ import struct
 import numpy as np
 
 from fault_tolerant_ml.operators import Tensor
+from fault_tolerant_ml.data.utils import one_hot
 
 from .base import Dataset
 
@@ -60,8 +61,8 @@ class MNist(Dataset):
         self.X_test = self.X_test / fac
 
         # One hot encode labels
-        self.y_train = MNist.one_hot(self.y_train)
-        self.y_test = MNist.one_hot(self.y_test)
+        self.y_train = one_hot(self.y_train)
+        self.y_test = one_hot(self.y_test)
         # we don't want zeroes and ones in the labels neither:
         self.y_train = np.where(self.y_train == 0, 0.01, 0.99)
         self.y_test = np.where(self.y_test == 0, 0.01, 0.99)
