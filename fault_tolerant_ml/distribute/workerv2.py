@@ -48,6 +48,7 @@ class WorkerV2():
         self.start_comms_iter = 0
         self.comm_interval = 1
         self.comm_every_iter = 1
+        self.subscribed = False
 
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
@@ -179,11 +180,22 @@ class WorkerV2():
 
         return epoch_loss, most_representative
 
+    def _recv_comm_info(self, msg):
+        """Receive communication information
+        """
+        self.comm_iterations, self.comm_interval, self.comm_every_iter = \
+                parse_comm_setup_from_string(msg[1])
+        self.start_comms_iter = self.model.max_iter - \
+            self.comm_iterations
+            
+        self._logger.debug(f"Comm iterations={self.comm_iterations}")
+
     def recv_work(self, msg):
         """Receive work
         """
         self._logger.info("Receiving work...")
         cmd = msg[0]
+
         if cmd == b"WORK_DATA":
             X, y, n_samples, state = parse_setup_from_string(msg[1])
 
@@ -198,7 +210,8 @@ class WorkerV2():
 
             self._logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
 
-            if self.model.strategy.comm_mode == 1:
+            if self.model.strategy.comm_mode == 1 or \
+                self.model.strategy.aggregate_mode == 3:
                 tic = time.time()
                 idx_95 = arg_svd(X)
                 self._logger.info(
@@ -211,19 +224,20 @@ class WorkerV2():
                 multipart.extend(data)
 
                 self.push.send_multipart(multipart)
-            else:
-                # After receiving data we can recv params
-                self.sub.on_recv(self.recv_params)
+            if self.model.strategy.comm_mode != 1:
+                if not self.subscribed:
+                    # After receiving data we can recv params
+                    self.sub.on_recv(self.recv_params)
+                    self.subscribed = True
 
         if cmd == b"COMM_INFO":
-            self.comm_iterations, self.comm_interval, self.comm_every_iter = \
-                parse_comm_setup_from_string(msg[1])
-            self.start_comms_iter = self.model.max_iter - \
-                self.comm_iterations
-            self._logger.debug(f"Comm iterations={self.comm_iterations}")
+            self._logger.debug("Receiving communication info")
+            self._recv_comm_info(msg)
 
-            # After receiving data we can recv params
-            self.sub.on_recv(self.recv_params)
+            if not self.subscribed:
+                # After receiving data we can recv params
+                self.sub.on_recv(self.recv_params)
+                self.subscribed = True
 
     def recv_params(self, msg):
         """Recv params
