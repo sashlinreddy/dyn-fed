@@ -64,7 +64,7 @@ def setup_reponse_to_string(svd_idx):
     
     return buffer
 
-def comms_setup_to_string(n_iterations):
+def comms_setup_to_string(n_iterations, comm_interval, comm_every_iter):
     """Generate setup data buffer message
 
     Args:
@@ -74,7 +74,9 @@ def comms_setup_to_string(n_iterations):
         buffer (byte string): Byte string of objects
     """
     sent_msg = ftml_pb2.CommSetup(
-        n_iterations=n_iterations
+        n_iterations=n_iterations,
+        comm_interval=comm_interval,
+        comm_every_iter=comm_every_iter
     )
 
     buffer = sent_msg.SerializeToString()
@@ -250,8 +252,11 @@ def parse_comm_setup_from_string(msg):
     comm_setup = ftml_pb2.CommSetup()
     comm_setup.ParseFromString(msg)
 
+    n_iterations = comm_setup.n_iterations
+    comm_interval = comm_setup.comm_interval
+    comm_every_iter = comm_setup.comm_every_iter
     
-    return comm_setup.n_iterations
+    return n_iterations, comm_interval, comm_every_iter
 
 def parse_params_from_string(msg):
     """Parameters protobuf deserialization

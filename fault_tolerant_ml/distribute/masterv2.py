@@ -35,33 +35,26 @@ class MasterV2():
         self.pub_socket = None
         self.ctrl_socket = None
         self.pull_socket = None
-
         # Polling
         self.poller = None
-        self.period = period
-        self.state = START
-
-        # Distribute variables
-        self.model = model
-        self.strategy = self.model.strategy
-        self.n_workers = self.strategy.n_workers
 
         # Model variables
+        self.model = model
         self.n_iterations = int(
-            np.ceil(self.model.max_iter / self.strategy.comm_period)
+            np.ceil(self.model.max_iter / self.model.strategy.comm_period)
         )
         self.X = None
         self.y = None
         self.X_valid = None
         self.y_valid = None
 
-        # Get ipaddress for workers to connect to
-
-        self.heartbeater = Heartbeater(self.n_workers, period)
+        # Environment variables
+        self.state = START
+        self.heartbeater = Heartbeater(self.model.strategy.n_workers, period)
         self.watch_dog = WatchDog()
 
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
-
+        # Get ipaddress for workers to connect to
         self._save_ip()
 
     def _save_ip(self):
@@ -78,7 +71,7 @@ class MasterV2():
             ip_filename = f"ip_config_{slurm_job_id}.json"
 
         ip_config = {"ipAddress" : self.ip_address}
-        with open(os.path.join(self.strategy.config_folder, ip_filename), "w") as f:
+        with open(os.path.join(self.model.strategy.config_folder, ip_filename), "w") as f:
             json.dump(ip_config, f)
 
     def _connect(self):
@@ -141,9 +134,26 @@ class MasterV2():
                 i += 1
         return i
 
+    def _send_comm_info(self):
+        """Send communication information to each worker
+        """
+        for heart in self.heartbeater.hearts:
+            worker = self.watch_dog.states[heart]
+            msg = [
+                comms_setup_to_string(
+                    worker.comm_iterations,
+                    worker.comm_interval,
+                    worker.comm_every_iter
+                )
+            ]
+            multipart = [heart, b"COMM_INFO"]
+            multipart.extend(msg)
+            self.ctrl_socket.send_multipart(multipart)
+
     def _calculate_dynamic_comms(self):
         """Calculate dynamic comm period
         """
+        self._logger.info("Waiting for SVD idxs from each worker...")
         i = 0
         n_responses = len(self.heartbeater.hearts)
         while i < n_responses:
@@ -155,24 +165,38 @@ class MasterV2():
             # Update no. of expected responses to end the while loop
             n_responses = self._check_responses(n_responses)
 
-        # Normalize svd idx
-        svds = np.array([state.svd_idx for state in self.watch_dog.states])
-        max_svd = np.max(svds)
-        normalized_svds = svds / max_svd
-        comm_iterations = np.floor(normalized_svds * self.n_iterations).astype(int)
+        if self.model.strategy.comm_mode == 1:
+            # Normalize svd idx
+            svds = np.array([state.svd_idx for state in self.watch_dog.states])
 
-        for i, worker in enumerate(self.watch_dog.states):
-            worker.comm_iterations = comm_iterations[i]
+            min_svd = np.min(svds - 1)
+            max_svd = np.max(svds)
 
-        self._logger.debug(f"Comm iterations={comm_iterations}")
+            if min_svd == max_svd:
+                normalized_svds = np.ones_like(svds)
+            else:
+                normalized_svds = (svds - min_svd) / (max_svd - min_svd)
 
-        for heart in self.heartbeater.hearts:
-            worker = self.watch_dog.states[heart]
-            msg = [comms_setup_to_string(worker.comm_iterations)]
-            multipart = [heart, b"COMM_INFO"]
-            multipart.extend(msg)
-            self.ctrl_socket.send_multipart(multipart)
+            comm_iterations = np.floor(normalized_svds * self.n_iterations).astype(int)
 
+            comm_intervals = np.ceil(self.model.max_iter / comm_iterations).astype(int)
+            comm_every_iter = self.model.max_iter - \
+                (comm_iterations - (self.model.max_iter // comm_intervals))
+            
+            self._logger.debug(f"SVDs={svds}")
+            self._logger.debug(
+                f"Comm intervals={comm_intervals}, "
+                f"comm_every_iter={comm_every_iter}"
+            )
+
+            for i, worker in enumerate(self.watch_dog.states):
+                worker.comm_iterations = comm_iterations[i]
+                worker.comm_interval = comm_intervals[i]
+                worker.comm_every_iter = comm_every_iter[i]
+
+            self._logger.debug(f"Comm iterations={comm_iterations}")
+
+            self._send_comm_info()
 
     def _map(self):
         """Map data to workers
@@ -208,9 +232,16 @@ class MasterV2():
 
             self.state = MAP_PARAMS
 
-            self._calculate_dynamic_comms()
+            if self.model.strategy.comm_mode == 1 or \
+                self.model.strategy.aggregate_mode == 3:
+                self._calculate_dynamic_comms()
 
         if self.state == MAP_PARAMS:
+            # Determine if worker needs to communicate
+            if self.model.strategy.comm_mode == 2:
+                self._logger.debug("Sending communication info")
+                self._send_comm_info()
+
             # Map params
             msg = [params_to_string(self.model.layers)]
             multipart = [b"", b"WORK_PARAMS"]
@@ -261,6 +292,7 @@ class MasterV2():
                 model,
                 samples,
                 n_samples,
+                workers_received,
                 mode=0,
                 epsilon=1e-8):
         """Aggregate received parameters
@@ -279,8 +311,13 @@ class MasterV2():
         """
         # pylint: disable=too-many-arguments, too-many-locals
         # Iterate through workers and weight parameters by corresponding epoch loss
-        parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
+        parameters = [
+            [np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers
+        ]
         sum_es = np.sum(np.exp(errors))
+        sum_svds = np.sum(
+            np.exp([self.watch_dog.states[worker].svd_idx for worker in workers_received])
+        )
         epoch_loss = np.mean(errors)
         for j in np.arange(len(errors)):
             weight = 1.0 / len(errors)  # Default aggregation is the average across workers
@@ -291,6 +328,9 @@ class MasterV2():
                 # weight = n_samples_worker / n_samples
             elif mode == 2:
                 weight = np.exp(errors[j]) / sum_es
+            elif mode == 3:
+                worker = workers_received[j]
+                weight = np.exp(self.watch_dog.states[worker].svd_idx) / sum_svds
             self._logger.debug(f"worker={j}, weight={weight}, loss={errors[j]}")
             for k in np.arange(model.n_layers):
                 parameters[k][0] += (
@@ -316,6 +356,12 @@ class MasterV2():
             f"Received work from {worker}, mr.shape={mr.shape}"
         )
 
+        # Update previous and current loss
+        self.watch_dog.states[worker].prev_loss = \
+            self.watch_dog.states[worker].current_loss
+
+        self.watch_dog.states[worker].current_loss = loss
+
         # Collect loss and parameters
         errors.append(loss)
         d_Wbs.append(parameters)
@@ -338,7 +384,7 @@ class MasterV2():
             n_responses = len(self.heartbeater.hearts)
         return n_responses
 
-    def _poll(self, i, errors, d_Wbs):
+    def _poll(self, i, errors, d_Wbs, workers_received):
         """Poll for events from worker
         """
         events = dict(self.poller.poll())
@@ -357,8 +403,73 @@ class MasterV2():
                 )
 
                 i += 1
+                workers_received.append(worker)
 
-        return i, errors, d_Wbs
+        return i, errors, d_Wbs, workers_received
+
+    def _calculate_dynamic_comms_loss(self):
+        """Calculate dynamic comms based on loss
+        """
+        losses = np.array(
+            [worker.prev_loss for worker in self.watch_dog.states]
+        )
+
+        self._logger.debug(f"Losses={losses}")
+        
+        min_loss = np.min(losses - 1e-2)
+        max_loss = np.max(losses)
+
+        if min_loss == max_loss:
+            normalized_losses = np.ones_like(losses)
+        else:
+            # Min max normalization
+            normalized_losses = (losses - min_loss) / (max_loss - min_loss)
+
+        self._logger.debug(f"Normalized losses={normalized_losses}")
+
+        # Get new calculated no. of iterations for each worker
+        comm_iterations = np.floor(
+            normalized_losses * self.model.max_iter
+        ).astype(int)
+
+        comm_intervals = np.ceil(self.model.max_iter / comm_iterations).astype(int)
+        comm_every_iter = self.model.max_iter - \
+            (comm_iterations - (self.model.max_iter // comm_intervals))
+
+        self._logger.debug(f"Comm_iterations loss mode ={comm_iterations}")
+
+        for i, worker in enumerate(self.watch_dog.states):
+            worker.comm_iterations = comm_iterations[i]
+            worker.comm_interval = comm_intervals[i]
+            worker.comm_every_iter = comm_every_iter[i]
+
+    def _expected_responses(self):
+        """Returns expected no. of responses
+        """
+        n_responses = len(self.heartbeater.hearts)
+
+        if self.model.strategy.comm_mode == 1 or \
+            self.model.strategy.comm_mode == 2:
+            comm_intervals = np.array(
+                [worker.comm_interval for worker in self.watch_dog.states]
+            )
+            comm_every_iter = np.array(
+                [worker.comm_every_iter for worker in self.watch_dog.states]
+            )
+
+            self._logger.debug(f"Comm intervals={comm_intervals}")
+
+            who_comms = np.mod(self.model.iter, comm_intervals)
+            who_comms = set(np.argwhere(who_comms == 0).flatten())
+            every_iter = set(np.argwhere(self.model.iter >= comm_every_iter).flatten())
+            both = who_comms.union(every_iter)
+            n_responses = len(both)
+            self._logger.debug(
+                f"i={self.model.iter}, who={who_comms}, every_iter={every_iter}, "
+                f"b={both}, responses={n_responses}"
+            )
+
+        return n_responses
 
     def _recv(self):
         """Reduce params from workers
@@ -369,38 +480,35 @@ class MasterV2():
             i = 0
             errors = []
             d_Wbs = []
-            n_responses = len(self.heartbeater.hearts)
-            # Get all workers who are skipping comms this iteration
-            start_comm_iters = np.array([
-                self.n_iterations - worker.comm_iterations
-                for worker in self.watch_dog.states
-            ])
+            workers_received = []
+            
+            n_responses = self._expected_responses()
 
-            self._logger.debug(f"start_comm_iters={start_comm_iters}, model iter={self.model.iter}")
-
-            self._logger.debug(f"Where={np.where(start_comm_iters > self.model.iter)}")
-            n_skip = np.count_nonzero(start_comm_iters > self.model.iter)
-            self._logger.debug(f"Skipping={n_skip}")
-            # n_responses = n_responses - n_skip
+            self._logger.debug(f"Expected responses={n_responses}")
 
             while i < n_responses:
                 # Need to sleep gevent to be able to have heartbeat thread
                 gevent.sleep(0.00000001)
 
                 # Poll messages from workers and collect them
-                i, errors, d_Wbs = self._poll(i, errors, d_Wbs)
+                i, errors, d_Wbs, workers_received = \
+                    self._poll(i, errors, d_Wbs, workers_received)
 
                 # Update no. of expected responses to end the while loop
                 n_responses = self._check_responses(n_responses)
 
+            if self.model.strategy.comm_mode == 2:
+                self._calculate_dynamic_comms_loss()
+
             # Aggregate parameters
             parameters, epoch_loss = self._reduce(
-                d_Wbs,
-                errors,
-                self.model,
-                None,
-                None,
-                self.strategy.aggregate_mode
+                d_Wbs=d_Wbs,
+                errors=errors,
+                model=self.model,
+                samples=None,
+                n_samples=None,
+                workers_received=workers_received,
+                mode=self.model.strategy.aggregate_mode
             )
 
             # Update model with these parameters
@@ -478,6 +586,9 @@ class MasterV2():
             self.done()
         except zmq.ZMQError:
             self._logger.info("ZMQError")
+            self.done()
+        except Exception as e:
+            self._logger.exception(e)
             self.done()
         finally:
             self._logger.info("Exiting peacefully")

@@ -22,6 +22,8 @@ message SetupResponse {
 
 message CommSetup {
     int32 n_iterations = 1;
+    int32 comm_interval = 2;
+    int32 comm_every_iter = 3;
 }
 
 message Parameter {
