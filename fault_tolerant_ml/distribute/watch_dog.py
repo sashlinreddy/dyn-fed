@@ -39,7 +39,11 @@ class WorkerState():
         self.mr_idxs_used = False
         self.mapping = {}
         self.svd_idx = 0
+        self._prev_loss = 1.0
+        self._current_loss = 1.0
         self._comm_iterations = 1
+        self._comm_interval = 1
+        self._comm_every_iter = 1
 
     def __repr__(self):
         return f"<WorkerState identity={self.identity.decode()}>"
@@ -63,6 +67,54 @@ class WorkerState():
         """Updates worker comm period
         """
         self._comm_iterations = comm_iterations
+
+    @property
+    def comm_interval(self):
+        """Returns comm period
+        """
+        return self._comm_interval
+
+    @comm_interval.setter
+    def comm_interval(self, comm_interval):
+        """Updates worker comm intervals
+        """
+        self._comm_interval = comm_interval
+    
+    @property
+    def comm_every_iter(self):
+        """Returns comm every iter
+        """
+        return self._comm_every_iter
+
+    @comm_every_iter.setter
+    def comm_every_iter(self, comm_every_iter):
+        """Updates worker comm every iter
+        """
+        self._comm_every_iter = comm_every_iter
+
+    @property
+    def prev_loss(self):
+        """Returns previous loss
+        """
+        return self._prev_loss
+
+    @prev_loss.setter
+    def prev_loss(self, prev_loss):
+        """Updates previous loss
+        """
+        self._prev_loss = prev_loss
+
+    @property
+    def current_loss(self):
+        """Returns current loss
+        """
+        return self._current_loss
+
+    @current_loss.setter
+    def current_loss(self, current_loss):
+        """Updates current loss
+        """
+        self._current_loss = current_loss
 
 class WorkerStates(object):
     """Wraps dictionary of WorkerState objects to manipulate easily
@@ -114,7 +166,6 @@ class WorkerStates(object):
         Args:
             worker (byte string): Worker identifier
         """
-        self.logger.debug(f"{worker} failed :( Removing this guy...")
         self._states.pop(worker, None)
 
     def update_state(self, worker, state):
@@ -176,4 +227,5 @@ class WatchDog(object):
     def pop(self, worker):
         """Remove worker
         """
+        self.logger.info(f"Removing worker {worker} due to heart failure :(")
         self._worker_states.pop(worker)
