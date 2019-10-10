@@ -541,7 +541,11 @@ class MasterV2():
         while self.state != COMPLETE:
             # Send beat
             self.state, newhearts, heartfailures = \
-                self.heartbeater.beat(self.heart_pub_socket, self.state)
+                self.heartbeater.beat(
+                    self.heart_pub_socket,
+                    self.state,
+                    self.model.strategy.n_workers
+                )
             if newhearts:
                 list(map(self.watch_dog.add_worker, newhearts))
             if heartfailures:
