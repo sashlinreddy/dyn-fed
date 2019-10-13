@@ -5,11 +5,10 @@ import shutil
 import sys
 import tarfile
 import zipfile
-from tqdm import tqdm
 
 import six
 from six.moves.urllib.error import HTTPError, URLError
-
+from tqdm import tqdm
 
 def _extract_archive(file_path, path='.', archive_format='auto'):
     """Extracts an archive if it matches .tar, .tar.gz
@@ -88,8 +87,10 @@ def download_file(url, filename):
 def get_file(fname,
              origin,
              untar=False,
+             extract=False,
              cache_dir=None,
-             cache_subdir='datasets'):
+             cache_subdir='datasets',
+             archive_format='auto'):
     """Downloads a file if it is not already in the cache
     """
     if cache_dir is None:
@@ -136,5 +137,8 @@ def get_file(fname,
         if not os.path.exists(untar_fpath):
             _extract_archive(fpath, datadir, archive_format='tar')
         return untar_fpath
+
+    if extract:
+        _extract_archive(fpath, datadir, archive_format)
 
     return fpath
