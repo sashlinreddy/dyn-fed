@@ -1,6 +1,7 @@
 """All model utility functions
 """
 import os
+from pathlib import Path
 
 from fault_tolerant_ml.utils import string_utils
 
@@ -28,12 +29,9 @@ def encode_run_name(n_workers, config):
     encode_name = string_utils.dict_to_str(global_cfg, encode_vars)
 
     if "LOGDIR" in os.environ:
-        logdir = os.path.join(os.environ["LOGDIR"], encode_name)
-        if not os.path.exists(logdir):
-            try:
-                os.mkdir(logdir)
-            except FileExistsError:
-                pass
-        os.environ["LOGDIR"] = logdir
+        data_name = Path(Path(config["executor"]["shared_folder"]).stem)
+        logdir = os.environ["LOGDIR"]/data_name/encode_name
+        logdir.mkdir(parents=True, exist_ok=True)
+        os.environ["LOGDIR"] = str(logdir)
 
     return encode_name
