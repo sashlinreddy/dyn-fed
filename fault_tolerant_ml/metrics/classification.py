@@ -52,3 +52,4 @@ def accuracy_scorev2(y, y_pred):
     y_pred_ = y_pred.argmax(axis=1)
     y_ = y.argmax(axis=1)
     return np.sum(y_pred_ == y_) / y_.shape[0]
+    

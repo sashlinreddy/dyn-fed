@@ -198,6 +198,17 @@ class MasterV2():
 
             self._send_comm_info()
 
+    def _track_samples(self, heart, i, x_batch):
+        """Track samples
+        """
+        if self.state == START:
+            lower_bound = x_batch.shape[0] * i
+            upper_bound = lower_bound + x_batch.shape[0]
+            global_idxs = np.arange(lower_bound, upper_bound)
+            local_idxs = np.arange(x_batch.shape[0])
+            idx_mapping = dict(zip(global_idxs, local_idxs))
+            self.watch_dog.states[heart].mapping = idx_mapping
+
     def _map(self):
         """Map data to workers
         """
@@ -219,13 +230,14 @@ class MasterV2():
 
             self._logger.debug(f"Workerstates={self.watch_dog.states}")
 
-            for heart in self.heartbeater.hearts:
-                X_batch, y_batch = next(batch_gen)
-                X_batch = X_batch.data
+            for i, heart in enumerate(self.heartbeater.hearts):
+                x_batch, y_batch = next(batch_gen)
+                x_batch = x_batch.data
                 y_batch = y_batch.data
-                self._logger.debug(f"X.shape={X_batch.shape}, y.shape={y_batch.shape}")
+                self._logger.debug(f"X.shape={x_batch.shape}, y.shape={y_batch.shape}")
 
-                msg = [setup_to_string(X_batch, y_batch, n_samples, self.state)]
+                self._track_samples(heart, i, x_batch)
+                msg = [setup_to_string(x_batch, y_batch, n_samples, self.state)]
                 multipart = [heart, b"WORK_DATA"]
                 multipart.extend(msg)
                 self.ctrl_socket.send_multipart(multipart)

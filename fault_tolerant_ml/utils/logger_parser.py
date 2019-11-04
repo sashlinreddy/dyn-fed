@@ -17,7 +17,16 @@ def main(input_filepath, output_filepath):
     logd = os.path.join(input_filepath, "*/*logfile.*log")
     files = glob.glob(logd)
 
-    results = pd.DataFrame(columns=["N_WORKERS", "COMM_PERIOD", "TIME", "ACCURACY"])
+    configs = [
+        "N_WORKERS", "COMM_PERIOD", "OVERLAP", "COMM_MODE", "AGG_MODE"
+    ]
+
+    metrics = ["TIME", "ACCURACY"]
+
+    columns = configs + metrics
+    results = pd.DataFrame(
+        columns=columns
+    )
 
     for i, filename in enumerate(files):
         with open(filename, "r") as f:
@@ -33,8 +42,10 @@ def main(input_filepath, output_filepath):
                     enc_run_name = match.group()
                     enc_list = enc_run_name.split("-")
                     results.loc[i, "N_WORKERS"] = enc_list[0]
-                    results.loc[i, "COMM_PERIOD"] = int(enc_list[4])
-                    results.loc[i, "OVERLAP"] = enc_list[8]
+                    results.loc[i, "COMM_PERIOD"] = int(enc_list[9])
+                    results.loc[i, "OVERLAP"] = enc_list[7]
+                    results.loc[i, "COMM_MODE"] = enc_list[10]
+                    results.loc[i, "AGG_MODE"] = enc_list[8]
             iteration_match = re.search(
                 r"(?<=iterations is ).+?(?=s)", logfile
             )
@@ -52,7 +63,7 @@ def main(input_filepath, output_filepath):
 
             print(f"time={time_sec}, acc={accuracy}")
 
-    results = results.sort_values(by=["N_WORKERS", "COMM_PERIOD", "OVERLAP"]).reset_index(drop=True)
+    results = results.sort_values(by=configs).reset_index(drop=True)
     print(results.head(10))
 
     results.to_csv(output_filepath, index=False)
