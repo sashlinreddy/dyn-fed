@@ -2,7 +2,7 @@
 #SBATCH -J ftml
 #SBATCH -o /home/g675723_students_wits_ac_za/logs/slurm/slurm_%j.log
 #SBATCH -t 10:00
-#SBATCH -p batch
+#SBATCH -p debug
 #SBATCH --export=LOGDIR=/home/g675723_students_wits_ac_za/logs/slurm,FIGDIR=/home/g675723_students_wits_ac_za/fault-tolerant-ml/reports/figures,PROJECT_DIR=/home/g675723_students_wits_ac_za/fault-tolerant-ml
 # ,TFDIR=/home/g675723_students_wits_ac_za/logs/
 
