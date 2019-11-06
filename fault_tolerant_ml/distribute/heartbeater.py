@@ -20,7 +20,7 @@ class Heartbeater():
 
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
-    def beat(self, socket, state):
+    def beat(self, socket, state, n_workers):
         """Handle single heartbeat
         """
         toc = time.time()
@@ -37,7 +37,9 @@ class Heartbeater():
         list(map(self.handle_heart_failure, heartfailures))
 
         # If there are new hearts we need to map data to everyone again
-        if newhearts:
+        if newhearts and state != START:
+            state = MAP
+        if (len(self.hearts) >= n_workers) and (state == START):
             state = MAP
 
         # If we have 

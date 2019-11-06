@@ -256,7 +256,7 @@ class ModelV2():
                 # self._master.connect()
             else:
 
-                # time.sleep(3)
+                time.sleep(3)
 
                 self._worker = WorkerV2(
                     model=self,

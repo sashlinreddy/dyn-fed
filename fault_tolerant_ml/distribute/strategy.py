@@ -53,16 +53,20 @@ class MasterWorkerStrategy(DistributionStrategy):
     def __init__(self, n_workers, config, role='master'):
         super().__init__(config)
         self.n_workers = n_workers
+        self.comm_period = config.get('interval')
+        self.comm_mode = config.get('mode')
+
         self.remap = config.get('remap')
         self.quantize = config.get('quantize')
-        self.comm_period = config.get('comm_period')
+        self.overlap = config.get("overlap")
         self.aggregate_mode = config.get('aggregate_mode')
         self.delta_switch = config.get('delta_switch')
         self.worker_timeout = config.get('timeout')
         self.send_gradients = config.get('send_gradients')
+
         self.shared_folder = config.get('shared_folder')
         self.config_folder = config.get("config_folder")
-        self.overlap = config.get("overlap")
+        
         self.role = role
         if self.role == 'worker':
             self.identity = config['identity']

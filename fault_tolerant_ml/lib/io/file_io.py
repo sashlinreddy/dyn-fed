@@ -6,6 +6,7 @@ import datetime
 import logging
 import os
 import time
+from pathlib import Path
 
 import yaml
 from watchdog.events import FileSystemEventHandler
@@ -48,6 +49,21 @@ def load_model_config(path):
         cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
     return cfg
+
+def export_yaml(data, path):
+    """Export model config given path
+
+    Args:
+        path (str, pathlib.Path): Path to model config file
+    """
+    path = Path(path)
+    if not path.is_dir():
+        path.parents[0].mkdir(parents=True, exist_ok=True)
+    elif path.is_dir():
+        path.mkdir(parents=True, exist_ok=True)
+        
+    with open(path, 'w') as ymlfile:
+        yaml.dump(data, ymlfile, default_flow_style=False)
 
 class Handler(FileSystemEventHandler):
     """Watchdog handler

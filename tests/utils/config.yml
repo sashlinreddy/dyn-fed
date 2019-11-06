@@ -26,6 +26,6 @@ distribute:
   send_gradients: 0
 
 executor:
-  scenario: 7
+  scenario: 1
   shared_folder: "data/"
   config_folder: "config/"

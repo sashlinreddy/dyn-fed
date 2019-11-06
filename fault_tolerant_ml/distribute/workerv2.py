@@ -27,33 +27,28 @@ class WorkerV2():
     """Client class
     """
     def __init__(self, model, identity=None):
-        self.context = None
         self.sub = None
         self.push = None
         self.ctrl = None
         self.loop = None
-        self.master_ip_address = None
         self.identity = \
             str(uuid.uuid4()) if identity is None else f"worker-{identity}"
 
-        self.model = model
-        self.strategy = self.model.strategy
-
         # Model variables
+        self.model = model
         self.X = None
         self.y = None
         self.n_samples: int = None
         self.n_features: int = None
         self.n_classes: int = None
+
+        # Distribute variables
         self.state = None
         self.comm_iterations = None
-        self.start_comms_iter = None
-
-        # Executor params
-        self.remap = self.model.strategy.remap
-        self.quantize = self.model.strategy.quantize
-        self.comm_period = self.model.strategy.comm_period
-        self.send_gradients = self.model.strategy.send_gradients
+        self.start_comms_iter = 0
+        self.comm_interval = 1
+        self.comm_every_iter = 1
+        self.subscribed = False
 
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
@@ -68,7 +63,7 @@ class WorkerV2():
             slurm_job_id = os.environ["SLURM_JOBID"]
             ip_filename = f"ip_config_{slurm_job_id}.json"
 
-        full_path = os.path.join(self.strategy.config_folder, ip_filename)
+        full_path = os.path.join(self.model.strategy.config_folder, ip_filename)
         if os.path.exists(full_path):
             with open(full_path, "r") as f:
                 ip_config = json.load(f)
@@ -82,35 +77,37 @@ class WorkerV2():
             else:
                 raise FileNotFoundError("IP Config file not found")
 
-        self.master_ip_address = ip_config["ipAddress"]
+        master_ip_address = ip_config["ipAddress"]
+
+        return master_ip_address
 
     def _connect(self):
         """Connect to sockets
         """
-        self._load_master_ip()
-        self._logger.info(f"Connecting sockets on {self.master_ip_address}")
+        master_ip_address = self._load_master_ip()
+        self._logger.info(f"Connecting sockets on {master_ip_address}")
         self.loop = ioloop.IOLoop()
-        self.context = zmq.Context()
+        context = zmq.Context()
 
         dev = devices.ThreadDevice(zmq.FORWARDER, zmq.SUB, zmq.DEALER)
         dev.setsockopt_in(zmq.SUBSCRIBE, b"")
         dev.setsockopt_out(zmq.IDENTITY, self.identity.encode())
-        dev.connect_in(f'tcp://{self.master_ip_address}:5564')
-        dev.connect_out(f'tcp://{self.master_ip_address}:5561')
+        dev.connect_in(f'tcp://{master_ip_address}:5564')
+        dev.connect_out(f'tcp://{master_ip_address}:5561')
         dev.start()
 
-        subscriber = self.context.socket(zmq.SUB) # pylint: disable=no-member
-        subscriber.connect(f"tcp://{self.master_ip_address}:5560")
+        subscriber = context.socket(zmq.SUB) # pylint: disable=no-member
+        subscriber.connect(f"tcp://{master_ip_address}:5560")
         # subscriber.connect(f"tcp://{master_ip_address}:5563")
         subscriber.setsockopt(zmq.SUBSCRIBE, b"") # pylint: disable=no-member
 
-        self.push = self.context.socket(zmq.PUSH) # pylint: disable=no-member
-        self.push.connect(f"tcp://{self.master_ip_address}:5567")
+        self.push = context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.push.connect(f"tcp://{master_ip_address}:5567")
         # push_socket.connect(f"tcp://{master_ip_address}:5562")
 
-        ctrl_socket = self.context.socket(zmq.DEALER) # pylint: disable=no-member
+        ctrl_socket = context.socket(zmq.DEALER) # pylint: disable=no-member
         ctrl_socket.setsockopt_string(zmq.IDENTITY, self.identity) # pylint: disable=no-member
-        ctrl_socket.connect(f"tcp://{self.master_ip_address}:5566")
+        ctrl_socket.connect(f"tcp://{master_ip_address}:5566")
         # ctrl_socket.connect(f"tcp://{master_ip_address}:5565")
 
         self.sub = zmqstream.ZMQStream(subscriber, self.loop)
@@ -154,7 +151,7 @@ class WorkerV2():
             epoch_loss (float): Loss for corresponding epoch
             most_representative(np.ndarray): Most representative data points
         """
-        for _ in range(self.comm_period):
+        for _ in range(self.model.strategy.comm_period):
             epoch_loss = 0.0
             n_batches = 0
             # self._logger.debug(
@@ -183,11 +180,22 @@ class WorkerV2():
 
         return epoch_loss, most_representative
 
+    def _recv_comm_info(self, msg):
+        """Receive communication information
+        """
+        self.comm_iterations, self.comm_interval, self.comm_every_iter = \
+                parse_comm_setup_from_string(msg[1])
+        self.start_comms_iter = self.model.max_iter - \
+            self.comm_iterations
+            
+        self._logger.debug(f"Comm iterations={self.comm_iterations}")
+
     def recv_work(self, msg):
         """Receive work
         """
         self._logger.info("Receiving work...")
         cmd = msg[0]
+
         if cmd == b"WORK_DATA":
             X, y, n_samples, state = parse_setup_from_string(msg[1])
 
@@ -202,30 +210,34 @@ class WorkerV2():
 
             self._logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
 
-            tic = time.time()
-            idx_95 = arg_svd(X)
-            self._logger.info(
-                f"Time to calculate svd idx {(time.time() - tic):.3f} s"
-            )
+            if self.model.strategy.comm_mode == 1 or \
+                self.model.strategy.aggregate_mode == 3:
+                tic = time.time()
+                idx_95 = arg_svd(X)
+                self._logger.info(
+                    f"Time to calculate svd idx {(time.time() - tic):.3f} s"
+                )
 
-            # Send back idx_95 to determine dynamic communication strategy
-            data = [setup_reponse_to_string(idx_95)]
-            multipart = [b"SVD", self.identity.encode()]
-            multipart.extend(data)
+                # Send back idx_95 to determine dynamic communication strategy
+                data = [setup_reponse_to_string(idx_95)]
+                multipart = [b"SVD", self.identity.encode()]
+                multipart.extend(data)
 
-            self.push.send_multipart(multipart)
-            
-            # # After receiving data we can recv params
-            # self.sub.on_recv(self.recv_params)
+                self.push.send_multipart(multipart)
+            if self.model.strategy.comm_mode != 1:
+                if not self.subscribed:
+                    # After receiving data we can recv params
+                    self.sub.on_recv(self.recv_params)
+                    self.subscribed = True
 
         if cmd == b"COMM_INFO":
-            self.comm_iterations = parse_comm_setup_from_string(msg[1])
-            self.start_comms_iter = self.model.max_iter - \
-                self.comm_iterations
-            self._logger.debug(f"Comm iterations={self.comm_iterations}")
+            self._logger.debug("Receiving communication info")
+            self._recv_comm_info(msg)
 
-            # After receiving data we can recv params
-            self.sub.on_recv(self.recv_params)
+            if not self.subscribed:
+                # After receiving data we can recv params
+                self.sub.on_recv(self.recv_params)
+                self.subscribed = True
 
     def recv_params(self, msg):
         """Recv params
@@ -259,11 +271,15 @@ class WorkerV2():
                 )
             ]
 
-            # if self.model.iter >= self.start_comms_iter:
-            multipart = [b"WORK", self.identity.encode()]
-            multipart.extend(data)
+            send_work = (self.model.iter - 1) % self.comm_interval == 0
+            self._logger.debug(f"send_work={send_work}, {self.model.iter}, {self.comm_interval}")
+            send_work = send_work or (self.model.iter >= self.comm_every_iter)
+            self._logger.debug(f"Send work={send_work}")
+            if send_work:
+                multipart = [b"WORK", self.identity.encode()]
+                multipart.extend(data)
 
-            self.push.send_multipart(multipart)
+                self.push.send_multipart(multipart)
 
         if cmd == b"EXIT":
             self._logger.info("Ending session")
