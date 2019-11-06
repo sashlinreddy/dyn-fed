@@ -13,6 +13,7 @@ while [ "$1" != "" ]; do
                                 ;;
         -m| --MODEL )           shift
                                 MODEL="$1"
+                                ;;
         -h | --help )           usage
                                 exit
                                 ;;

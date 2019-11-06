@@ -2,9 +2,9 @@
 #SBATCH -J ftml
 #SBATCH -o /home/g675723_students_wits_ac_za/logs/slurm/slurm_%j.log
 #SBATCH -t 10:00
-#SBATCH -p debug
+#SBATCH -p batch
 #SBATCH --export=LOGDIR=/home/g675723_students_wits_ac_za/logs/slurm,FIGDIR=/home/g675723_students_wits_ac_za/fault-tolerant-ml/reports/figures,PROJECT_DIR=/home/g675723_students_wits_ac_za/fault-tolerant-ml
-# ,TFDIR=/home-mscluster/sreddy/logs/
+# ,TFDIR=/home/g675723_students_wits_ac_za/logs/
 
 while [ "$1" != "" ]; do
     case $1 in
@@ -13,7 +13,7 @@ while [ "$1" != "" ]; do
                                 ;;
         -m| --MODEL )           shift
                                 MODEL="$1"
-				;;
+                                ;;
         -h | --help )           usage
                                 exit
                                 ;;
