@@ -3,9 +3,10 @@
 #SBATCH -o /home/g675723_students_wits_ac_za/logs/slurm/slurm_%j.log
 #SBATCH -t 10:00
 #SBATCH -p debug
-#SBATCH --export=LOGDIR=/home/g675723_students_wits_ac_za/logs/slurm,FIGDIR=/home/g675723_students_wits_ac_za/fault-tolerant-ml/reports/figures,PROJECT_DIR=/home/g675723_students_wits_ac_za/fault-tolerant-ml
+#SBATCH --export=LOGDIR=/home/g675723_students_wits_ac_za/logs/slurm,FIGDIR=/home/g675723_students_wits_ac_za/fault-tolerant-ml/reports/figures,PROJECT_DIR=/home/g675723_students_wits_ac_za/fault-tolerant-ml,LC_ALL=en_US.utf-8,LANG=en_US.UTF-8
 # ,TFDIR=/home/g675723_students_wits_ac_za/logs/
 
+echo "No tasks $SLURM_NTASKS"
 while [ "$1" != "" ]; do
     case $1 in
         -v| --verbose )         shift

@@ -167,12 +167,8 @@ def run(n_workers, role, verbose, identity, tmux, add):
     executor_cfg['identity'] = d_identity
 
     if 'PROJECT_DIR' in os.environ:
-        executor_cfg['shared_folder'] = Path(
-            os.environ['PROJECT_DIR']/executor_cfg['shared_folder']
-        )
-        executor_cfg['config_folder'] = Path(
-            os.environ['PROJECT_DIR']/executor_cfg['config_folder']
-        )
+        executor_cfg['shared_folder'] = Path(os.environ['PROJECT_DIR'])/executor_cfg['shared_folder']
+        executor_cfg['config_folder'] = Path(os.environ['PROJECT_DIR'])/executor_cfg['config_folder']
 
     # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)

@@ -26,6 +26,6 @@ distribute:
   send_gradients: 0
 
 executor:
-  scenario: 7
-  shared_folder: "data/"
+  scenario: 1
+  shared_folder: "data/mnist"
   config_folder: "config/"
