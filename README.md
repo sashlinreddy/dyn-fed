@@ -131,6 +131,7 @@ nosetests -vv
 
 * [Automatic differentiation lecture notes](http://www.cs.cmu.edu/~wcohen/10-605/notes/autodiff.pdf)
 * [Automatic differentation wiki](https://en.wikipedia.org/wiki/Automatic_differentiation)
+* https://archive.ics.uci.edu/ml/datasets/YearPredictionMSD
 * https://github.com/joelgrus/autograd/tree/master
 * https://github.com/ddbourgin
 
