@@ -18,9 +18,10 @@ class MNist(Dataset):
         filepath (str): Path to mnist dataset
         class_names (list): List of classname
     """
-    def __init__(self, filepath, fashion=False):
+    def __init__(self, filepath, fashion=False, noniid=True):
         super().__init__(filepath)
 
+        self._noniid = noniid
         self.class_names = [
             "Zero", "One", "Two", "Three", "Four", "Five",
             "Six", "Seven", "Eight", "Nine"
@@ -96,3 +97,11 @@ class MNist(Dataset):
 
         # Preprocess data
         self.preprocess()
+
+        if self._noniid:
+            # Undo one hot encoding
+            labels = np.argmax(self.y_train.data, axis=1)
+            # Sort and get indices
+            noniid_idxs = np.argsort(labels)
+            self.X_train.data = self.X_train.data[noniid_idxs]
+            self.y_train.data = self.y_train.data[noniid_idxs]
