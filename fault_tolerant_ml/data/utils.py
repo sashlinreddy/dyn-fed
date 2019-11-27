@@ -48,6 +48,33 @@ def next_batch(X, y, batch_size, shuffle=True, overlap=0.0):
             y_batch = Tensor(np.vstack([y_batch.data, y.data[0:end]]))
         yield X_batch, y_batch
 
+def next_batch_unbalanced(X, y, n_partitions, shuffle=True):
+    """Imitates federated learning unbalanced partitioning
+    """
+    # Shuffle data
+    if shuffle:
+        idxs = np.arange(X.shape[0])
+        np.random.shuffle(idxs)
+        X = X[idxs]
+        y = y[idxs]
+    # Pick random partition indices and sort them in ascending order
+    partition_idxs = np.sort(
+        np.random.randint(0, X.shape[0], size=(n_partitions - 1,))
+    )
+    # Insert 0 index if not in the array
+    if 0 not in partition_idxs:
+        partition_idxs = np.insert(partition_idxs, 0, 0)
+    if X.shape[0] not in partition_idxs:
+        partition_idxs = np.append(partition_idxs, X.shape[0])
+
+    # Iterate through unbalanced partitions
+    for i in np.arange(partition_idxs.shape[0]-1):
+        start, end = partition_idxs[i], partition_idxs[i + 1]
+        X_batch = X[start:end]
+        y_batch = y[start:end]
+        yield X_batch, y_batch
+
+
 def update_xy(X, y, idxs):
     """Update x and y given new indices
     """
