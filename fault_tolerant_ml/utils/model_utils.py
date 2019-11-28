@@ -18,7 +18,8 @@ def encode_run_name(n_workers, config):
     encode_vars = [
         "n_workers", "scenario", "remap", "quantize",
         "send_gradients", "mu_g", "n_most_rep", "overlap",
-        "aggregate_mode", "interval", "mode", "noniid"
+        "aggregate_mode", "interval", "mode", "noniid",
+        "unbalanced"
     ]
 
     global_cfg = {"n_workers": n_workers}

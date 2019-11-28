@@ -66,6 +66,8 @@ class MasterWorkerStrategy(DistributionStrategy):
 
         self.shared_folder = config.get('shared_folder')
         self.config_folder = config.get("config_folder")
+        self.unbalanced = config.get('unbalanced')
+        self.norm_epsilon = config.get("norm_epsilon")
         
         self.role = role
         if self.role == 'worker':

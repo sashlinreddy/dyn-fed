@@ -1,6 +1,6 @@
 model:
   n_iterations: 100
-  shuffle: 0
+  shuffle: 1
   batch_size: 32
 
 optimizer:
@@ -12,7 +12,7 @@ optimizer:
   name: "sgd"
 
 comms:
-  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
+  mode: 1 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
   interval: 1
 
 distribute:
@@ -24,8 +24,11 @@ distribute:
   delta_switch: 0.0004
   timeout: 30
   send_gradients: 0
+  norm_epsilon: 10
 
 executor:
   scenario: 1
-  shared_folder: "data/mnist"
+  shared_folder: "data/fashion-mnist"
   config_folder: "config/"
+  noniid: 0
+  unbalanced: 1

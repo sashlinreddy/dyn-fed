@@ -274,6 +274,7 @@ class WorkerV2():
             send_work = (self.model.iter - 1) % self.comm_interval == 0
             self._logger.debug(f"send_work={send_work}, {self.model.iter}, {self.comm_interval}")
             send_work = send_work or (self.model.iter >= self.comm_every_iter)
+            # send_work = send_work or (self.model.iter <= self.comm_every_iter)
             self._logger.debug(f"Send work={send_work}")
             if send_work:
                 multipart = [b"WORK", self.identity.encode()]

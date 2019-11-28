@@ -11,7 +11,7 @@ import gevent
 import numpy as np
 import zmq.green as zmq
 
-from fault_tolerant_ml.data.utils import next_batch
+from fault_tolerant_ml.data.utils import next_batch, next_batch_unbalanced
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.heartbeater import Heartbeater
 from fault_tolerant_ml.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
@@ -169,7 +169,7 @@ class MasterV2():
             # Normalize svd idx
             svds = np.array([state.svd_idx for state in self.watch_dog.states])
 
-            min_svd = np.min(svds - 1)
+            min_svd = np.min(svds - self.model.strategy.norm_epsilon)
             max_svd = np.max(svds)
 
             if min_svd == max_svd:
@@ -177,11 +177,16 @@ class MasterV2():
             else:
                 normalized_svds = (svds - min_svd) / (max_svd - min_svd)
 
+            self._logger.debug(f"Normalized svds={normalized_svds}")
+
             comm_iterations = np.floor(normalized_svds * self.n_iterations).astype(int)
+
+            self._logger.debug(f"Comm iterations={comm_iterations}")
 
             comm_intervals = np.ceil(self.model.max_iter / comm_iterations).astype(int)
             comm_every_iter = self.model.max_iter - \
                 (comm_iterations - (self.model.max_iter // comm_intervals))
+            # comm_every_iter = (comm_iterations - (self.model.max_iter // comm_intervals))
             
             self._logger.debug(f"SVDs={svds}")
             self._logger.debug(
@@ -193,8 +198,6 @@ class MasterV2():
                 worker.comm_iterations = comm_iterations[i]
                 worker.comm_interval = comm_intervals[i]
                 worker.comm_every_iter = comm_every_iter[i]
-
-            self._logger.debug(f"Comm iterations={comm_iterations}")
 
             self._send_comm_info()
 
@@ -219,14 +222,23 @@ class MasterV2():
 
             self._logger.debug(f"State={self.state}")
 
-            batch_size = int(np.ceil(n_samples / len(self.heartbeater.hearts)))
-            batch_gen = next_batch(
-                self.X,
-                self.y,
-                batch_size,
-                shuffle=False,
-                overlap=0.0
-            )
+            if self.model.strategy.unbalanced:
+                hearts = len(self.heartbeater.hearts)
+                batch_gen = next_batch_unbalanced(
+                    self.X,
+                    self.y,
+                    hearts,
+                    shuffle=self.model.shuffle
+                )
+            else:
+                batch_size = int(np.ceil(n_samples / len(self.heartbeater.hearts)))
+                batch_gen = next_batch(
+                    self.X,
+                    self.y,
+                    batch_size,
+                    shuffle=self.model.shuffle,
+                    overlap=0.0
+                )
 
             self._logger.debug(f"Workerstates={self.watch_dog.states}")
 
@@ -474,6 +486,7 @@ class MasterV2():
             who_comms = np.mod(self.model.iter, comm_intervals)
             who_comms = set(np.argwhere(who_comms == 0).flatten())
             every_iter = set(np.argwhere(self.model.iter >= comm_every_iter).flatten())
+            # every_iter = set(np.argwhere(self.model.iter <= comm_every_iter).flatten())
             both = who_comms.union(every_iter)
             n_responses = len(both)
             self._logger.debug(

@@ -193,7 +193,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
                 "labels": data_dir/"t10k-labels-idx1-ubyte.gz"
             }
         }
-        data = MNist(filepaths)
+        data = MNist(filepaths, noniid=executor_cfg['noniid'])
 
         # data = OccupancyData(
         #     filepath="/data/occupancy_data/datatraining.txt",
