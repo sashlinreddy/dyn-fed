@@ -12,7 +12,7 @@ optimizer:
   name: "sgd"
 
 comms:
-  mode: 1 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
+  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
   interval: 1
 
 distribute:
@@ -30,5 +30,6 @@ executor:
   scenario: 1
   shared_folder: "data/fashion-mnist"
   config_folder: "config/"
+  tf_dir: "logs/tf/"
   noniid: 0
-  unbalanced: 1
+  unbalanced: 0

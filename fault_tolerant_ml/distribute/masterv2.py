@@ -11,6 +11,8 @@ import gevent
 import numpy as np
 import zmq.green as zmq
 
+import tensorflow as tf
+
 from fault_tolerant_ml.data.utils import next_batch, next_batch_unbalanced
 from fault_tolerant_ml.distribute import WatchDog
 from fault_tolerant_ml.distribute.heartbeater import Heartbeater
@@ -22,6 +24,7 @@ from fault_tolerant_ml.proto.utils import (params_to_string,
                                            parse_setup_response_from_string,
                                            setup_to_string,
                                            comms_setup_to_string)
+from fault_tolerant_ml.tools import TFLogger
 
 # pylint: disable=no-member
 
@@ -54,6 +57,9 @@ class MasterV2():
         self.watch_dog = WatchDog()
 
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
+        self._tf_logger = None
+        if self.model.strategy.tf_dir is not None:
+            self._tf_logger = TFLogger(self.model.strategy.tf_dir)
         # Get ipaddress for workers to connect to
         self._save_ip()
 
@@ -547,6 +553,11 @@ class MasterV2():
                 f"Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, "
                 f"test acc={test_acc*100:7.4f}%"
             )
+
+            if self._tf_logger is not None:
+                self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
+                self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
+                self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
 
             self.model.iter += 1
 
