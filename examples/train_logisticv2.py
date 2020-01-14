@@ -195,6 +195,9 @@ def run(n_workers, role, verbose, identity, tmux, add):
         }
         data = MNist(filepaths, noniid=executor_cfg['noniid'])
 
+        if "tf_dir" in executor_cfg:
+            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/f"{encoded_run_name}/master"
+
         # data = OccupancyData(
         #     filepath="/data/occupancy_data/datatraining.txt",
         #     n_stacks=100
@@ -204,6 +207,9 @@ def run(n_workers, role, verbose, identity, tmux, add):
         # time.sleep(2)
     else:
         setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
+
+        if "tf_dir" in executor_cfg:
+            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/f"{encoded_run_name}/worker-{d_identity}"
 
     train(
         data,
