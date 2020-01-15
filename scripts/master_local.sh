@@ -10,6 +10,9 @@ while [ "$2" != "" ]; do
         -m| --MODEL )         shift
                                 MODEL="$2"
                                 ;;
+        -c| --config )          shift
+                                config="-c $2"
+                                ;;
         -h | --help )           usage
                                 exit
                                 ;;
@@ -28,7 +31,7 @@ elif [ "$MODEL" == "LOGISTIC" ]; then
     pythonw examples/train_logistic.py $NWORKERS -r master $VERBOSE
 elif [ "$MODEL" == "LOG2" ]; then
     echo "Running Logistic Model"
-    pythonw examples/train_logisticv2.py $NWORKERS -r master $VERBOSE
+    pythonw examples/train_logisticv2.py $NWORKERS -r master $VERBOSE $config
 elif [ "$MODEL" == "NN" ]; then
     echo "Running NN Model"
     pythonw examples/train_nn.py $NWORKERS -r master -$VERBOSE
