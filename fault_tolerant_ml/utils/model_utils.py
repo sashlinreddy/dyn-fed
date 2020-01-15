@@ -1,9 +1,14 @@
 """All model utility functions
 """
 import os
+import logging
 from pathlib import Path
 
+from jinja2 import Environment, FileSystemLoader
+
 from fault_tolerant_ml.utils import string_utils
+
+logger = logging.getLogger("ftml.utils.model_utils")
 
 def encode_run_name(n_workers, config):
     """Encode model run name given it's config. Useful for tracking experiments
@@ -36,3 +41,19 @@ def encode_run_name(n_workers, config):
         os.environ["LOGDIR"] = str(logdir)
 
     return encode_name
+
+def render_template(template_dir, template_name, **kwargs):
+    """Render jinja template
+    """
+    if not isinstance(template_dir, str):
+        template_dir = str(template_dir)
+    file_loader = FileSystemLoader(template_dir)
+    logger.debug(f"Template dir={template_dir}")
+    env = Environment(loader=file_loader)
+    template = env.get_template(template_name)
+
+    rendered = template.render(
+        **kwargs
+    )
+
+    return rendered
