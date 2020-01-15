@@ -18,7 +18,7 @@ def main(input_filepath, output_filepath):
     files = glob.glob(logd)
 
     configs = [
-        "N_WORKERS", "COMM_PERIOD", "OVERLAP", "COMM_MODE", "AGG_MODE"
+        "N_WORKERS", "COMM_PERIOD", "OVERLAP", "COMM_MODE", "AGG_MODE", "UNBALANCED"
     ]
 
     metrics = ["TIME", "ACCURACY"]
@@ -46,6 +46,10 @@ def main(input_filepath, output_filepath):
                     results.loc[i, "OVERLAP"] = enc_list[7]
                     results.loc[i, "COMM_MODE"] = enc_list[10]
                     results.loc[i, "AGG_MODE"] = enc_list[8]
+                    if len(enc_list) > 11:
+                        results.loc[i, "UNBALANCED"] = enc_list[12]
+                    else:
+                        results.loc[i, "UNBALANCED"] = 0
             iteration_match = re.search(
                 r"(?<=iterations is ).+?(?=s)", logfile
             )
