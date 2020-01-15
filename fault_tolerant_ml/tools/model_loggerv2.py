@@ -12,7 +12,6 @@ import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 tf.compat.v1.set_random_seed(2)
 
-
 class TFLogger(object):
     """Logging in tensorboard without tensorflow ops."""
 
