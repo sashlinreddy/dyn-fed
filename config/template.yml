@@ -1,0 +1,35 @@
+model:
+  n_iterations: {{ n_iterations }}
+  shuffle: 0
+  batch_size: 32
+
+optimizer:
+  learning_rate: 0.1
+  clip_norm: 0
+  clip_val: 0
+  mu_g: 0.0
+  n_most_rep: 100
+  name: "sgd"
+
+comms:
+  mode: {{ comm_mode }} # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
+  interval: {{ interval }}
+
+distribute:
+  strategy: "mw"
+  remap: 1
+  quantize: 0
+  overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
+  aggregate_mode: {{ agg_mode }} # 0: Avg, 1: Weighted avg, 2: Weighted by loss
+  delta_switch: 0.0004
+  timeout: 30
+  send_gradients: 0
+  norm_epsilon: 10
+
+executor:
+  scenario: 1
+  shared_folder: {{ data_dir }}
+  config_folder: "config/"
+  tf_dir: "logs/tf/"
+  noniid: {{ noniid }}
+  unbalanced: {{ unbalanced }}
