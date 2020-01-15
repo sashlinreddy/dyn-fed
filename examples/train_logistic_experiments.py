@@ -80,6 +80,8 @@ def run():
                 '/home-mscluster/sreddy/fault-tolerant-ml/scripts/slurm_launch.sh',
                 '-v',
                 'DEBUG',
+                '-m',
+                'LOG2',
                 '-c',
                 str(folder_name)
             ])
