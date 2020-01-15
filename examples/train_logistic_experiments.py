@@ -44,7 +44,7 @@ def _create_experiments():
             comm_mode=experiment.get('mode', 0),
             interval=1,
             agg_mode=experiment.get('aggregate_mode', 0),
-            data_dir=f"\"{experiment.get('data_dir'), 'data/mnist/'}\"",
+            data_dir=f"\"{experiment.get('shared_folder'), 'data/mnist/'}\"",
             noniid=experiment.get('noniid', 0),
             unbalanced=experiment.get('unbalanced', 0)
         )
