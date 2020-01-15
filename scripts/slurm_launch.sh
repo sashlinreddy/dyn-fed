@@ -14,6 +14,9 @@ while [ "$1" != "" ]; do
         -m| --MODEL )           shift
                                 MODEL="$1"
                                 ;;
+        -c| --config )          shift
+                                config="-c $1"
+                                ;;
         -h | --help )           usage
                                 exit
                                 ;;
