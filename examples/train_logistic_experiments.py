@@ -77,7 +77,7 @@ def run():
                 'sbatch',
                 '-n',
                 str(n_worker),
-                '/home-mscluster/sreddy/fault-tolerant-ml/slurm_launch.sh',
+                '/home-mscluster/sreddy/fault-tolerant-ml/scripts/slurm_launch.sh',
                 '-v',
                 'DEBUG',
                 '-c',
