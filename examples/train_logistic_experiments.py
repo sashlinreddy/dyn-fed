@@ -40,11 +40,11 @@ def _create_experiments():
         rendered_config = model_utils.render_template(
             config_dir,
             'template.yml',
-            n_iterations=100,
+            n_iterations=experiment.get('n_iterations', 100),
             comm_mode=experiment.get('mode', 0),
-            interval=1,
+            interval=experiment.get('interval', 1),
             agg_mode=experiment.get('aggregate_mode', 0),
-            data_dir=f"\"{experiment.get('shared_folder'), 'data/mnist/'}\"",
+            data_dir=f"\"{experiment.get('shared_folder', 'data/mnist/')}\"",
             noniid=experiment.get('noniid', 0),
             unbalanced=experiment.get('unbalanced', 0)
         )
