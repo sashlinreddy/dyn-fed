@@ -70,21 +70,21 @@ def run():
     folder_name = 'config'/folder_name
     n_workers = [8, 32, 64, 128]
 
-    for file in os.listdir(folder_name):
-        print(file)
-        for n_worker in n_workers:
-            subprocess.run([
-                'sbatch',
-                '-n',
-                str(n_worker),
-                '/home-mscluster/sreddy/fault-tolerant-ml/scripts/slurm_launch.sh',
-                '-v',
-                'DEBUG',
-                '-m',
-                'LOG2',
-                '-c',
-                str(folder_name)
-            ])
+    # for file in os.listdir(folder_name):
+    #     print(file)
+    #     for n_worker in n_workers:
+    #         subprocess.run([
+    #             'sbatch',
+    #             '-n',
+    #             str(n_worker),
+    #             '/home-mscluster/sreddy/fault-tolerant-ml/scripts/slurm_launch.sh',
+    #             '-v',
+    #             'DEBUG',
+    #             '-m',
+    #             'LOG2',
+    #             '-c',
+    #             str(folder_name)
+    #         ])
 
 if __name__ == "__main__":
     run() # pylint: disable=no-value-for-parameter

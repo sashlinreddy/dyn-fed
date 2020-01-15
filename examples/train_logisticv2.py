@@ -121,7 +121,8 @@ def train(data,
 @click.option('--identity', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
 @click.option('--add', '-a', default=0, type=int)
-def run(n_workers, role, verbose, identity, tmux, add):
+@click.option('--config', '-c', default='config/config.yml', type=str)
+def run(n_workers, role, verbose, identity, tmux, add, config):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -141,7 +142,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
 
     # Load in config to setup model
-    config_path = 'config/config.yml'
+    config_path = config
     if 'PROJECT_DIR' in os.environ:
         config_path = Path(os.environ['PROJECT_DIR'])/config_path
         
