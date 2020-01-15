@@ -176,6 +176,8 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
     data = None
 
+    data_name = Path(Path(executor_cfg["shared_folder"]).stem)
+
     if role == "master":
         # Setup logger
         setup_logger(level=verbose)
@@ -197,7 +199,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         data = MNist(filepaths, noniid=executor_cfg['noniid'])
 
         if "tf_dir" in executor_cfg:
-            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/f"{encoded_run_name}/master"
+            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/master"
 
         # data = OccupancyData(
         #     filepath="/data/occupancy_data/datatraining.txt",
@@ -210,7 +212,10 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
 
         if "tf_dir" in executor_cfg:
-            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/f"{encoded_run_name}/worker-{d_identity}"
+            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/worker-{d_identity}"
+
+    if 'PROJECT_DIR' in os.environ:
+        executor_cfg["tf_dir"] = Path.home()/executor_cfg["tf_dir"]/data_name
 
     train(
         data,
