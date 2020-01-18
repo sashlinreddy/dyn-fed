@@ -51,6 +51,7 @@ class MasterV2():
         self.X_valid = None
         self.y_valid = None
         self._calculated_byte_size = False
+        self._n_mbs = 0.0
 
         # Environment variables
         self.state = START
@@ -263,6 +264,10 @@ class MasterV2():
 
             self.state = MAP_PARAMS
 
+            # Keep track of iterations for each worker
+            for worker in self.watch_dog.states:
+                worker.comm_iterations = self.n_iterations
+
             if self.model.strategy.comm_mode == 1 or \
                 self.model.strategy.aggregate_mode == 3:
                 self._calculate_dynamic_comms()
@@ -276,7 +281,8 @@ class MasterV2():
             # Map params
             msg = [params_to_string(self.model.layers)]
 
-            if not self._calculated_byte_size:
+            if (not self._calculated_byte_size) or \
+                (self.model.strategy.comm_mode == 2):
                 param_byte_size = len(msg[0])
                 n_bytes = param_byte_size * len(self.watch_dog.states) * self.n_iterations
                 if (self.model.strategy.comm_mode == 1) or \
@@ -288,11 +294,17 @@ class MasterV2():
                     b_sizes = np.array(iterations) * param_byte_size
                     self._logger.debug(f"b_sizes={b_sizes}")
                     n_bytes = np.sum(b_sizes)
-                    n_mbs = np.round(n_bytes/1024/1024, 3)
+
+                self._n_mbs = np.round(n_bytes/1024/1024, 3)
 
                 self._logger.debug(f"Msg params size={param_byte_size}")
-                self._logger.info(f"Total params size in MBs={n_mbs:.3f}MB")
+                self._logger.info(
+                    f"Total params size in MBs for iter{self.model.iter} is {self._n_mbs:.3f}MB"
+                )
+                # if self.model.strategy.comm_mode == 2:
                 self._calculated_byte_size = True
+            # Log to tensorboard
+            self._tf_logger.scalar("msg-size", self._n_mbs, self.model.iter)
             
             multipart = [b"", b"WORK_PARAMS"]
             multipart.extend(msg)
