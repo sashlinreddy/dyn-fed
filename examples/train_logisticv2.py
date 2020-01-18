@@ -180,7 +180,12 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
     if role == "master":
         # Setup logger
-        setup_logger(level=verbose)
+        logger = setup_logger(level=verbose)
+
+        slurm_jobid = os.environ.get("SLURM_JOBID", None)
+
+        if slurm_jobid is not None:
+            logger.info(f"SLURM_JOBID={slurm_jobid}")
 
         # Master reads in data
         data_dir = Path(executor_cfg['shared_folder'])
@@ -198,12 +203,14 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
                 }
             }
             if 'fashion-mnist' in str(data_dir):
+                logger.info("Dataset: Fashion-MNist")
                 executor_cfg['norm_epsilon'] = 10 # Override norm epsilon for fmnist
                 data = FashionMNist(
                     filepath=filepaths,
                     noniid=executor_cfg['noniid']
                 )
             else:
+                logger.info("Dataset: MNist")
                 executor_cfg['norm_epsilon'] = 1 # Override norm epsilon for mnist
                 data = MNist(
                     filepaths,
@@ -211,6 +218,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
                 )
 
         elif 'occupancy_data' in str(data_dir):
+            logger.info("Dataset: Occupancy data")
             data = OccupancyData(
                 filepath="data/occupancy_data/datatraining.txt",
                 n_stacks=100
