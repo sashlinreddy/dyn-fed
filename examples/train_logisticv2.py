@@ -198,11 +198,13 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
                 }
             }
             if 'fashion-mnist' in str(data_dir):
+                executor_cfg['norm_epsilon'] = 10 # Override norm epsilon for fmnist
                 data = FashionMNist(
                     filepath=filepaths,
                     noniid=executor_cfg['noniid']
                 )
             else:
+                executor_cfg['norm_epsilon'] = 1 # Override norm epsilon for mnist
                 data = MNist(
                     filepaths,
                     noniid=executor_cfg['noniid']
