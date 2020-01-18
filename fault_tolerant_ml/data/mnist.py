@@ -16,9 +16,9 @@ class MNist(Dataset):
 
     Attributes:
         filepath (str): Path to mnist dataset
-        class_names (list): List of classname
+        noniid (bool): Whether or not to make dataset noniid
     """
-    def __init__(self, filepath, fashion=False, noniid=True):
+    def __init__(self, filepath, noniid=False):
         super().__init__(filepath)
 
         self._noniid = noniid
@@ -26,12 +26,6 @@ class MNist(Dataset):
             "Zero", "One", "Two", "Three", "Four", "Five",
             "Six", "Seven", "Eight", "Nine"
         ]
-
-        if fashion:
-            self.class_names = [
-                "T-shirt/top", "Trouser", "Pullover", "Dress", 
-                "Coat", "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"
-                ]
 
         self.prepare_data()
         self.n_samples, self.n_features = self.X_train.shape
@@ -45,7 +39,7 @@ class MNist(Dataset):
             f"y_test={self.y_test.shape}>"
         )
 
-    def read_data(self, filepath):
+    def load_data(self, filepath):
         """Reads mnist dataset
         """
         with gzip.open(filepath) as f:
@@ -86,10 +80,10 @@ class MNist(Dataset):
         """Reads in, reshapes, scales and one-hot encodes data
         """
         # Read in train/test data
-        self.X_train = self.read_data(self.filepath["train"]["images"])
-        self.y_train = self.read_data(self.filepath["train"]["labels"])
-        self.X_test = self.read_data(self.filepath["test"]["images"])
-        self.y_test = self.read_data(self.filepath["test"]["labels"])
+        self.X_train = self.load_data(self.filepath["train"]["images"])
+        self.y_train = self.load_data(self.filepath["train"]["labels"])
+        self.X_test = self.load_data(self.filepath["test"]["images"])
+        self.y_test = self.load_data(self.filepath["test"]["labels"])
 
         # Reshape data
         self.X_train = self.X_train.reshape(self.X_train.shape[0], -1)
@@ -105,3 +99,17 @@ class MNist(Dataset):
             noniid_idxs = np.argsort(labels)
             self.X_train.data = self.X_train.data[noniid_idxs]
             self.y_train.data = self.y_train.data[noniid_idxs]
+
+class FashionMNist(MNist):
+    """Class to make fashion mnist dataset accessible and inherits from MNist
+
+    Attributes:
+        filepath (str): Path to mnist dataset
+        class_names (list): List of classname
+    """
+    def __init__(self, filepath, noniid=False):
+        super().__init__(filepath, noniid=noniid)
+        self.class_names = [
+            "T-shirt/top", "Trouser", "Pullover", "Dress", 
+            "Coat", "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"
+            ]

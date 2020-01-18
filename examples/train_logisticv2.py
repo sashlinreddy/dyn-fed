@@ -10,7 +10,7 @@ import numpy as np
 # pylint: disable=wrong-import-position
 np.random.seed(42)
 
-from fault_tolerant_ml.data import MNist
+from fault_tolerant_ml.data import MNist, FashionMNist, OccupancyData
 from fault_tolerant_ml.distribute import MasterWorkerStrategy
 
 from fault_tolerant_ml.lib.io import file_io
@@ -185,27 +185,41 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         # Master reads in data
         data_dir = Path(executor_cfg['shared_folder'])
 
-        # Get data
-        filepaths = {
-            "train": {
-                "images": data_dir/"train-images-idx3-ubyte.gz",
-                "labels": data_dir/"train-labels-idx1-ubyte.gz"
-            },
-            "test": {
-                "images": data_dir/"t10k-images-idx3-ubyte.gz",
-                "labels": data_dir/"t10k-labels-idx1-ubyte.gz"
+        if 'mnist' in str(data_dir):
+            # Get data
+            filepaths = {
+                "train": {
+                    "images": data_dir/"train-images-idx3-ubyte.gz",
+                    "labels": data_dir/"train-labels-idx1-ubyte.gz"
+                },
+                "test": {
+                    "images": data_dir/"t10k-images-idx3-ubyte.gz",
+                    "labels": data_dir/"t10k-labels-idx1-ubyte.gz"
+                }
             }
-        }
-        data = MNist(filepaths, noniid=executor_cfg['noniid'])
+            if 'fashion-mnist' in str(data_dir):
+                data = FashionMNist(
+                    filepath=filepaths,
+                    noniid=executor_cfg['noniid']
+                )
+            else:
+                data = MNist(
+                    filepaths,
+                    noniid=executor_cfg['noniid']
+                )
+
+        elif 'occupancy_data' in str(data_dir):
+            data = OccupancyData(
+                filepath="data/occupancy_data/datatraining.txt",
+                n_stacks=100
+            )
+        else:
+            raise Exception("Please enter valid dataset")
 
         if "tf_dir" in executor_cfg:
-            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/master"
-
-        # data = OccupancyData(
-        #     filepath="/data/occupancy_data/datatraining.txt",
-        #     n_stacks=100
-        # )
-        # data.transform()    
+            executor_cfg["tf_dir"] = (
+                Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/master"
+            )    
 
         # time.sleep(2)
     else:

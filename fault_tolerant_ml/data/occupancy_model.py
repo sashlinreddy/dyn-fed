@@ -29,13 +29,14 @@ class OccupancyData(Dataset):
         self.n_samples: int = 0
         self.n_features: int = 0
         self.n_classes: int = 0
-        self.raw_data = self.read_data()
+        self.raw_data = self.load_data()
         self.X, self.y = self.prepare_data()
+        self.transform()
 
     def __repr__(self):
         return f'<{self.__class__.__name__} X={self.X.shape}, y={self.y.shape}>'
 
-    def read_data(self):
+    def load_data(self):
         """Reads dataset from disk
         """
         return pd.read_csv(self.filepath, delimiter=',')
