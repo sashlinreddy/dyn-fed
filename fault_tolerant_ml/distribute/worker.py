@@ -19,7 +19,6 @@ from fault_tolerant_ml.proto.utils import (params_response_to_string,
                                            parse_params_from_string,
                                            parse_setup_from_string)
 from fault_tolerant_ml.tools import TFLogger
-from fault_tolerant_ml.utils import setup_logger
 from fault_tolerant_ml.utils.maths import reconstruct_approximation
 
 
@@ -60,7 +59,6 @@ class Worker(object):
         self.y: np.ndarray = None
         self.have_work: bool = False
 
-        setup_logger(filename=f'log-{self.worker_id}.log', level=verbose)
         self._logger = logging.getLogger(f"ftml.distribute.{self.__class__.__name__}")
 
         ip_filename = "ip_config.json"

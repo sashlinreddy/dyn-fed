@@ -103,6 +103,8 @@ def setup_logger(filename='logfile.log', level="INFO", console_logging=True):
         ch.setFormatter(formatter)
         logger.addHandler(ch)
 
+    logger.propagate = False
+
     return logger
 
 def shut_down_logger(logger):

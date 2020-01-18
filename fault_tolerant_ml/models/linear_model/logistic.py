@@ -1,6 +1,5 @@
 """Logistic regression class
 """
-import logging
 import time
 
 import numpy as np
@@ -34,8 +33,6 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
         # Model params
         self.W: np.ndarray = None
         self.classes_: np.ndarray = None
-
-        self._logger = logging.getLogger(f"ftml.{self.__class__.__name__}")
 
         self._setup()
 
