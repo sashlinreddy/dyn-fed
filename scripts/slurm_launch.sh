@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J ftml
 #SBATCH -o /home-mscluster/sreddy/logs/slurm/slurm_%j.log
-#SBATCH -t 10:00
+#SBATCH -t 07:00
 #SBATCH -p batch
 #SBATCH --export=LOGDIR=/home-mscluster/sreddy/logs/slurm,FIGDIR=/home-mscluster/sreddy/fault-tolerant-ml/reports/figures,PROJECT_DIR=/home-mscluster/sreddy/fault-tolerant-ml
 # ,TFDIR=/home-mscluster/sreddy/logs/

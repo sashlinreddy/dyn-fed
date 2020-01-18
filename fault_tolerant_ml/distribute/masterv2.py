@@ -304,7 +304,12 @@ class MasterV2():
                 # if self.model.strategy.comm_mode == 2:
                 self._calculated_byte_size = True
             # Log to tensorboard
-            self._tf_logger.scalar("msg-size", self._n_mbs, self.model.iter)
+            if self._tf_logger is not None:
+                self._tf_logger.scalar(
+                    "msg-size",
+                    self._n_mbs,
+                    self.model.iter
+                )
             
             multipart = [b"", b"WORK_PARAMS"]
             multipart.extend(msg)

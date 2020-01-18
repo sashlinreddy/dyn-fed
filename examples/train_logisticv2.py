@@ -238,7 +238,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         if "tf_dir" in executor_cfg:
             executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/worker-{d_identity}"
 
-    if 'PROJECT_DIR' in os.environ:
+    if ('SLURM_JOBID' in os.environ) and ("tf_dir" in executor_cfg):
         executor_cfg["tf_dir"] = Path.home()/executor_cfg["tf_dir"]/data_name
 
     train(
