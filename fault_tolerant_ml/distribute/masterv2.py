@@ -189,7 +189,7 @@ class MasterV2():
 
             comm_iterations = np.floor(normalized_svds * self.n_iterations).astype(int)
             # Clients should have at least 1 iterations
-            comm_iterations = np.where(comm_iterations == 0, 1)
+            comm_iterations = np.where(comm_iterations == 0, 1, comm_iterations)
 
             self._logger.debug(f"Comm iterations={comm_iterations}")
 
