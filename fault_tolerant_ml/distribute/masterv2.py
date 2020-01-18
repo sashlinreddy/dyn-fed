@@ -50,6 +50,7 @@ class MasterV2():
         self.y = None
         self.X_valid = None
         self.y_valid = None
+        self._calculated_byte_size = False
 
         # Environment variables
         self.state = START
@@ -274,6 +275,25 @@ class MasterV2():
 
             # Map params
             msg = [params_to_string(self.model.layers)]
+
+            if not self._calculated_byte_size:
+                param_byte_size = len(msg[0])
+                n_bytes = param_byte_size * len(self.watch_dog.states) * self.n_iterations
+                if (self.model.strategy.comm_mode == 1) or \
+                    (self.model.strategy.comm_mode == 2):
+                    iterations = [
+                        worker.comm_iterations for worker in self.watch_dog.states
+                    ]
+                    self._logger.debug(f"Iterations={iterations}")
+                    b_sizes = np.array(iterations) * param_byte_size
+                    self._logger.debug(f"b_sizes={b_sizes}")
+                    n_bytes = np.sum(b_sizes)
+                    n_mbs = np.round(n_bytes/1024/1024, 3)
+
+                self._logger.debug(f"Msg params size={param_byte_size}")
+                self._logger.info(f"Total params size in MBs={n_mbs:.3f}MB")
+                self._calculated_byte_size = True
+            
             multipart = [b"", b"WORK_PARAMS"]
             multipart.extend(msg)
 

@@ -80,6 +80,9 @@ def comms_setup_to_string(n_iterations, comm_interval, comm_every_iter):
     )
 
     buffer = sent_msg.SerializeToString()
+
+    byte_size = sent_msg.ByteSize()
+    logger.debug(f"Byte size comms setup to string={byte_size}")
     
     return buffer
 
@@ -94,6 +97,7 @@ def params_to_string(model_layers):
     """
     layers = []
     for layer in model_layers:
+        logger.debug(f"layer dtype={layer.W.dtype.str}")
         W = ftml_pb2.Tensor(
             data=layer.W.data.tostring(),
             rows=layer.W.shape[0],
@@ -106,12 +110,11 @@ def params_to_string(model_layers):
             columns=layer.b.shape[1],
             dtype=layer.b.dtype.str
         )
-        layers.append(
-            ftml_pb2.Parameter(
-                W=W,
-                b=b
-            )
+        param = ftml_pb2.Parameter(
+            W=W,
+            b=b
         )
+        layers.append(param)
 
     msg = ftml_pb2.Subscription(
         layers=layers
@@ -235,7 +238,6 @@ def parse_setup_response_from_string(msg):
     # pylint: disable=no-member
     setup_response = ftml_pb2.SetupResponse()
     setup_response.ParseFromString(msg)
-
     
     return setup_response.svd_idx
 

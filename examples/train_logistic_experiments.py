@@ -57,7 +57,8 @@ def _create_experiments():
     return folder_name
 
 @click.command()
-def run():
+@click.option('--platform', '-p', default='slurm', type=str, help='Platform running experiments')
+def run(platform):
     """Controller function which creates the master and starts off the training
 
     Args:
@@ -70,21 +71,22 @@ def run():
     folder_name = 'config'/folder_name
     n_workers = [8, 32, 64, 128]
 
-    for fname in folder_name.iterdir():
-        print(fname)
-        for n_worker in n_workers:
-            subprocess.run([
-                'sbatch',
-                '-n',
-                str(n_worker),
-                '/home-mscluster/sreddy/fault-tolerant-ml/scripts/slurm_launch.sh',
-                '-v',
-                'DEBUG',
-                '-m',
-                'LOG2',
-                '-c',
-                str(fname)
-            ])
+    if platform == 'slurm':
+        for fname in folder_name.iterdir():
+            print(fname)
+            for n_worker in n_workers:
+                subprocess.run([
+                    'sbatch',
+                    '-n',
+                    str(n_worker),
+                    '/home-mscluster/sreddy/fault-tolerant-ml/scripts/slurm_launch.sh',
+                    '-v',
+                    'DEBUG',
+                    '-m',
+                    'LOG2',
+                    '-c',
+                    str(fname)
+                ])
 
 if __name__ == "__main__":
     run() # pylint: disable=no-value-for-parameter
