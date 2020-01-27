@@ -79,11 +79,7 @@ def comms_setup_to_string(n_iterations, comm_interval, comm_every_iter):
         comm_every_iter=comm_every_iter
     )
 
-    buffer = sent_msg.SerializeToString()
-
-    byte_size = sent_msg.ByteSize()
-    logger.debug(f"Byte size comms setup to string={byte_size}")
-    
+    buffer = sent_msg.SerializeToString()    
     return buffer
 
 def params_to_string(model_layers):

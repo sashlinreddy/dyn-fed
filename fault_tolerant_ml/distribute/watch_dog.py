@@ -44,6 +44,7 @@ class WorkerState():
         self._comm_iterations = 1
         self._comm_interval = 1
         self._comm_every_iter = 1
+        self._comm_rounds = 0
 
     def __repr__(self):
         return f"<WorkerState identity={self.identity.decode()}>"
@@ -91,6 +92,18 @@ class WorkerState():
         """Updates worker comm every iter
         """
         self._comm_every_iter = comm_every_iter
+
+    @property
+    def comm_rounds(self):
+        """Returns comm every iter
+        """
+        return self._comm_rounds
+
+    @comm_rounds.setter
+    def comm_rounds(self, comm_rounds):
+        """Updates worker comm every iter
+        """
+        self._comm_rounds = comm_rounds
 
     @property
     def prev_loss(self):

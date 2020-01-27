@@ -52,6 +52,7 @@ class MasterV2():
         self.y_valid = None
         self._calculated_byte_size = False
         self._n_mbs = 0.0
+        self.svd_time = 0
 
         # Environment variables
         self.state = START
@@ -164,6 +165,7 @@ class MasterV2():
         self._logger.info("Waiting for SVD idxs from each worker...")
         i = 0
         n_responses = len(self.heartbeater.hearts)
+        start = time.time()
         while i < n_responses:
             # Need to sleep gevent to be able to have heartbeat thread
             gevent.sleep(0.00000001)
@@ -172,6 +174,11 @@ class MasterV2():
 
             # Update no. of expected responses to end the while loop
             n_responses = self._check_responses(n_responses)
+
+        end = time.time()
+        self.svd_time = end - start
+
+        self._logger.debug(f'Time taken to calculate SVDs={self.svd_time:.3f}')
 
         if self.model.strategy.comm_mode == 1:
             # Normalize svd idx
@@ -187,7 +194,7 @@ class MasterV2():
 
             self._logger.debug(f"Normalized svds={normalized_svds}")
 
-            comm_iterations = np.floor(normalized_svds * self.n_iterations).astype(int)
+            comm_iterations = np.ceil(normalized_svds * self.n_iterations).astype(int)
             # Clients should have at least 1 iterations
             comm_iterations = np.where(comm_iterations == 0, 1, comm_iterations)
 
@@ -282,36 +289,6 @@ class MasterV2():
 
             # Map params
             msg = [params_to_string(self.model.layers)]
-
-            if (not self._calculated_byte_size) or \
-                (self.model.strategy.comm_mode == 2):
-                param_byte_size = len(msg[0])
-                n_bytes = param_byte_size * len(self.watch_dog.states) * self.n_iterations
-                if (self.model.strategy.comm_mode == 1) or \
-                    (self.model.strategy.comm_mode == 2):
-                    iterations = [
-                        worker.comm_iterations for worker in self.watch_dog.states
-                    ]
-                    self._logger.debug(f"Iterations={iterations}")
-                    b_sizes = np.array(iterations) * param_byte_size
-                    self._logger.debug(f"b_sizes={b_sizes}")
-                    n_bytes = np.sum(b_sizes)
-
-                self._n_mbs = np.round(n_bytes/1024/1024, 3)
-
-                self._logger.debug(f"Msg params size={param_byte_size}")
-                self._logger.info(
-                    f"Total params size in MBs for iter{self.model.iter} is {self._n_mbs:.3f}MB"
-                )
-                # if self.model.strategy.comm_mode == 2:
-                self._calculated_byte_size = True
-            # Log to tensorboard
-            if self._tf_logger is not None:
-                self._tf_logger.scalar(
-                    "msg-size",
-                    self._n_mbs,
-                    self.model.iter
-                )
             
             multipart = [b"", b"WORK_PARAMS"]
             multipart.extend(msg)
@@ -476,16 +453,16 @@ class MasterV2():
 
         return i, errors, d_Wbs, workers_received
 
-    def _calculate_dynamic_comms_loss(self):
+    def _calculate_dynamic_comms_loss(self, workers):
         """Calculate dynamic comms based on loss
         """
         losses = np.array(
-            [worker.prev_loss for worker in self.watch_dog.states]
+            [self.watch_dog.states[worker].prev_loss for worker in workers]
         )
 
         self._logger.debug(f"Losses={losses}")
         
-        min_loss = np.min(losses - 1e-2)
+        min_loss = np.min(losses)
         max_loss = np.max(losses)
 
         if min_loss == max_loss:
@@ -497,20 +474,21 @@ class MasterV2():
         self._logger.debug(f"Normalized losses={normalized_losses}")
 
         # Get new calculated no. of iterations for each worker
-        comm_iterations = np.floor(
-            normalized_losses * self.model.max_iter
+        comm_iterations = np.ceil(
+            normalized_losses * (self.model.max_iter - self.model.iter)
         ).astype(int)
+        comm_iterations = np.where(comm_iterations == 0, 1, comm_iterations)
 
-        comm_intervals = np.ceil(self.model.max_iter / comm_iterations).astype(int)
-        comm_every_iter = self.model.max_iter - \
+        comm_intervals = np.ceil((self.model.max_iter - self.model.iter) / comm_iterations).astype(int)
+        comm_every_iter = self.model.max_iter -  - \
             (comm_iterations - (self.model.max_iter // comm_intervals))
 
         self._logger.debug(f"Comm_iterations loss mode ={comm_iterations}")
 
-        for i, worker in enumerate(self.watch_dog.states):
-            worker.comm_iterations = comm_iterations[i]
-            worker.comm_interval = comm_intervals[i]
-            worker.comm_every_iter = comm_every_iter[i]
+        for i, worker in enumerate(workers):
+            self.watch_dog.states[worker].comm_iterations = comm_iterations[i]
+            self.watch_dog.states[worker].comm_interval = comm_intervals[i]
+            self.watch_dog.states[worker].comm_every_iter = comm_every_iter[i]
 
     def _expected_responses(self):
         """Returns expected no. of responses
@@ -526,6 +504,10 @@ class MasterV2():
                 [worker.comm_every_iter for worker in self.watch_dog.states]
             )
 
+            identities = np.array(
+                [worker.identity for worker in self.watch_dog.states]
+            )
+
             self._logger.debug(f"Comm intervals={comm_intervals}")
 
             who_comms = np.mod(self.model.iter, comm_intervals)
@@ -533,10 +515,12 @@ class MasterV2():
             every_iter = set(np.argwhere(self.model.iter >= comm_every_iter).flatten())
             # every_iter = set(np.argwhere(self.model.iter <= comm_every_iter).flatten())
             both = who_comms.union(every_iter)
+            identities = identities[list(both)]
             n_responses = len(both)
             self._logger.debug(
                 f"i={self.model.iter}, who={who_comms}, every_iter={every_iter}, "
-                f"b={both}, responses={n_responses}"
+                f"b={both}, responses={n_responses}, \nidentities={identities}, "
+                f"intervals for responses={comm_intervals[list(who_comms)]}"
             )
 
         return n_responses
@@ -567,8 +551,13 @@ class MasterV2():
                 # Update no. of expected responses to end the while loop
                 n_responses = self._check_responses(n_responses)
 
-            if self.model.strategy.comm_mode == 2:
-                self._calculate_dynamic_comms_loss()
+            # Determine dynamic communication scheme
+            if (self.model.strategy.comm_mode == 2) and (self.model.iter != 0):
+                self._calculate_dynamic_comms_loss(workers_received)
+
+            # Keep track of communication rounds for each worker
+            for worker in workers_received:
+                self.watch_dog.states[worker].comm_rounds += 1
 
             # Aggregate parameters
             parameters, epoch_loss = self._reduce(
@@ -600,6 +589,43 @@ class MasterV2():
 
             self.model.iter += 1
 
+    def _calculate_packet_size(self):
+        """Calculate packet size for parameters using number
+        of communication rounds
+        """
+        msg = [params_to_string(self.model.layers)]
+
+        if not self._calculated_byte_size:
+            param_byte_size = len(msg[0])
+            # n_bytes = param_byte_size * len(self.watch_dog.states) * self.n_iterations
+            # if (self.model.strategy.comm_mode == 1) or \
+            #     (self.model.strategy.comm_mode == 2):
+            comm_rounds = np.sum([
+                worker.comm_rounds for worker in self.watch_dog.states
+            ])
+            self._logger.debug(f"Comm rounds={comm_rounds}")
+            # b_sizes = comm_rounds * param_byte_size
+            n_bytes = comm_rounds * param_byte_size
+            self._logger.debug(f"n_bytes={n_bytes}")
+            # n_bytes = np.sum(b_sizes)
+
+            self._n_mbs = np.round(n_bytes/1024/1024, 3)
+
+            self._logger.debug(f"Msg params size={param_byte_size}")
+            # self._logger.info(
+            #     f"Total params size in MBs for iter{self.model.iter} is "
+            # )
+            # if self.model.strategy.comm_mode == 2:
+            self._calculated_byte_size = True
+        # Log to tensorboard
+        if self._tf_logger is not None:
+            self._tf_logger.scalar(
+                "msg-size",
+                self._n_mbs,
+                self.model.iter
+            )
+
+        return self._n_mbs
 
     def setup(self, X, y, X_valid=None, y_valid=None):
         """Setup master with data
@@ -645,21 +671,25 @@ class MasterV2():
             while self.model.iter < self.n_iterations:
                 # Need to have a small sleep to enable gevent threading
                 gevent.sleep(0.00000001)
-                
+
                 # Send data or params
                 self._map()
 
                 # Aggregate params
                 self._recv()
 
+            self._n_mbs = self._calculate_packet_size()
+
             self.done()
             end = time.time()
             elapsed = end - start
+            elapsed -= self.svd_time
             self._logger.info(
                 "Time taken for %d iterations is %7.6fs",
                 self.n_iterations,
                 elapsed
             )
+            self._logger.info(f'Total packet size communicated={self._n_mbs:.3f}MB')
         except KeyboardInterrupt:
             self._logger.info("Keyboard quit")
             self.done()

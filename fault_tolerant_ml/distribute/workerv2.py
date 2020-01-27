@@ -188,7 +188,10 @@ class WorkerV2():
         self.start_comms_iter = self.model.max_iter - \
             self.comm_iterations
             
-        self._logger.debug(f"Comm iterations={self.comm_iterations}")
+        self._logger.debug(
+            f"Comm iterations={self.comm_iterations}, "
+            f"Comm interval={self.comm_interval}"
+        )
 
     def recv_work(self, msg):
         """Receive work
