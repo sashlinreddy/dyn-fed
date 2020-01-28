@@ -184,7 +184,7 @@ class MasterV2():
             # Normalize svd idx
             svds = np.array([state.svd_idx for state in self.watch_dog.states])
 
-            min_svd = np.min(svds - self.model.strategy.norm_epsilon)
+            min_svd = np.min(svds)
             max_svd = np.max(svds)
 
             if min_svd == max_svd:
@@ -480,7 +480,7 @@ class MasterV2():
         comm_iterations = np.where(comm_iterations == 0, 1, comm_iterations)
 
         comm_intervals = np.ceil((self.model.max_iter - self.model.iter) / comm_iterations).astype(int)
-        comm_every_iter = self.model.max_iter -  - \
+        comm_every_iter = self.model.max_iter - \
             (comm_iterations - (self.model.max_iter // comm_intervals))
 
         self._logger.debug(f"Comm_iterations loss mode ={comm_iterations}")
