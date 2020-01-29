@@ -471,6 +471,8 @@ class MasterV2():
             # Min max normalization
             normalized_losses = (losses - min_loss) / (max_loss - min_loss)
 
+        normalized_losses = np.where(np.isnan(normalized_losses), 0, normalized_losses)
+
         self._logger.debug(f"Normalized losses={normalized_losses}")
 
         # Get new calculated no. of iterations for each worker
@@ -553,7 +555,8 @@ class MasterV2():
 
             # Determine dynamic communication scheme
             if (self.model.strategy.comm_mode == 2) and (self.model.iter != 0):
-                self._calculate_dynamic_comms_loss(workers_received)
+                if workers_received:
+                    self._calculate_dynamic_comms_loss(workers_received)
 
             # Keep track of communication rounds for each worker
             for worker in workers_received:
@@ -571,7 +574,8 @@ class MasterV2():
             )
 
             # Update model with these parameters
-            delta = self._update_model(parameters)
+            if parameters:
+                delta = self._update_model(parameters)
 
             # Check metrics
             train_acc, test_acc = self._check_metrics()
