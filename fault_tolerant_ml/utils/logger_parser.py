@@ -18,11 +18,11 @@ def main(input_filepath, output_filepath):
     files = glob.glob(logd)
 
     configs = [
-        "N_WORKERS", "COMM_PERIOD", "OVERLAP", "COMM_MODE", "AGG_MODE", 
+        "N_WORKERS", "COMM_PERIOD", "AGG_MODE", "COMM_MODE",
         "NONIID", "UNBALANCED"
     ]
 
-    metrics = ["TIME", "ACCURACY"]
+    metrics = ["TIME", "ACCURACY", "PKT_SIZE"]
 
     columns = configs + metrics
     results = pd.DataFrame(
@@ -44,7 +44,7 @@ def main(input_filepath, output_filepath):
                     enc_list = enc_run_name.split("-")
                     results.loc[i, "N_WORKERS"] = enc_list[0]
                     results.loc[i, "COMM_PERIOD"] = int(enc_list[9])
-                    results.loc[i, "OVERLAP"] = enc_list[7]
+                    # results.loc[i, "OVERLAP"] = enc_list[7]
                     results.loc[i, "COMM_MODE"] = enc_list[10]
                     results.loc[i, "AGG_MODE"] = enc_list[8]
                     if len(enc_list) > 11:
@@ -59,6 +59,8 @@ def main(input_filepath, output_filepath):
             if iteration_match:
                 time_sec = iteration_match.group()
                 results.loc[i, "TIME"] = time_sec
+            else:
+                print(f'No time match for {enc_run_name}')
 
             accuracy_match = re.search(
                 r"(?<=Accuracy=).+?(?=%)",
@@ -67,8 +69,20 @@ def main(input_filepath, output_filepath):
             if accuracy_match:
                 accuracy = accuracy_match.group()
                 results.loc[i, "ACCURACY"] = accuracy
+            else:
+                print(f'No accuracy match for {enc_run_name}')
 
-            print(f"time={time_sec}, acc={accuracy}")
+            pkt_size_match = re.search(
+                r"(?<=Total packet size communicated=).+?(?=MB)",
+                logfile
+            )
+            if pkt_size_match:
+                pkt_size = pkt_size_match.group()
+                results.loc[i, "PKT_SIZE"] = pkt_size
+            else:
+                print(f'No pkt size match for {enc_run_name}')
+
+            print(f"time={time_sec}, acc={accuracy}, pkt_size={pkt_size}")
 
     results = results.sort_values(by=configs).reset_index(drop=True)
     print(results.head(10))
