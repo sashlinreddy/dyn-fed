@@ -1,7 +1,7 @@
 mode: [0, 1, 2] # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
 
-aggregate_mode: [0, 2, 3] # 0: Avg, 1: Weighted avg, 2: Weighted by loss, 3: Weight by svd
+# aggregate_mode: [0, 2, 3] # 0: Avg, 1: Weighted avg, 2: Weighted by loss, 3: Weight by svd
 
 shared_folder: ["data/mnist/", "data/fashion-mnist/"]
-noniid: [0, 1]
-unbalanced: [0, 1]
+# noniid: [0, 1]
+# unbalanced: [0, 1]
