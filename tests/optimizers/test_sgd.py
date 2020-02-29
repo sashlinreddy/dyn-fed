@@ -6,14 +6,14 @@ import unittest
 
 import numpy as np
 
-from fault_tolerant_ml.data import MNist
-from fault_tolerant_ml.lib.io import file_io
-from fault_tolerant_ml.losses import CrossEntropyLoss
-from fault_tolerant_ml.operators import Tensor
-from fault_tolerant_ml.optimizers import SGDOptimizer
-from fault_tolerant_ml.utils import maths
+from dyn_fed.data import MNist
+from dyn_fed.lib.io import file_io
+from dyn_fed.losses import CrossEntropyLoss
+from dyn_fed.operators import Tensor
+from dyn_fed.optimizers import SGDOptimizer
+from dyn_fed.utils import maths
 
-logger = logging.getLogger("ftml.optimizers.tests.test_sgd")
+logger = logging.getLogger("dfl.optimizers.tests.test_sgd")
 
 class TestSGDOptimizer(unittest.TestCase):
     """Tests for SGD

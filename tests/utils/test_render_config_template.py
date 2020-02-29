@@ -10,9 +10,9 @@ logging.getLogger("tensorflow").setLevel(logging.CRITICAL)
 logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 
 # pylint: disable=wrong-import-position
-from fault_tolerant_ml.utils.model_utils import render_template
+from dyn_fed.utils.model_utils import render_template
 
-logger = logging.getLogger("ftml.utils.tests.utils.test_model_utils")
+logger = logging.getLogger("dfl.utils.tests.utils.test_model_utils")
 
 class TestConfigTemplating(unittest.TestCase):
     """Test Jinja templating

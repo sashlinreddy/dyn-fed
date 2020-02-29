@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Tests for `fault_tolerant_ml` package."""
+"""Tests for `dyn_fed` package."""
 
 
 import unittest
 from click.testing import CliRunner
 
-from fault_tolerant_ml import cli
+from dyn_fed import cli
 
 
 class TestFault_tolerant_ml(unittest.TestCase):
-    """Tests for `fault_tolerant_ml` package."""
+    """Tests for `dyn_fed` package."""
 
     def setUp(self):
         """Set up test fixtures, if any."""

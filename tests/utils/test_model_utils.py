@@ -8,10 +8,10 @@ logging.getLogger("tensorflow").setLevel(logging.CRITICAL)
 logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 
 # pylint: disable=wrong-import-position
-from fault_tolerant_ml.lib.io.file_io import load_model_config
-from fault_tolerant_ml.utils.model_utils import encode_run_name
+from dyn_fed.lib.io.file_io import load_model_config
+from dyn_fed.utils.model_utils import encode_run_name
 
-logger = logging.getLogger("ftml.utils.tests.utils.test_model_utils")
+logger = logging.getLogger("dfl.utils.tests.utils.test_model_utils")
 
 class TestModelUtils(unittest.TestCase):
     """Test model related utils

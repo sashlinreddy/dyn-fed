@@ -1,7 +1,7 @@
-"""Example models that can be implemented using ftml
+"""Example models that can be implemented using dfl
 """
-import fault_tolerant_ml as ft
-from fault_tolerant_ml.layers import Layer
+import dyn_fed as ft
+from dyn_fed.layers import Layer
 
 
 class MLP(ft.Model):

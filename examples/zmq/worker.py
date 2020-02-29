@@ -6,7 +6,7 @@ import numpy as np
 
 import zmq
 
-from fault_tolerant_ml.utils import zhelpers
+from dyn_fed.utils import zhelpers
 
 NBR_WORKERS = 5
 

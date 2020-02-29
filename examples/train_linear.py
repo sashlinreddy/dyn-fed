@@ -11,13 +11,13 @@ import numpy as np
 np.random.seed(42)
 from dotenv import find_dotenv, load_dotenv
 
-from fault_tolerant_ml.data import MNist
-from fault_tolerant_ml.distribute import MasterWorkerStrategy
-from fault_tolerant_ml.lib.io import file_io
-from fault_tolerant_ml.losses import MSELoss
-from fault_tolerant_ml.metrics import accuracy_scorev2, confusion_matrix
-from fault_tolerant_ml.optimizers import SGD, Adam
-from fault_tolerant_ml.utils import model_utils, setup_logger
+from dyn_fed.data import MNist
+from dyn_fed.distribute import MasterWorkerStrategy
+from dyn_fed.lib.io import file_io
+from dyn_fed.losses import MSELoss
+from dyn_fed.metrics import accuracy_scorev2, confusion_matrix
+from dyn_fed.optimizers import SGD, Adam
+from dyn_fed.utils import model_utils, setup_logger
 from ft_models import LinearRegression
 
 
@@ -41,7 +41,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
 
     if "LOGDIR" in os.environ:
         pass # Not doing anything for now in terms of flushing directories
-        # from fault_tolerant_ml.lib.io.file_io import flush_dir
+        # from dyn_fed.lib.io.file_io import flush_dir
         # _ = [os.path.join(os.environ["LOGDIR"], "tf/")]
         # ignore_dir = []
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
@@ -149,7 +149,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
     )
 
     try:
-        logger = logging.getLogger("ftml.scripts.train")
+        logger = logging.getLogger("dfl.scripts.train")
         logger.info(f"Starting run: {encoded_run_name}")
         logger.info(f"Optimizer={optimizer}")
 

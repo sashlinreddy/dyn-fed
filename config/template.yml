@@ -27,9 +27,9 @@ distribute:
   norm_epsilon: 10
 
 executor:
-  scenario: 1
+  scenario: 3
   shared_folder: {{ data_dir }}
   config_folder: "config/"
-  tf_dir: "logs/tf/"
+  # tf_dir: "logs/tf/"
   noniid: {{ noniid }}
   unbalanced: {{ unbalanced }}

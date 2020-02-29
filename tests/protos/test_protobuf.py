@@ -9,15 +9,15 @@ logging.getLogger("tensorflow").setLevel(logging.CRITICAL)
 logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 
 # pylint: disable=wrong-import-position
-from fault_tolerant_ml.layers import Layer
-from fault_tolerant_ml.models import Model
-from fault_tolerant_ml.proto.utils import (params_to_string,
+from dyn_fed.layers import Layer
+from dyn_fed.models import Model
+from dyn_fed.proto.utils import (params_to_string,
                                            parse_params_from_string,
                                            parse_setup_from_string,
                                            setup_to_string)
 
 
-logger = logging.getLogger("ftml.optimizers.tests.protos.test_protobuf")
+logger = logging.getLogger("dfl.optimizers.tests.protos.test_protobuf")
 
 class TestProtobuf(unittest.TestCase):
     """Tests for SGD

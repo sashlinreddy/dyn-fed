@@ -1,5 +1,5 @@
 import zmq
-from fault_tolerant_ml.data import DummyData
+from dyn_fed.data import DummyData
 
 N_TASKS = 40
 NBR_WORKERS = 5

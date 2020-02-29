@@ -1,7 +1,7 @@
 import zmq
 import random
 import time
-from fault_tolerant_ml.data import DummyData
+from dyn_fed.data import DummyData
 
 try:
     raw_input

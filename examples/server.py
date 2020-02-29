@@ -10,7 +10,7 @@ import gevent
 
 from tornado import ioloop
 
-from fault_tolerant_ml.distribute.states import MAP, MAP_PARAMS, START
+from dyn_fed.distribute.states import MAP, MAP_PARAMS, START
 
 logging.basicConfig(level="INFO")
 logger = logging.getLogger()
