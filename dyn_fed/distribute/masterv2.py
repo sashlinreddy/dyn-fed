@@ -20,10 +20,10 @@ from dyn_fed.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
                                                  START)
 from dyn_fed.metrics import accuracy_scorev2
 from dyn_fed.proto.utils import (params_to_string,
-                                           parse_params_response_from_string,
-                                           parse_setup_response_from_string,
-                                           setup_to_string,
-                                           comms_setup_to_string)
+                                 parse_params_response_from_string,
+                                 parse_setup_response_from_string,
+                                 setup_to_string,
+                                 comms_setup_to_string)
 from dyn_fed.tools import TFLogger
 
 # pylint: disable=no-member
