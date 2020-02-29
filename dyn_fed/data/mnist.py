@@ -85,7 +85,9 @@ def load_data(path: Optional[str]=None,
 
     if noniid:
         # Undo one hot encoding
-        labels = np.argmax(y_train, axis=1)
+        labels = y_train
+        if onehot:
+            labels = np.argmax(y_train, axis=1)
         # Sort and get indices
         noniid_idxs = np.argsort(labels)
         X_train = X_train[noniid_idxs]
