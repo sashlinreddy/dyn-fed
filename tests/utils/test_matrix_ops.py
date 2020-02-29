@@ -5,10 +5,10 @@ import unittest
 
 import numpy as np
 
-from fault_tolerant_ml.utils.maths import (linspace_quantization,
+from dyn_fed.utils.maths import (linspace_quantization,
                                            reconstruct_approximation)
 
-logger = logging.getLogger("ftml.utils.tests.test_matrix_ops")
+logger = logging.getLogger("dfl.utils.tests.test_matrix_ops")
 
 class TestMatrixOps(unittest.TestCase):
     """Tests for matrix ops

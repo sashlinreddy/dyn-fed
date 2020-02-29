@@ -14,9 +14,9 @@ logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 # Need to disable capturing for tensorflow and matplotlib
 # before importing from dataset
 # pylint: disable=wrong-import-position
-from fault_tolerant_ml.data import \
+from dyn_fed.data import \
     Dataset
-from fault_tolerant_ml.data.utils import next_batch, next_batch_unbalanced
+from dyn_fed.data.utils import next_batch, next_batch_unbalanced
 
 
 class TestPartition(unittest.TestCase):

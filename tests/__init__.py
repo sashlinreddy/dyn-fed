@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-"""Unit test package for fault_tolerant_ml."""
+"""Unit test package for dyn_fed."""

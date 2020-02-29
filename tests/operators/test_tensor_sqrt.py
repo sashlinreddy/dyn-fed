@@ -2,9 +2,9 @@ import unittest
 from copy import copy
 import logging
 import numpy as np
-from fault_tolerant_ml.operators import Tensor
+from dyn_fed.operators import Tensor
 
-logger = logging.getLogger("ftml.operators.tests.test_tensor_sqrt")
+logger = logging.getLogger("dfl.operators.tests.test_tensor_sqrt")
 
 class TestTensorSqrt(unittest.TestCase):
 

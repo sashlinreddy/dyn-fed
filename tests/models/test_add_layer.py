@@ -1,10 +1,10 @@
 import unittest
 
-import fault_tolerant_ml as ft
-from fault_tolerant_ml.layers import Layer
+import dyn_fed as ft
+from dyn_fed.layers import Layer
 
 class TestFault_tolerant_ml(unittest.TestCase):
-    """Tests for `fault_tolerant_ml` package."""
+    """Tests for `dyn_fed` package."""
 
     def setUp(self):
         """Set up test fixtures, if any."""

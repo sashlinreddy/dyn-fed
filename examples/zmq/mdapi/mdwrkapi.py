@@ -8,7 +8,7 @@ import logging
 import time
 import zmq
 
-from fault_tolerant_ml.utils.zhelpers import dump
+from dyn_fed.utils.zhelpers import dump
 # MajorDomo protocol constants:
 import MDP
 

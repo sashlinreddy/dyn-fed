@@ -12,7 +12,7 @@ logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 # Need to disable capturing for tensorflow and matplotlib
 # before importing from dataset
 # pylint: disable=wrong-import-position
-from fault_tolerant_ml.data import yearmsd
+from dyn_fed.data import yearmsd
 
 class TestYearMSD(unittest.TestCase):
     """Tests for Partioning algorithm"""

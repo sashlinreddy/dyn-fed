@@ -1,11 +1,10 @@
-# Fault Tolerant Machine Learning
+# Dynamic Averaging techniques for Federated Machine Learning
 
-Fault tolerant framework for machine learning algorithms
+Dynamic averaging framework for federated machine learning algorithms
 
 ____
 
 * Free software: MIT license
-* Documentation: https://fault-tolerant-ml.readthedocs.io.
 
 ## Prerequisites
 
@@ -35,7 +34,7 @@ First you need to compile the protocol buffer file. The definitions are in the [
 Compilation is executed with the following command:
 
 ```bash
-protoc -I=protos/ --python_out=fault_tolerant_ml/proto/ protos/ftml.proto
+protoc -I=protos/ --python_out=dyn_fed/proto/ protos/dfl.proto
 ```
 
 ### Local development (With tmux)
@@ -58,18 +57,18 @@ Go to http://localhost:6006.
 ### Running on SLURM cluster
 
 ```bash
-sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh
+sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh
 ```
 
-The [slurm launch](slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [master execution script](scripts/run_master.py). However, arguments can be passed to the job submission as below:
+The [slurm launch](scripts/slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [master execution script](examples/train_logisticv2.py). However, arguments can be passed to the job submission as below:
 
 ```bash
-sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh -v 20
+sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh -v 20
 ```
 
 ## Setup config
 
-The config of the model can be set in the [config file](config.yml). The dataset can be configured in this file as well as the following parameters:
+The config of the model can be set in the [config file](config/config.yml). The dataset can be configured in this file as well as the following parameters:
 
 * model
     * n_iterations:  No. of iterations
@@ -99,7 +98,7 @@ The config of the model can be set in the [config file](config.yml). The dataset
 To view the results on tensorboard:
 
 ```bash
-sbatch tensorboard_slurm.sh
+sbatch scripts/tensorboard_slurm.sh
 ```
 
 Check the output log located in $HOME/logs. 

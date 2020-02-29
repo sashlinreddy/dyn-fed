@@ -8,12 +8,12 @@ import subprocess
 
 import click
 
-from fault_tolerant_ml.lib.io import file_io
+from dyn_fed.lib.io import file_io
 
-from fault_tolerant_ml.utils import model_utils
+from dyn_fed.utils import model_utils
 
 def _create_experiments():
-    """Create experiments for ftml
+    """Create experiments for dfl
     """
     config_dir = 'config/'
     config_path = 'config/template.yml'
