@@ -69,7 +69,9 @@ def run(platform):
     # Load in config to setup model
     folder_name = _create_experiments()
     folder_name = 'config'/folder_name
-    n_workers = [8, 32, 64, 128]
+    # n_workers = [8, 32, 64, 128]
+    # n_workers = [8, 16, 32]
+    n_workers = [64]
 
     if platform == 'slurm':
         for fname in folder_name.iterdir():
