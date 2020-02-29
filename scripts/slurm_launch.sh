@@ -3,7 +3,7 @@
 #SBATCH -o /home-mscluster/sreddy/logs/slurm/slurm_%j.log
 #SBATCH -t 07:00
 #SBATCH -p batch
-#SBATCH --export=LOGDIR=/home-mscluster/sreddy/logs/slurm,FIGDIR=/home-mscluster/sreddy/fault-tolerant-ml/reports/figures,PROJECT_DIR=/home-mscluster/sreddy/fault-tolerant-ml
+#SBATCH --export=LOGDIR=/home-mscluster/sreddy/logs/slurm,FIGDIR=/home-mscluster/sreddy/dyn-fed/reports/figures,PROJECT_DIR=/home-mscluster/sreddy/dyn-fed
 # ,TFDIR=/home-mscluster/sreddy/logs/
 
 while [ "$1" != "" ]; do
@@ -27,25 +27,25 @@ while [ "$1" != "" ]; do
 done
 
 # Decide on the type of model
-EXE_PATH=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_logistic.py
+EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_logistic.py
 
 if [ "$MODEL" == "LINEAR" ]; then
     echo "Running Linear Model"
-    EXE_PATH=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_linear.py
+    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_linear.py
 elif [ "$MODEL" == "LOG2" ]; then
     echo "Running Logistic 2 Model"
-    EXE_PATH=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_logisticv2.py
+    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_logisticv2.py
 elif [ "$MODEL" == "NN" ]; then
     echo "Running NN Model"
-    EXE_PATH=/home-mscluster/sreddy/fault-tolerant-ml/examples/train_nn.py
+    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_nn.py
 fi
 
 export PYTHON_EXE=/home-mscluster/sreddy/miniconda3/envs/ftml/bin/python3
 export MASTER_EXE=$EXE_PATH
 export WORKER_EXE=$EXE_PATH
-export DATA_DIR=/home-mscluster/sreddy/fault-tolerant-ml/data/fashion-mnist
+export DATA_DIR=/home-mscluster/sreddy/dyn-fed/data/fashion-mnist
 
-echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r master $verbose $config > /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
-echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r worker $verbose -i %t $config >> /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
+echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r master $verbose $config > /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
+echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r worker $verbose -i %t $config >> /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
 
-srun --multi-prog /home-mscluster/sreddy/fault-tolerant-ml/m_w_$SLURM_JOBID.conf
+srun --multi-prog /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
