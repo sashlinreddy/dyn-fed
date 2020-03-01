@@ -35,8 +35,18 @@ message Subscription {
     repeated Parameter layers = 1;
 }
 
+message SubscriptionV2{
+    repeated Tensor trainable_weights = 1;
+}
+
 message SubscriptionResponse {
     repeated Parameter layers = 1;
+    Tensor most_rep = 2;
+    float loss = 3;
+}
+
+message SubscriptionResponseV2 {
+    repeated Tensor trainable_weights = 1;
     Tensor most_rep = 2;
     float loss = 3;
 }

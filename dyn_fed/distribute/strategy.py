@@ -185,9 +185,7 @@ class MasterWorkerStrategyV2(DistributionStrategy):
         model = args[0]
         optimizer = args[1]
         train_dataset = args[2]
-        train_step = args[3]
         test_dataset = kwargs.get('test_dataset')
-        test_step = kwargs.get('test_step')
         if self.role == "master":
             # Setup master
             self._logger.debug("Setting up master")
@@ -198,9 +196,7 @@ class MasterWorkerStrategyV2(DistributionStrategy):
             )
             self._master.setup(
                 train_dataset=train_dataset,
-                train_step=train_step,
                 test_dataset=test_dataset,
-                test_step=test_step
             )
             self._master.start()
         else:
@@ -211,6 +207,10 @@ class MasterWorkerStrategyV2(DistributionStrategy):
                 model=model,
                 optimizer=optimizer,
                 strategy=self
+            )
+
+            self._worker.setup(
+                train_dataset=None
             )
 
             self._worker.start()

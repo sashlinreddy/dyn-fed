@@ -23,7 +23,6 @@ def train(train_dataset, test_dataset, strategy, config):
     """Perform training session
     """
     logger = logging.getLogger('dfl.train')
-    model_config = config.get('model')
     opt_cfg = config.get('optimizer')
     # BATCH_SIZE = model_config.get('batch_size')
     # SHUFFLE_BUFFER_SIZE = 100
@@ -31,7 +30,8 @@ def train(train_dataset, test_dataset, strategy, config):
 
     # Only do after partition
     # train_dataset = train_dataset.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE)
-    # test_dataset = test_dataset.batch(BATCH_SIZE)
+    # batch_size = config['model']['batch_size'] * strategy.n_workers
+    # test_dataset = test_dataset.batch(batch_size)
 
     model = tf.keras.Sequential([
         tf.keras.layers.Flatten(input_shape=(28, 28)),
@@ -46,31 +46,31 @@ def train(train_dataset, test_dataset, strategy, config):
         )
 
     # Define loss function
-    loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+    # loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    epoch_loss_avg = tf.keras.metrics.Mean()
-    epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+    # epoch_loss_avg = tf.keras.metrics.Mean()
+    # epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
 
-    @tf.function
-    def train_loop(x, y):
+    # @tf.function
+    # def train_loop(x, y):
 
-        # Calculate gradients
-        with tf.GradientTape() as t:
-            # training=training is needed only if there are layers with different
-            # behavior during training versus inference (e.g. Dropout).
-            predictions = model(x, training=True)
-            loss = loss_func(y, predictions)
+    #     # Calculate gradients
+    #     with tf.GradientTape() as t:
+    #         # training=training is needed only if there are layers with different
+    #         # behavior during training versus inference (e.g. Dropout).
+    #         predictions = model(x, training=True)
+    #         loss = loss_func(y, predictions)
 
-        grads = t.gradient(loss, model.trainable_variables)
+    #     grads = t.gradient(loss, model.trainable_variables)
 
-        # Optimize the model
-        optimizer.apply_gradients(zip(grads, model.trainable_variables))
+    #     # Optimize the model
+    #     optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
-        # Track progress
-        epoch_loss_avg(loss)
+    #     # Track progress
+    #     epoch_loss_avg(loss)
 
-        # Compare predicted label to actual
-        epoch_accuracy.update_state(y, predictions)
+    #     # Compare predicted label to actual
+    #     epoch_accuracy.update_state(y, predictions)
 
     # train_loss_results = []
     # train_accuracy_results = []
@@ -104,7 +104,6 @@ def train(train_dataset, test_dataset, strategy, config):
         model,
         optimizer,
         train_dataset,
-        train_loop,
         test_dataset=test_dataset
     )
 

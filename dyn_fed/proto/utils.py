@@ -119,6 +119,36 @@ def params_to_string(model_layers):
 
     return buffer
 
+def params_to_stringv2(trainable_vars):
+    """Parameters protobuf serialization
+
+    Args:
+        model_layers (list): List of model layers (dfl.Layer)
+
+    Returns:
+        msg (byte string): Serialized parameters
+    """
+    weights = []
+    for var in trainable_vars:
+        # logger.debug(f"layer dtype={layer.W.dtype.str}")
+        var_npy = var.numpy()
+        weight = dfl_pb2.Tensor(
+            data=var_npy.tostring(),
+            rows=var_npy.shape[0],
+            columns=var_npy.shape[1] if var_npy.ndim > 1 else None,
+            dtype=var_npy.dtype.str
+        )
+
+        weights.append(weight)
+
+    msg = dfl_pb2.SubscriptionV2(
+        trainable_weights=weights
+    )
+
+    buffer = msg.SerializeToString()
+
+    return buffer
+
 
 def params_response_to_string(model_layers, most_rep, loss):
     """Parameter response protobuf serialization
@@ -172,6 +202,38 @@ def params_response_to_string(model_layers, most_rep, loss):
 
     return buffer
 
+def params_response_to_stringv2(trainable_vars, loss):
+    """Parameter response protobuf serialization
+
+    Args:
+        model_layers (list): List of model layers (dfl.Layer)
+        most_rep (np.ndarray): Most representative data points
+        loss (float): Loss for corresponding epoch
+
+    Returns:
+        msg (byte string): Serialized parameters
+    """
+    weights = []
+    for var in trainable_vars:
+        var_npy = var.numpy()
+        weight = dfl_pb2.Tensor(
+            data=var_npy.tostring(),
+            rows=var_npy.shape[0],
+            columns=var_npy.shape[1] if var_npy.ndim > 1 else None,
+            dtype=var_npy.dtype.str
+        )
+        weights.append(weight)
+
+
+    msg = dfl_pb2.SubscriptionResponseV2(
+        trainable_weights=weights,
+        loss=loss
+    )
+
+    buffer = msg.SerializeToString()
+
+    return buffer
+
 def parse_numpy_from_string(data, dtype, shape):
     """Reconstruct numpy array from buffer given dtype and shape
 
@@ -186,8 +248,6 @@ def parse_numpy_from_string(data, dtype, shape):
     # Reconstruct numpy array
     buf = memoryview(data)
     arr = np.frombuffer(buf, dtype=dtype)
-    # eval_shape = eval(shape)
-    print(f"Eval shape={shape}")
     arr = arr.reshape(shape)
 
     return arr.copy()
@@ -288,6 +348,33 @@ def parse_params_from_string(msg):
 
     return layers
 
+def parse_params_from_stringv2(msg):
+    """Parameters protobuf deserialization
+
+    Args:
+        msg (byte string): Byte array to be reconstructed
+
+    Returns:
+        layers (list): List of parameters received
+    """
+    subscription = dfl_pb2.SubscriptionV2()
+    subscription.ParseFromString(msg)
+
+    weights = []
+
+    # pylint: disable=no-member
+    for trainable_weight in subscription.trainable_weights:
+        weight = parse_numpy_from_string(
+            trainable_weight.data,
+            trainable_weight.dtype,
+            (trainable_weight.rows, trainable_weight.columns) 
+            if trainable_weight.columns > 0 else (trainable_weight.rows,)
+        )
+
+        weights.append(weight)
+
+    return weights
+
 def parse_params_response_from_string(msg):
     """Parameters protobuf deserialization
 
@@ -326,4 +413,34 @@ def parse_params_response_from_string(msg):
     loss = subscription_response.loss
 
     return layers, most_rep, loss
+
+def parse_params_response_from_stringv2(msg):
+    """Parameters protobuf deserialization
+
+    Args:
+        msg (byte string): Byte array to be reconstructed
+
+    Returns:
+        layers (list): List of parameters received
+    """
+    subscription_response = dfl_pb2.SubscriptionResponseV2()
+    subscription_response.ParseFromString(msg)
+
+    weights = []
+
+    # pylint: disable=no-member
+    for trainable_weight in subscription_response.trainable_weights:
+        weight = parse_numpy_from_string(
+            trainable_weight.data,
+            trainable_weight.dtype,
+            (trainable_weight.rows, trainable_weight.columns)
+            if trainable_weight.columns > 0 else (trainable_weight.rows,)
+        )
+
+        
+        weights.append(weight)
+
+    loss = subscription_response.loss
+
+    return weights, loss
     

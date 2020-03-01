@@ -6,20 +6,19 @@ import uuid
 import os
 import json
 
+import tensorflow as tf
+
 import numpy as np
 import zmq
 from zmq import devices
 from zmq.eventloop import zmqstream
 from tornado import ioloop
 
-import tensorflow as tf
-
-from dyn_fed.operators import Tensor
-from dyn_fed.proto.utils import (params_response_to_string,
-                                           parse_params_from_string,
-                                           parse_setup_from_string,
-                                           setup_reponse_to_string,
-                                           parse_comm_setup_from_string)
+from dyn_fed.proto.utils import (params_response_to_stringv2,
+                                 parse_params_from_stringv2,
+                                 parse_setup_from_string,
+                                 setup_reponse_to_string,
+                                 parse_comm_setup_from_string)
 from dyn_fed.utils.maths import arg_svd
 from dyn_fed.lib.io.file_io import FileWatcher
 
@@ -44,8 +43,10 @@ class WorkerV3():
         self.config = self.strategy.config
         self.train_dataset = None
         self.test_dataset = None
-        self.train_step = None
-        self.test_step = None
+        self.loss_func = None
+        self.epoch_accuracy = None
+        self.epoch_loss_avg = None
+        self.iter = 0
 
         self.n_samples: int = None
 
@@ -124,34 +125,7 @@ class WorkerV3():
         # wait for connections
         time.sleep(1)
 
-        self._logger.info(f"Connected")
-
-    def _do_work(self, X, y, W_g=None):
-        """Worker doing the heavy lifting of calculating gradients and
-        calculating loss
-
-        Args:
-            W_g (numpy.ndarray): Global parameters
-
-        Returns:
-            batch_loss (float): Loss for this iteration
-            most_representative (numpy.ndarray): Vector of most representative
-            data samples for a particular iteration. Most representative is 
-            determined by the data points that have the highest loss.
-        """
-        # Get predictions
-        y_pred = self.model.forward(X)
-
-        batch_loss = self.model.optimizer.minimize(
-            self.model,
-            y, 
-            y_pred, 
-            iteration=self.model.iter + 1,
-            N=X.shape[0],
-            W_g=W_g)
-        most_representative = self.model.optimizer.most_rep
-        
-        return batch_loss, most_representative
+        self._logger.info(f"Connected")        
 
     def _training_loop(self):
         """Perform training loop
@@ -160,34 +134,50 @@ class WorkerV3():
             epoch_loss (float): Loss for corresponding epoch
             most_representative(np.ndarray): Most representative data points
         """
-        for _ in range(self.model.strategy.comm_period):
-            epoch_loss = 0.0
-            n_batches = 0
-            # self._logger.debug(
-            #     f"layers[0].W.data before mini={self.model.layers[0].W.data}"
-            # )
-            for start in range(0, self.X.shape[0], self.model.batch_size):
-                end = start + self.model.batch_size
 
-                X_batch = self.X[start:end]
-                y_batch = self.y[start:end]
-                # Each worker does work and we get the resulting parameters
-                batch_loss, most_representative = \
-                self._do_work(
-                    X_batch,
-                    y_batch,
-                    W_g=None
-                )
-                epoch_loss += batch_loss.data
-                n_batches += 1
-            epoch_loss /= n_batches
-            self._logger.info(
-                f"iteration = {self.model.iter}, Loss = {epoch_loss:7.4f}"
-            )
+        @tf.function
+        def train_loop(x, y):
 
-            self.model.iter += 1
+            # Calculate gradients
+            with tf.GradientTape() as t:
+                # training=training is needed only if there are layers with different
+                # behavior during training versus inference (e.g. Dropout).
+                predictions = self.model(x, training=True)
+                loss = self.loss_func(y, predictions)
 
-        return epoch_loss, most_representative
+            grads = t.gradient(loss, self.model.trainable_variables)
+
+            # Optimize the model
+            self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+
+            # Track progress
+            self.epoch_loss_avg(loss)
+
+            # # Compare predicted label to actual
+            self.epoch_accuracy.update_state(y, predictions)
+
+        start = time.time()
+        for x, y in self.train_dataset:
+            train_loop(x, y)
+        end = time.time()
+        elapsed = end - start
+        self._logger.debug(f"Gradient calc elapsed time={elapsed}")
+
+
+        epoch_loss = self.epoch_loss_avg.result()
+        epoch_train_acc = self.epoch_accuracy.result()
+
+        self.epoch_loss_avg.reset_states()
+        self.epoch_accuracy.reset_states()
+
+        self._logger.info(
+            f"iteration = {self.iter}, train_loss = {epoch_loss:7.4f}, "
+            f"train_acc={epoch_train_acc*100:7.4}%"
+        )
+
+        self.iter += 1
+
+        return epoch_loss
 
     def _recv_comm_info(self, msg):
         """Receive communication information
@@ -202,13 +192,17 @@ class WorkerV3():
             f"Comm interval={self.comm_interval}"
         )
     
-    def setup(self, train_dataset, train_step, test_dataset=None, test_step=None):
+    def setup(self, train_dataset, test_dataset=None):
         """Setup master with train and test data and train steps
         """
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
-        self.train_step = train_step
-        self.test_step = test_step
+
+        # Define loss function
+        self.loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+
+        self.epoch_loss_avg = tf.keras.metrics.Mean()
+        self.epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
 
     def recv_work(self, msg):
         """Receive work
@@ -273,35 +267,29 @@ class WorkerV3():
         cmd = msg[1]
         if cmd == b"WORK_PARAMS":
             self._logger.info("Receiving params...")
-            parameters = parse_params_from_string(msg[2])
+            parameters = parse_params_from_stringv2(msg[2])
             packet_size = len(msg[2])
             self._logger.debug(f"Packet size of params={packet_size}")
             
-            for i in np.arange(self.model.n_layers):
-                self.model.layers[i].W.data = parameters[i][0]
-                self.model.layers[i].b.data = parameters[i][1]
-
-            self._logger.info(
-                f"W[0].shape.shape={self.model.layers[0].W.data.shape}"
-            )
+            # Update local model using global parameters
+            self.model.set_weights(parameters)
 
             # Do some work
             tic = time.time()
-            epoch_loss, most_representative = self._training_loop()
+            epoch_loss = self._training_loop()
             self._logger.info("blocked for %.3f s", (time.time() - tic))
 
             data = [
-                params_response_to_string(
-                    self.model.layers,
-                    most_representative,
+                params_response_to_stringv2(
+                    self.model.trainable_weights,
                     epoch_loss
                 )
             ]
 
-            send_work = (self.model.iter - 1) % self.comm_interval == 0
-            self._logger.debug(f"send_work={send_work}, {self.model.iter}, {self.comm_interval}")
-            send_work = send_work or (self.model.iter >= self.comm_every_iter)
-            # send_work = send_work or (self.model.iter <= self.comm_every_iter)
+            send_work = (self.iter - 1) % self.comm_interval == 0
+            self._logger.debug(f"send_work={send_work}, {self.iter}, {self.comm_interval}")
+            send_work = send_work or (self.iter >= self.comm_every_iter)
+            # send_work = send_work or (self.iter <= self.comm_every_iter)
             self._logger.debug(f"Send work={send_work}")
             if send_work:
                 multipart = [b"WORK", self.identity.encode()]

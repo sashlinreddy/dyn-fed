@@ -28,6 +28,7 @@ def encode_run_name(n_workers, config):
     ]
 
     global_cfg = {"n_workers": n_workers}
+    global_cfg.update(config["data"])
     global_cfg.update(config["executor"])
     global_cfg.update(config["optimizer"])
     global_cfg.update(config["comms"])
