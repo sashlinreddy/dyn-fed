@@ -211,7 +211,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         executor_cfg["tf_dir"] = Path.home()/executor_cfg["tf_dir"]/data_name
 
     strategy = MasterWorkerStrategyV2(
-        n_workers=n_workers,
+        n_workers=n_workers-1,
         config=cfg,
         role=role
     )
