@@ -11,8 +11,7 @@ import tensorflow as tf
 # pylint: disable=wrong-import-position
 np.random.seed(42)
 
-from dyn_fed.data import MNist, FashionMNist, OccupancyData
-from dyn_fed.distribute import MasterWorkerStrategy
+from dyn_fed.distribute.strategy import MasterWorkerStrategyV2
 
 from dyn_fed.lib.io import file_io
 from dyn_fed.utils import model_utils, setup_logger
@@ -20,14 +19,19 @@ import dyn_fed as df
 
 from ft_models import LogisticRegressionV2
 
-def train(train_dataset, test_dataset, strategy, model_config):
+def train(train_dataset, test_dataset, strategy, config):
     """Perform training session
     """
-    BATCH_SIZE = model_config.get('batch_size')
-    SHUFFLE_BUFFER_SIZE = 100
+    logger = logging.getLogger('dfl.train')
+    model_config = config.get('model')
+    opt_cfg = config.get('optimizer')
+    # BATCH_SIZE = model_config.get('batch_size')
+    # SHUFFLE_BUFFER_SIZE = 100
 
-    train_dataset = train_dataset.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE)
-    test_dataset = test_dataset.batch(BATCH_SIZE)
+
+    # Only do after partition
+    # train_dataset = train_dataset.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE)
+    # test_dataset = test_dataset.batch(BATCH_SIZE)
 
     model = tf.keras.Sequential([
         tf.keras.layers.Flatten(input_shape=(28, 28)),
@@ -35,8 +39,11 @@ def train(train_dataset, test_dataset, strategy, model_config):
         tf.keras.layers.Dense(10, activation="sigmoid")
     ])
 
-    # Define optimizer
-    optimizer = tf.keras.optimizers.SGD(learning_rate=0.01)
+    if opt_cfg.get('name') == 'sgd':
+        # Define optimizer
+        optimizer = tf.keras.optimizers.SGD(
+            learning_rate=opt_cfg.get('learning_rate')
+        )
 
     # Define loss function
     loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -65,30 +72,41 @@ def train(train_dataset, test_dataset, strategy, model_config):
         # Compare predicted label to actual
         epoch_accuracy.update_state(y, predictions)
 
-    train_loss_results = []
-    train_accuracy_results = []
-    epochs = model_config.get('n_iterations', 10)
-    # n_batches = len(list(train_dataset))
+    # train_loss_results = []
+    # train_accuracy_results = []
+    # epochs = model_config.get('n_iterations', 10)
+    # # n_batches = len(list(train_dataset))
 
-    for epoch in np.arange(epochs):
+    # for epoch in np.arange(epochs):
+    #     # Distributed train step
+    #     # Return loss
+    #     for x, y in train_dataset:
+    #         train_loop(x, y)
+    #     # End epoch
+    #     train_loss_results.append(epoch_loss_avg.result())
+    #     train_accuracy_results.append(epoch_accuracy.result())
         
-        for x, y in train_dataset:
-            train_loop(x, y)
-        # End epoch
-        train_loss_results.append(epoch_loss_avg.result())
-        train_accuracy_results.append(epoch_accuracy.result())
+    #     logger.info(
+    #         "Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}".format(
+    #             epoch,
+    #             epoch_loss_avg.result(),
+    #             epoch_accuracy.result()
+    #         )
+    #     )
         
-        print(
-            "Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}".format(
-                epoch,
-                epoch_loss_avg.result(),
-                epoch_accuracy.result()
-            )
-        )
-        
-        # Clear the current state of the metrics
-        epoch_loss_avg.reset_states()
-        epoch_accuracy.reset_states()
+    #     # Clear the current state of the metrics
+    #     epoch_loss_avg.reset_states()
+    #     epoch_accuracy.reset_states()
+
+    logger.debug("Running strategy")
+
+    strategy.run(
+        model,
+        optimizer,
+        train_dataset,
+        train_loop,
+        test_dataset=test_dataset
+    )
 
 @click.command()
 @click.argument('n_workers', type=int)
@@ -169,7 +187,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
                 noniid=data_cfg['noniid']
             )
 
-            print(X_train.shape)
+            logger.info(f"Dataset={data_cfg['name']}")
             
         else:
             raise Exception("Please enter valid dataset")
@@ -178,9 +196,10 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             executor_cfg["tf_dir"] = (
                 Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/master"
             )
-
-        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-        test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+        train_dataset = (X_train, y_train)
+        test_dataset = (X_test, y_test)
+        # train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+        # test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
 
         # time.sleep(2)
     else:
@@ -192,20 +211,17 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     if ('SLURM_JOBID' in os.environ) and ("tf_dir" in executor_cfg):
         executor_cfg["tf_dir"] = Path.home()/executor_cfg["tf_dir"]/data_name
 
-    model_config = cfg.get('model')
-    model_config.update(cfg.get('optimizer'))
-
-    strategy = MasterWorkerStrategy(
+    strategy = MasterWorkerStrategyV2(
         n_workers=n_workers,
         config=cfg,
         role=role
     )
 
     train(
-        train_dataset,
-        test_dataset,
-        strategy,
-        model_config=model_config
+        train_dataset=train_dataset,
+        test_dataset=test_dataset,
+        strategy=strategy,
+        config=cfg
     )
 
 if __name__ == "__main__":

@@ -34,5 +34,8 @@ elif [ "$MODEL" == "LOG2" ]; then
     pythonw examples/train_logisticv2.py $NWORKERS -r worker $VERBOSE -i $TMUX_PANE -t 1 $config
 elif [ "$MODEL" == "NN" ]; then
     echo "Running NN Model"
-    pythonw examples/train_nn.py $NWORKERS -r worker -i $VERBOSE $TMUX_PANE -t 1
+    pythonw examples/train_nn.py $NWORKERS -r worker $VERBOSE -i $TMUX_PANE -t 1
+elif [ "$MODEL" == "TF" ]; then
+    echo "Running TF Model"
+    pythonw examples/run_training.py $NWORKERS -r worker $VERBOSE -i $TMUX_PANE -t 1 $config
 fi

@@ -32,13 +32,12 @@ def setup_to_string(X, y, n_samples, state):
     y_proto = dfl_pb2.Tensor(
         data=y.tostring(),
         rows=y.shape[0],
-        columns=y.shape[1],
+        columns=y.shape[1] if y.ndim > 1 else None,
         dtype=y.dtype.str
     )
 
     sent_msg = dfl_pb2.Setup(
         n_samples=n_samples,
-        state=state,
         X=X_proto,
         y=y_proto
     )
@@ -187,6 +186,8 @@ def parse_numpy_from_string(data, dtype, shape):
     # Reconstruct numpy array
     buf = memoryview(data)
     arr = np.frombuffer(buf, dtype=dtype)
+    # eval_shape = eval(shape)
+    print(f"Eval shape={shape}")
     arr = arr.reshape(shape)
 
     return arr.copy()
@@ -217,7 +218,7 @@ def parse_setup_from_string(msg):
     y = parse_numpy_from_string(
         setup.y.data,
         setup.y.dtype,
-        (setup.y.rows, setup.y.columns)
+        (setup.y.rows, setup.y.columns) if setup.y.columns > 0 else (setup.y.rows,)
     )
     
     return X, y, setup.n_samples, setup.state
