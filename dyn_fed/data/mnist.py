@@ -25,14 +25,19 @@ def _preprocess(X_train, y_train, X_test, y_test, onehot: Optional[bool]=False):
         y_train = one_hot(y_train)
         y_test = one_hot(y_test)
         # we don't want zeroes and ones in the labels neither:
-        y_train = np.where(y_train == 0, 0.01, 0.99)
-        y_test = np.where(y_test == 0, 0.01, 0.99)
+        # y_train = np.where(y_train == 0, 0.01, 0.99)
+        # y_test = np.where(y_test == 0, 0.01, 0.99)
+        y_train = y_train.astype(np.uint8)
+        y_test = y_test.astype(np.uint8)
 
-    X_train = X_train.astype(np.float32)
-    y_train = y_train.astype(np.float32)
+    X_train = X_train.astype(np.float32)    
+    # y_train = y_train.astype(np.float32)
 
     X_test = X_test.astype(np.float32)
-    y_test = y_test.astype(np.float32)
+    # y_test = y_test.astype(np.float32)
+    # if onehot:
+    #     y_train = y_train.astype(np.bool)
+    #     y_test = y_test.astype(np.bool)
     # self.y_train[self.y_train==0] = 0.01
     # self.y_train[self.y_train==1] = 0.99
     # self.y_test[self.y_test==0] = 0.01
