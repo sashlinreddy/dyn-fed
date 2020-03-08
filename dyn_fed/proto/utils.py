@@ -93,14 +93,12 @@ def params_to_string(model_layers):
         logger.debug(f"layer dtype={layer.W.dtype.str}")
         W = dfl_pb2.Tensor(
             data=layer.W.data.tostring(),
-            rows=layer.W.shape[0],
-            columns=layer.W.shape[1],
+            shape=layer.W.shape,
             dtype=layer.W.dtype.str
         )
         b = dfl_pb2.Tensor(
             data=layer.b.data.tostring(),
-            rows=layer.b.shape[0],
-            columns=layer.b.shape[1],
+            shape=layer.b.shape,
             dtype=layer.b.dtype.str
         )
         param = dfl_pb2.Parameter(
@@ -132,8 +130,7 @@ def params_to_stringv2(trainable_vars):
         var_npy = var.numpy()
         weight = dfl_pb2.Tensor(
             data=var_npy.tostring(),
-            rows=var_npy.shape[0],
-            columns=var_npy.shape[1] if var_npy.ndim > 1 else None,
+            shape=var_npy.shape,
             dtype=var_npy.dtype.str
         )
 
@@ -163,14 +160,12 @@ def params_response_to_string(model_layers, most_rep, loss):
     for layer in model_layers:
         W = dfl_pb2.Tensor(
             data=layer.W.data.tostring(),
-            rows=layer.W.shape[0],
-            columns=layer.W.shape[1],
+            shape=layer.W.shape,
             dtype=layer.W.dtype.str
         )
         b = dfl_pb2.Tensor(
             data=layer.b.data.tostring(),
-            rows=layer.b.shape[0],
-            columns=layer.b.shape[1],
+            shape=layer.b.shape,
             dtype=layer.b.dtype.str
         )
         layers.append(
@@ -185,8 +180,7 @@ def params_response_to_string(model_layers, most_rep, loss):
 
     mr = dfl_pb2.Tensor(
         data=most_rep.tostring(),
-        rows=most_rep.shape[0],
-        columns=most_rep.shape[1],
+        shape=most_rep.shape,
         dtype=most_rep.dtype.str
     )
 
@@ -216,8 +210,7 @@ def params_response_to_stringv2(trainable_vars, loss):
         var_npy = var.numpy()
         weight = dfl_pb2.Tensor(
             data=var_npy.tostring(),
-            rows=var_npy.shape[0],
-            columns=var_npy.shape[1] if var_npy.ndim > 1 else None,
+            shape=var_npy.shape,
             dtype=var_npy.dtype.str
         )
         weights.append(weight)
@@ -334,13 +327,13 @@ def parse_params_from_string(msg):
         W = parse_numpy_from_string(
             layer.W.data,
             layer.W.dtype,
-            (layer.W.rows, layer.W.columns)
+            layer.W.shape
         )
 
         b = parse_numpy_from_string(
             layer.b.data,
             layer.b.dtype,
-            (layer.b.rows, layer.b.columns)
+            layer.b.shape
         )
         layers.append([W, b])
 
@@ -365,8 +358,7 @@ def parse_params_from_stringv2(msg):
         weight = parse_numpy_from_string(
             trainable_weight.data,
             trainable_weight.dtype,
-            (trainable_weight.rows, trainable_weight.columns) 
-            if trainable_weight.columns > 0 else (trainable_weight.rows,)
+            trainable_weight.shape
         )
 
         weights.append(weight)
@@ -392,20 +384,20 @@ def parse_params_response_from_string(msg):
         W = parse_numpy_from_string(
             layer.W.data,
             layer.W.dtype,
-            (layer.W.rows, layer.W.columns)
+            layer.W.shape
         )
 
         b = parse_numpy_from_string(
             layer.b.data,
             layer.b.dtype,
-            (layer.b.rows, layer.b.columns)
+            layer.b.shape
         )
         layers.append([W, b])
 
     most_rep = parse_numpy_from_string(
         subscription_response.most_rep.data,
         subscription_response.most_rep.dtype,
-        (subscription_response.most_rep.rows, subscription_response.most_rep.columns)
+        subscription_response.most_rep.shape
     )
 
     loss = subscription_response.loss
@@ -431,8 +423,7 @@ def parse_params_response_from_stringv2(msg):
         weight = parse_numpy_from_string(
             trainable_weight.data,
             trainable_weight.dtype,
-            (trainable_weight.rows, trainable_weight.columns)
-            if trainable_weight.columns > 0 else (trainable_weight.rows,)
+            trainable_weight.shape
         )
 
         
