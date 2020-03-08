@@ -67,35 +67,16 @@ class MasterWorkerStrategy(DistributionStrategy):
         role (str): Master or worker role
     """
     def __init__(self, n_workers, config, role='master'):
-        self.model_config = config.get('model')
-        if config.get('executor') is not None:
-            config = config.get('executor')
-        self.strategy = config.get('strategy')
-        self.scenario = config.get('scenario')
         self.n_workers = n_workers
-        self.comm_period = config.get('interval')
-        self.comm_mode = config.get('mode')
-
-        self.remap = config.get('remap')
-        self.quantize = config.get('quantize')
-        self.overlap = config.get("overlap")
-        self.aggregate_mode = config.get('aggregate_mode')
-        self.delta_switch = config.get('delta_switch')
-        self.worker_timeout = config.get('timeout')
-        self.send_gradients = config.get('send_gradients')
-
-        self.shared_folder = config.get('shared_folder')
-        self.config_folder = config.get("config_folder")
-        self.tf_dir = config.get("tf_dir")
-        self.unbalanced = config.get('unbalanced')
-        self.norm_epsilon = config.get("norm_epsilon")
+        self.config = config
+        
+        self.tf_dir = config.get('tf_dir')
 
         self.train_dataset = None
         self.test_dataset = None
         
         self.role = role
-        # if self.role == 'worker':
-        self.identity = config.get('identity')
+        self.identity = config.executor.get('identity')
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
 
@@ -105,33 +86,6 @@ class MasterWorkerStrategy(DistributionStrategy):
 
     def run(self, *args, **kwargs):
         pass
-class objectify(dict):
-    """Class to wrap dictionaries and make them more accessible
-    """
-    MARKER = object()
-
-    def __init__(self, value=None):
-        if value is None:
-            pass
-        elif isinstance(value, dict):
-            for key in value:
-                self.__setitem__(key, value[key])
-        else:
-            raise TypeError('expected dict')
-
-    def __setitem__(self, key, value):
-        if isinstance(value, dict) and not isinstance(value, objectify):
-            value = objectify(value)
-        super(objectify, self).__setitem__(key, value)
-
-    def __getitem__(self, key):
-        found = self.get(key, objectify.MARKER)
-        if found is objectify.MARKER:
-            found = objectify()
-            super(objectify, self).__setitem__(key, found)
-        return found
-
-    __setattr__, __getattr__ = __setitem__, __getitem__
 
 class MasterWorkerStrategyV2(DistributionStrategy):
     """Master worker strategy for distributing within the cluster
@@ -152,7 +106,7 @@ class MasterWorkerStrategyV2(DistributionStrategy):
     """
     def __init__(self, n_workers, config, role='master'):
         self.n_workers = n_workers
-        self.config = objectify(config)
+        self.config = config
 
         self.train_dataset = None
         self.test_dataset = None

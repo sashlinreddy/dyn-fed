@@ -22,7 +22,7 @@ class Loss(ABC):
         """
         raise NotImplementedError
 
-class CrossEntropyLoss(Loss):
+class BinaryCrossEntropyLoss(Loss):
     """Cross Entropy loss
 
     loss = -y * np.log(y_pred) - (1 - y) * np.log(1 - y_pred)    
@@ -64,6 +64,55 @@ class CrossEntropyLoss(Loss):
         grad = y_pred - y
 
         return grad
+
+class CrossEntropyLoss(Loss):
+    """Cross Entropy loss
+
+    loss = -y * np.log(y_pred) - (1 - y) * np.log(1 - y_pred)    
+    """
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def __call__(self, y, y_pred, reduce=True):
+        return self.loss(y, y_pred, reduce=reduce)
+
+    @staticmethod
+    def loss(y, y_pred, **kwargs):
+        """Returns cross entropy loss for each sample or across batch
+
+        y (numpy.ndarray): Actual labels
+        y_pred (numpy.ndarray): Predicted labels
+        reduce (bool): Whether or not to return the average across the batch
+
+        Returns:
+            loss (float/numpy.ndarray): If reduce, then will return a float else a numpy array
+        """
+        reduce = kwargs.get("reduce", True)
+        # prevent taking the log of 0
+        eps = np.finfo(float).eps
+
+        # each example is associated with a single class; sum the negative log
+        # probability of the correct label over all classes in the batch.
+        loss = -np.sum(y * np.log(y_pred + eps), axis=1)
+        if reduce:
+            loss = np.mean(loss)
+        
+        return loss
+
+    @staticmethod
+    def grad(y, y_pred, **kwargs):
+        """Returns gradient for cross entropy loss
+
+        y (numpy.ndarray): Actual labels
+        y_pred (numpy.ndarray): Predicted labels
+
+        Returns:
+            grad (numpy.ndarray): Gradient tensor
+        """
+        grad = y_pred - y
+
+        return grad
+
 
 class MSELoss(Loss):
     """Mean squared error

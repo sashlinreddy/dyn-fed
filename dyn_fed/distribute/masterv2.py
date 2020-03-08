@@ -43,8 +43,9 @@ class MasterV2():
 
         # Model variables
         self.model = model
+        self.config = self.model.strategy.config
         self.n_iterations = int(
-            np.ceil(self.model.max_iter / self.model.strategy.comm_period)
+            np.ceil(self.model.max_iter / self.config.comms.interval)
         )
         self.X = None
         self.y = None
@@ -80,7 +81,7 @@ class MasterV2():
             ip_filename = f"ip_config_{slurm_job_id}.json"
 
         ip_config = {"ipAddress" : self.ip_address}
-        with open(os.path.join(self.model.strategy.config_folder, ip_filename), "w") as f:
+        with open(os.path.join(self.config.executor.config_folder, ip_filename), "w") as f:
             json.dump(ip_config, f)
 
     def _connect(self):
@@ -180,7 +181,7 @@ class MasterV2():
 
         self._logger.debug(f'Time taken to calculate SVDs={self.svd_time:.3f}')
 
-        if self.model.strategy.comm_mode == 1:
+        if self.config.comms.mode == 1:
             # Normalize svd idx
             svds = np.array([state.svd_idx for state in self.watch_dog.states])
 
@@ -239,13 +240,13 @@ class MasterV2():
 
             self._logger.debug(f"State={self.state}")
 
-            if self.model.strategy.unbalanced:
+            if self.config.data.unbalanced:
                 hearts = len(self.heartbeater.hearts)
                 batch_gen = next_batch_unbalanced(
                     self.X,
                     self.y,
                     hearts,
-                    shuffle=self.model.shuffle
+                    shuffle=self.config.data.shuffle
                 )
             else:
                 batch_size = int(np.ceil(n_samples / len(self.heartbeater.hearts)))
@@ -253,7 +254,7 @@ class MasterV2():
                     self.X,
                     self.y,
                     batch_size,
-                    shuffle=self.model.shuffle,
+                    shuffle=self.config.data.shuffle,
                     overlap=0.0
                 )
 
@@ -277,13 +278,13 @@ class MasterV2():
             for worker in self.watch_dog.states:
                 worker.comm_iterations = self.n_iterations
 
-            if self.model.strategy.comm_mode == 1 or \
-                self.model.strategy.aggregate_mode == 3:
+            if self.config.comms.mode == 1 or \
+                self.config.distribute.aggregate_mode == 3:
                 self._calculate_dynamic_comms()
 
         if self.state == MAP_PARAMS:
             # Determine if worker needs to communicate
-            if self.model.strategy.comm_mode == 2:
+            if self.config.comms.mode == 2:
                 self._logger.debug("Sending communication info")
                 self._send_comm_info()
 
@@ -497,8 +498,8 @@ class MasterV2():
         """
         n_responses = len(self.heartbeater.hearts)
 
-        if self.model.strategy.comm_mode == 1 or \
-            self.model.strategy.comm_mode == 2:
+        if self.config.comms.mode == 1 or \
+            self.config.comms.mode == 2:
             comm_intervals = np.array(
                 [worker.comm_interval for worker in self.watch_dog.states]
             )
@@ -554,7 +555,7 @@ class MasterV2():
                 n_responses = self._check_responses(n_responses)
 
             # Determine dynamic communication scheme
-            if (self.model.strategy.comm_mode == 2) and (self.model.iter != 0):
+            if (self.config.comms.mode == 2) and (self.model.iter != 0):
                 if workers_received:
                     self._calculate_dynamic_comms_loss(workers_received)
 
@@ -570,7 +571,7 @@ class MasterV2():
                 samples=None,
                 n_samples=None,
                 workers_received=workers_received,
-                mode=self.model.strategy.aggregate_mode
+                mode=self.config.distribute.aggregate_mode
             )
 
             # Update model with these parameters
@@ -602,8 +603,8 @@ class MasterV2():
         if not self._calculated_byte_size:
             param_byte_size = len(msg[0])
             # n_bytes = param_byte_size * len(self.watch_dog.states) * self.n_iterations
-            # if (self.model.strategy.comm_mode == 1) or \
-            #     (self.model.strategy.comm_mode == 2):
+            # if (self.config.comms.mode == 1) or \
+            #     (self.config.comms.mode == 2):
             comm_rounds = np.sum([
                 worker.comm_rounds for worker in self.watch_dog.states
             ])
@@ -619,7 +620,7 @@ class MasterV2():
             # self._logger.info(
             #     f"Total params size in MBs for iter{self.model.iter} is "
             # )
-            # if self.model.strategy.comm_mode == 2:
+            # if self.config.comms.mode == 2:
             self._calculated_byte_size = True
         # Log to tensorboard
         if self._tf_logger is not None:

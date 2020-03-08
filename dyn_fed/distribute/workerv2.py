@@ -36,6 +36,7 @@ class WorkerV2():
 
         # Model variables
         self.model = model
+        self.config = self.model.strategy.config
         self.X = None
         self.y = None
         self.n_samples: int = None
@@ -63,12 +64,12 @@ class WorkerV2():
             slurm_job_id = os.environ["SLURM_JOBID"]
             ip_filename = f"ip_config_{slurm_job_id}.json"
 
-        full_path = os.path.join(self.model.strategy.config_folder, ip_filename)
+        full_path = os.path.join(self.config.executor.config_folder, ip_filename)
         if os.path.exists(full_path):
             with open(full_path, "r") as f:
                 ip_config = json.load(f)
         else:
-            file_watcher = FileWatcher(self.model.strategy.config_folder, full_path)
+            file_watcher = FileWatcher(self.config.executor.config_folder, full_path)
             file_found = file_watcher.run(timeout=30)
             if file_found:
                 self._logger.info("Found IP Address file. Loading...")
@@ -151,7 +152,7 @@ class WorkerV2():
             epoch_loss (float): Loss for corresponding epoch
             most_representative(np.ndarray): Most representative data points
         """
-        for _ in range(self.model.strategy.comm_period):
+        for _ in range(self.config.comms.interval):
             epoch_loss = 0.0
             n_batches = 0
             # self._logger.debug(
@@ -213,8 +214,8 @@ class WorkerV2():
 
             self._logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
 
-            if self.model.strategy.comm_mode == 1 or \
-                self.model.strategy.aggregate_mode == 3:
+            if self.config.comms.mode == 1 or \
+                self.config.distribute.aggregate_mode == 3:
                 tic = time.time()
                 idx_95 = arg_svd(X)
                 self._logger.info(
@@ -227,7 +228,7 @@ class WorkerV2():
                 multipart.extend(data)
 
                 self.push.send_multipart(multipart)
-            if self.model.strategy.comm_mode != 1:
+            if self.config.comms.mode != 1:
                 if not self.subscribed:
                     # After receiving data we can recv params
                     self.sub.on_recv(self.recv_params)

@@ -183,13 +183,14 @@ class SGD(Optimizer):
 
     def compute_loss(self, y, y_pred):
         # Calculate loss between predicted and actual using selected loss function
+        reduce = False
         batch_loss = self.loss(y, y_pred, reduce=False)
 
         if self._role != "master":
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
-            if batch_loss.shape[1] > 1:
-                temp = np.mean(batch_loss, axis=1).data
+            if not reduce:
+                temp = np.mean(batch_loss).data
                 self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
             else:
                 self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
