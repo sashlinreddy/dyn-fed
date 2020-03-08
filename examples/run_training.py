@@ -45,59 +45,6 @@ def train(train_dataset, test_dataset, strategy, config):
             learning_rate=opt_cfg.get('learning_rate')
         )
 
-    # Define loss function
-    # loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-
-    # epoch_loss_avg = tf.keras.metrics.Mean()
-    # epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
-
-    # @tf.function
-    # def train_loop(x, y):
-
-    #     # Calculate gradients
-    #     with tf.GradientTape() as t:
-    #         # training=training is needed only if there are layers with different
-    #         # behavior during training versus inference (e.g. Dropout).
-    #         predictions = model(x, training=True)
-    #         loss = loss_func(y, predictions)
-
-    #     grads = t.gradient(loss, model.trainable_variables)
-
-    #     # Optimize the model
-    #     optimizer.apply_gradients(zip(grads, model.trainable_variables))
-
-    #     # Track progress
-    #     epoch_loss_avg(loss)
-
-    #     # Compare predicted label to actual
-    #     epoch_accuracy.update_state(y, predictions)
-
-    # train_loss_results = []
-    # train_accuracy_results = []
-    # epochs = model_config.get('n_iterations', 10)
-    # # n_batches = len(list(train_dataset))
-
-    # for epoch in np.arange(epochs):
-    #     # Distributed train step
-    #     # Return loss
-    #     for x, y in train_dataset:
-    #         train_loop(x, y)
-    #     # End epoch
-    #     train_loss_results.append(epoch_loss_avg.result())
-    #     train_accuracy_results.append(epoch_accuracy.result())
-        
-    #     logger.info(
-    #         "Epoch {:03d}: Loss: {:.3f}, Accuracy: {:.3%}".format(
-    #             epoch,
-    #             epoch_loss_avg.result(),
-    #             epoch_accuracy.result()
-    #         )
-    #     )
-        
-    #     # Clear the current state of the metrics
-    #     epoch_loss_avg.reset_states()
-    #     epoch_accuracy.reset_states()
-
     logger.debug("Running strategy")
 
     strategy.run(
@@ -197,10 +144,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             )
         train_dataset = (X_train, y_train)
         test_dataset = (X_test, y_test)
-        # train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-        # test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
 
-        # time.sleep(2)
     else:
         setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
 
