@@ -9,8 +9,6 @@ from io import BytesIO
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
-tf.compat.v1.set_random_seed(2)
 
 class TFLogger(object):
     """Logging in tensorboard without tensorflow ops."""
@@ -19,6 +17,8 @@ class TFLogger(object):
         """Creates a summary writer logging to log_dir."""
         self.writer = tf.compat.v1.summary.FileWriter(log_dir)
         # self.writer = tf.compat.v1.summary.FileWriter(log_dir)
+        tf.compat.v1.disable_eager_execution()
+        tf.compat.v1.set_random_seed(2)
 
     def scalar(self, tag, value, step):
         """Log a scalar variable.

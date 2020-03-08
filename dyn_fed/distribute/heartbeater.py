@@ -44,7 +44,7 @@ class Heartbeater():
 
         # If we have 
         self.responses = set()
-        self._logger.info("%i beating hearts: %s", len(self.hearts), self.hearts)
+        self._logger.info("%i beating hearts: %s, state=%s", len(self.hearts), self.hearts, state)
         if state == START:
             self._logger.info("Sending connect")
             socket.send_multipart([b"CONNECT", str(self.lifetime).encode()])

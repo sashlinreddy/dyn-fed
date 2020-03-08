@@ -1,10 +1,18 @@
 model:
-  n_iterations: 100
+  n_iterations: 50
   shuffle: 1
-  batch_size: 32
+  batch_size: 128
+  shuffle_buffer_size: 100
+
+data:
+  name: "mnist"
+  shuffle: 1
+  batch_size: 64
+  noniid: 0
+  unbalanced: 0
 
 optimizer:
-  learning_rate: 0.1
+  learning_rate: 0.01
   clip_norm: 0
   clip_val: 0
   mu_g: 0.0
@@ -12,7 +20,7 @@ optimizer:
   name: "sgd"
 
 comms:
-  mode: 1 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
+  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
   interval: 1
 
 distribute:
@@ -31,5 +39,5 @@ executor:
   shared_folder: "data/mnist"
   config_folder: "config/"
   # tf_dir: "logs/tf/"
-  noniid: 1
-  unbalanced: 1
+  noniid: 0
+  unbalanced: 0
