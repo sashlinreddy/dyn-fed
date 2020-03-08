@@ -21,10 +21,9 @@ def encode_run_name(n_workers, config):
         encode_name (str): Encoded experiment name
     """
     encode_vars = [
-        "n_workers", "scenario", "remap", "quantize",
-        "send_gradients", "mu_g", "n_most_rep", "overlap",
+        "n_workers", "scenario", "quantize",
         "aggregate_mode", "interval", "mode", "noniid",
-        "unbalanced"
+        "unbalanced", "learning_rate"
     ]
 
     global_cfg = {"n_workers": n_workers}
@@ -37,7 +36,9 @@ def encode_run_name(n_workers, config):
 
     if "LOGDIR" in os.environ:
         data_name = Path(config.data.name)
-        logdir = os.environ["LOGDIR"]/data_name/encode_name
+        model_type = Path(config.model.type)
+        opt_name = Path(config.optimizer.name)
+        logdir = os.environ["LOGDIR"]/data_name/model_type/opt_name/encode_name
         logdir.mkdir(parents=True, exist_ok=True)
         os.environ["LOGDIR"] = str(logdir)
 

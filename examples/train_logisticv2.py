@@ -19,7 +19,7 @@ from dyn_fed.metrics import accuracy_scorev2, confusion_matrix
 from dyn_fed.optimizers import SGD, Adam
 from dyn_fed.utils import model_utils, setup_logger
 
-from ft_models import LogisticRegressionV2
+from ft_models import LogisticRegressionV2, SimpleNN
 
 def train(data,
           role,
@@ -60,15 +60,26 @@ def train(data,
     )
 
     # Create model
-    model = LogisticRegressionV2(
-        optimizer, 
-        strategy,
-        batch_size=cfg.data.batch_size,
-        max_iter=cfg.model.n_iterations, 
-        shuffle=cfg.data.shuffle, 
-        verbose=verbose,
-        encode_name=encoded_run_name
-    )
+    if cfg.model.type == "logreg":
+        model = LogisticRegressionV2(
+            optimizer, 
+            strategy,
+            batch_size=cfg.data.batch_size,
+            max_iter=cfg.model.n_iterations, 
+            shuffle=cfg.data.shuffle, 
+            verbose=verbose,
+            encode_name=encoded_run_name
+        )
+    elif cfg.model.type == "nn1":
+        model = SimpleNN(
+            optimizer, 
+            strategy,
+            batch_size=cfg.data.batch_size,
+            max_iter=cfg.model.n_iterations, 
+            shuffle=cfg.data.shuffle, 
+            verbose=verbose,
+            encode_name=encoded_run_name
+        )
 
     logger = logging.getLogger("dfl.examples.train_logisticv2")
     
@@ -174,6 +185,8 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     data = None
 
     data_name = Path(cfg.data.name)
+    opt_name = Path(cfg.optimizer.name)
+    model_type = Path(cfg.model.type)
 
     if role == "master":
         # Setup logger
@@ -223,7 +236,9 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
         if "tf_dir" in executor_cfg:
             executor_cfg["tf_dir"] = (
-                Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/master"
+                Path(
+                    executor_cfg["tf_dir"]
+                )/data_name/model_type/opt_name/f"{encoded_run_name}/master"
             )    
 
         # time.sleep(2)
@@ -231,10 +246,14 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
 
         if "tf_dir" in executor_cfg:
-            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/worker-{d_identity}"
+            executor_cfg["tf_dir"] = Path(
+                executor_cfg["tf_dir"]
+            )/data_name/model_type/opt_name/f"{encoded_run_name}/worker-{d_identity}"
 
     if ('SLURM_JOBID' in os.environ) and ("tf_dir" in executor_cfg):
-        executor_cfg["tf_dir"] = Path.home()/executor_cfg["tf_dir"]/data_name
+        executor_cfg["tf_dir"] = (
+            Path.home()/executor_cfg["tf_dir"]
+        )
 
     train(
         data,

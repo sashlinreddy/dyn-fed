@@ -257,22 +257,20 @@ class Adam(Optimizer):
 
     @property
     def name(self):
-        return "sgd"
+        return "adam"
 
     def compute_loss(self, y, y_pred, reduce=False):
         # Calculate loss between predicted and actual using selected loss function
         batch_loss = self.loss(y, y_pred, reduce=reduce)
 
-        if self._role != "master":
-            # Calculate most representative data points. We regard data points that have a 
-            # high loss to be most representative
-            if batch_loss.shape[1] > 1:
-                temp = np.mean(batch_loss, axis=1).data
-                self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
-            else:
-                self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
-            # Calculate worker loss - this is aggregated
-            batch_loss = np.mean(abs(batch_loss))
+        # Calculate most representative data points. We regard data points that have a 
+        # high loss to be most representative
+        if not reduce:
+            self._most_rep = np.argsort(-batch_loss.data.flatten())[0:self._n_most_rep]
+            batch_loss = np.mean(batch_loss).data
+        
+        # Calculate worker loss - this is aggregated
+        # batch_loss = np.mean(abs(batch_loss))
 
         return batch_loss
         

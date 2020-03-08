@@ -1,4 +1,5 @@
 model:
+  type: "nn1"
   n_iterations: 50
   # shuffle: 1
   # batch_size: 64
@@ -13,12 +14,12 @@ data:
   unbalanced: 0
 
 optimizer:
-  learning_rate: 0.01
+  learning_rate: 0.01 # Learning rate for sgd: 0.1
   clip_norm: 0
   clip_val: 0
   mu_g: 0.0
   n_most_rep: 100
-  name: "sgd"
+  name: "adam"
 
 comms:
   mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
