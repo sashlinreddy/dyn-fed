@@ -141,3 +141,31 @@ def convert_to_human_bytes(b):
         return '{0:.2f} GB'.format(b/gb)
     elif tb <= b:
         return '{0:.2f} TB'.format(b/tb)
+
+class objectify(dict):
+    """Class to wrap dictionaries and make them more accessible
+    """
+    MARKER = object()
+
+    def __init__(self, value=None):
+        if value is None:
+            pass
+        elif isinstance(value, dict):
+            for key in value:
+                self.__setitem__(key, value[key])
+        else:
+            raise TypeError('expected dict')
+
+    def __setitem__(self, key, value):
+        if isinstance(value, dict) and not isinstance(value, objectify):
+            value = objectify(value)
+        super(objectify, self).__setitem__(key, value)
+
+    def __getitem__(self, key):
+        found = self.get(key, objectify.MARKER)
+        if found is objectify.MARKER:
+            found = objectify()
+            super(objectify, self).__setitem__(key, found)
+        return found
+
+    __setattr__, __getattr__ = __setitem__, __getitem__

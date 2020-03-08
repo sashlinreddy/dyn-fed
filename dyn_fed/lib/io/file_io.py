@@ -12,6 +12,8 @@ import yaml
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from dyn_fed.utils.general_utils import objectify
+
 logger = logging.getLogger("dfl.lib.io.file_io")
 
 def flush_dir(dir, ignore_dir=[], mins=1, hours=0):
@@ -48,7 +50,7 @@ def load_model_config(path):
     with open(path, 'r') as ymlfile:
         cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
-    return cfg
+    return objectify(cfg)
 
 def export_yaml(data, path):
     """Export model config given path
