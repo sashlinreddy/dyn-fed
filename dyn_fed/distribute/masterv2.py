@@ -43,6 +43,7 @@ class MasterV2():
 
         # Model variables
         self.model = model
+        self.config = self.model.strategy.config
         self.n_iterations = int(
             np.ceil(self.model.max_iter / self.model.strategy.comm_period)
         )

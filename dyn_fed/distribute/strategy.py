@@ -67,34 +67,35 @@ class MasterWorkerStrategy(DistributionStrategy):
         role (str): Master or worker role
     """
     def __init__(self, n_workers, config, role='master'):
-        if config.get('executor') is not None:
-            config = config.get('executor')
-        self.strategy = config.strategy
-        self.scenario = config.scenario
         self.n_workers = n_workers
-        self.comm_period = config.interval
-        self.comm_mode = config.mode
+        self.config = config
+        # Comms
+        self.comm_period = config.comms.interval
+        self.comm_mode = config.comms.mode
 
-        self.remap = config.remap
-        self.quantize = config.quantize
-        self.overlap = config.overlap
-        self.aggregate_mode = config.aggregate_mode
-        self.delta_switch = config.delta_switch
-        self.worker_timeout = config.timeout
-        self.send_gradients = config.send_gradients
+        # Distribute
+        self.remap = config.distribute.remap
+        self.quantize = config.distribute.quantize
+        self.overlap = config.distribute.overlap
+        self.aggregate_mode = config.distribute.aggregate_mode
+        self.delta_switch = config.distribute.delta_switch
+        self.worker_timeout = config.distribute.timeout
+        self.send_gradients = config.distribute.send_gradients
 
-        self.shared_folder = config.shared_folder
-        self.config_folder = config.config_folder
+        # Executor
+        self.strategy = config.executor.strategy
+        self.scenario = config.executor.scenario
+        self.shared_folder = config.executor.shared_folder
+        self.config_folder = config.executor.config_folder
         self.tf_dir = config.get('tf_dir')
-        self.unbalanced = config.unbalanced
-        self.norm_epsilon = config.norm_epsilon
+        self.unbalanced = config.executor.unbalanced
+        self.norm_epsilon = config.executor.norm_epsilon
 
         self.train_dataset = None
         self.test_dataset = None
         
         self.role = role
-        # if self.role == 'worker':
-        self.identity = config.get('identity')
+        self.identity = config.executor.get('identity')
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
 

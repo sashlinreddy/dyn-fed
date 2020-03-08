@@ -55,7 +55,7 @@ def train(data,
     # Decide on distribution strategy
     strategy = MasterWorkerStrategy(
         n_workers=n_workers-1,
-        config=cfg.executor,
+        config=cfg,
         role=role
     )
 
