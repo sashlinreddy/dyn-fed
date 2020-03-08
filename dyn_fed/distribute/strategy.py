@@ -67,28 +67,27 @@ class MasterWorkerStrategy(DistributionStrategy):
         role (str): Master or worker role
     """
     def __init__(self, n_workers, config, role='master'):
-        self.model_config = config.get('model')
         if config.get('executor') is not None:
             config = config.get('executor')
-        self.strategy = config.get('strategy')
-        self.scenario = config.get('scenario')
+        self.strategy = config.strategy
+        self.scenario = config.scenario
         self.n_workers = n_workers
-        self.comm_period = config.get('interval')
-        self.comm_mode = config.get('mode')
+        self.comm_period = config.interval
+        self.comm_mode = config.mode
 
-        self.remap = config.get('remap')
-        self.quantize = config.get('quantize')
-        self.overlap = config.get("overlap")
-        self.aggregate_mode = config.get('aggregate_mode')
-        self.delta_switch = config.get('delta_switch')
-        self.worker_timeout = config.get('timeout')
-        self.send_gradients = config.get('send_gradients')
+        self.remap = config.remap
+        self.quantize = config.quantize
+        self.overlap = config.overlap
+        self.aggregate_mode = config.aggregate_mode
+        self.delta_switch = config.delta_switch
+        self.worker_timeout = config.timeout
+        self.send_gradients = config.send_gradients
 
-        self.shared_folder = config.get('shared_folder')
-        self.config_folder = config.get("config_folder")
-        self.tf_dir = config.get("tf_dir")
-        self.unbalanced = config.get('unbalanced')
-        self.norm_epsilon = config.get("norm_epsilon")
+        self.shared_folder = config.shared_folder
+        self.config_folder = config.config_folder
+        self.tf_dir = config.get('tf_dir')
+        self.unbalanced = config.unbalanced
+        self.norm_epsilon = config.norm_epsilon
 
         self.train_dataset = None
         self.test_dataset = None
