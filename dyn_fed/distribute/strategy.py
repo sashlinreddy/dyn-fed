@@ -69,27 +69,8 @@ class MasterWorkerStrategy(DistributionStrategy):
     def __init__(self, n_workers, config, role='master'):
         self.n_workers = n_workers
         self.config = config
-        # Comms
-        self.comm_period = config.comms.interval
-        self.comm_mode = config.comms.mode
-
-        # Distribute
-        self.remap = config.distribute.remap
-        self.quantize = config.distribute.quantize
-        self.overlap = config.distribute.overlap
-        self.aggregate_mode = config.distribute.aggregate_mode
-        self.delta_switch = config.distribute.delta_switch
-        self.worker_timeout = config.distribute.timeout
-        self.send_gradients = config.distribute.send_gradients
-
-        # Executor
-        self.strategy = config.executor.strategy
-        self.scenario = config.executor.scenario
-        self.shared_folder = config.executor.shared_folder
-        self.config_folder = config.executor.config_folder
+        
         self.tf_dir = config.get('tf_dir')
-        self.unbalanced = config.executor.unbalanced
-        self.norm_epsilon = config.executor.norm_epsilon
 
         self.train_dataset = None
         self.test_dataset = None
@@ -105,33 +86,6 @@ class MasterWorkerStrategy(DistributionStrategy):
 
     def run(self, *args, **kwargs):
         pass
-class objectify(dict):
-    """Class to wrap dictionaries and make them more accessible
-    """
-    MARKER = object()
-
-    def __init__(self, value=None):
-        if value is None:
-            pass
-        elif isinstance(value, dict):
-            for key in value:
-                self.__setitem__(key, value[key])
-        else:
-            raise TypeError('expected dict')
-
-    def __setitem__(self, key, value):
-        if isinstance(value, dict) and not isinstance(value, objectify):
-            value = objectify(value)
-        super(objectify, self).__setitem__(key, value)
-
-    def __getitem__(self, key):
-        found = self.get(key, objectify.MARKER)
-        if found is objectify.MARKER:
-            found = objectify()
-            super(objectify, self).__setitem__(key, found)
-        return found
-
-    __setattr__, __getattr__ = __setitem__, __getitem__
 
 class MasterWorkerStrategyV2(DistributionStrategy):
     """Master worker strategy for distributing within the cluster
@@ -152,7 +106,7 @@ class MasterWorkerStrategyV2(DistributionStrategy):
     """
     def __init__(self, n_workers, config, role='master'):
         self.n_workers = n_workers
-        self.config = objectify(config)
+        self.config = config
 
         self.train_dataset = None
         self.test_dataset = None

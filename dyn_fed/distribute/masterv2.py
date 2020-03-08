@@ -246,7 +246,7 @@ class MasterV2():
                     self.X,
                     self.y,
                     hearts,
-                    shuffle=self.model.shuffle
+                    shuffle=self.config.data.shuffle
                 )
             else:
                 batch_size = int(np.ceil(n_samples / len(self.heartbeater.hearts)))
@@ -254,7 +254,7 @@ class MasterV2():
                     self.X,
                     self.y,
                     batch_size,
-                    shuffle=self.model.shuffle,
+                    shuffle=self.config.data.shuffle,
                     overlap=0.0
                 )
 

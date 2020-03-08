@@ -62,7 +62,8 @@ def train(data,
     # Create model
     model = LogisticRegressionV2(
         optimizer, 
-        strategy, 
+        strategy,
+        batch_size=cfg.data.batch_size,
         max_iter=cfg.model.n_iterations, 
         shuffle=cfg.data.shuffle, 
         verbose=verbose,
@@ -146,8 +147,6 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         
     cfg = file_io.load_model_config(config_path)
 
-    model_cfg = cfg.model
-    opt_cfg = cfg.optimizer
     executor_cfg = cfg.executor
 
     executor_cfg.update(cfg.distribute)

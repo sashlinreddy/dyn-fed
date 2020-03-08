@@ -36,7 +36,7 @@ def encode_run_name(n_workers, config):
     encode_name = string_utils.dict_to_str(global_cfg, encode_vars)
 
     if "LOGDIR" in os.environ:
-        data_name = Path(Path(config["executor"]["shared_folder"]).stem)
+        data_name = Path(config.data.name)
         logdir = os.environ["LOGDIR"]/data_name/encode_name
         logdir.mkdir(parents=True, exist_ok=True)
         os.environ["LOGDIR"] = str(logdir)

@@ -468,7 +468,7 @@ class MasterV3():
 
         X_test, y_test = self.test_dataset
         self.test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
-        global_batch_size = self.config.model.batch_size * self.strategy.n_workers
+        global_batch_size = self.config.data.batch_size * self.strategy.n_workers
         self.test_dataset = self.test_dataset.batch(global_batch_size)
 
         self.loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
