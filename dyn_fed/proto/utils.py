@@ -24,15 +24,13 @@ def setup_to_string(X, y, n_samples, state):
     """
     X_proto = dfl_pb2.Tensor(
         data=X.tostring(),
-        rows=X.shape[0],
-        columns=X.shape[1],
-        dtype=X.dtype.str
+        shape=X.shape,
+        dtype=X.dtype.str,
     )
 
     y_proto = dfl_pb2.Tensor(
         data=y.tostring(),
-        rows=y.shape[0],
-        columns=y.shape[1] if y.ndim > 1 else None,
+        shape=y.shape,
         dtype=y.dtype.str
     )
 
@@ -272,13 +270,13 @@ def parse_setup_from_string(msg):
     X = parse_numpy_from_string(
         setup.X.data,
         setup.X.dtype,
-        (setup.X.rows, setup.X.columns)
+        setup.X.shape
     )
 
     y = parse_numpy_from_string(
         setup.y.data,
         setup.y.dtype,
-        (setup.y.rows, setup.y.columns) if setup.y.columns > 0 else (setup.y.rows,)
+        setup.y.shape
     )
     
     return X, y, setup.n_samples, setup.state
