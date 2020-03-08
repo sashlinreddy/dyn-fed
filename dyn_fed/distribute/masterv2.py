@@ -307,10 +307,16 @@ class MasterV2():
         y_pred = self.model.forward(self.X_valid)
         y_train_pred = self.model.forward(self.X)
         
+        test_loss = self.model.optimizer.compute_loss(
+            self.y_valid.data,
+            y_pred.data,
+            reduce=True
+        )
+        
         train_acc = accuracy_scorev2(self.y.data, y_train_pred.data)
         test_acc = accuracy_scorev2(self.y_valid.data, y_pred.data)
 
-        return train_acc, test_acc
+        return train_acc, test_acc, test_loss
 
     def _update_model(self, parameters):
         """Update model given new parameters
@@ -579,16 +585,18 @@ class MasterV2():
                 delta = self._update_model(parameters)
 
             # Check metrics
-            train_acc, test_acc = self._check_metrics()
+            train_acc, test_acc, test_loss = self._check_metrics()
 
             self._logger.info(
-                f"iteration = {self.model.iter}, delta = {delta:7.4f}, "
-                f"Loss = {epoch_loss:7.4f}, train acc={train_acc*100:7.4f}%, "
+                f"iteration={self.model.iter}, delta={delta:7.4f}, "
+                f"train_loss={epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
+                f"train acc={train_acc*100:7.4f}%, "
                 f"test acc={test_acc*100:7.4f}%"
             )
 
             if self._tf_logger is not None:
                 self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
+                self._tf_logger.scalar("loss-master", test_loss, self.model.iter)
                 self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
                 self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
 

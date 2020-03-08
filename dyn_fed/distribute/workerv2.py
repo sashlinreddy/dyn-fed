@@ -170,7 +170,7 @@ class WorkerV2():
                     y_batch,
                     W_g=None
                 )
-                epoch_loss += batch_loss.data
+                epoch_loss += batch_loss
                 n_batches += 1
             epoch_loss /= n_batches
             self._logger.info(
@@ -301,6 +301,9 @@ class WorkerV2():
             self.kill()
         except zmq.ZMQError:
             self._logger.info("ZMQError")
+            self.kill()
+        except Exception as e:
+            self._logger.exception(e)
             self.kill()
 
     def kill(self):

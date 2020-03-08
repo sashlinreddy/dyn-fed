@@ -15,10 +15,9 @@ class TFLogger(object):
 
     def __init__(self, log_dir):
         """Creates a summary writer logging to log_dir."""
-        self.writer = tf.compat.v1.summary.FileWriter(log_dir)
-        # self.writer = tf.compat.v1.summary.FileWriter(log_dir)
         tf.compat.v1.disable_eager_execution()
         tf.compat.v1.set_random_seed(2)
+        self.writer = tf.compat.v1.summary.FileWriter(log_dir)
 
     def scalar(self, tag, value, step):
         """Log a scalar variable.
