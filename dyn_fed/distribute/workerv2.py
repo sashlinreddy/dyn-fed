@@ -50,6 +50,7 @@ class WorkerV2():
         self.comm_interval = 1
         self.comm_every_iter = 1
         self.subscribed = False
+        self.prev_params = None
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
 
@@ -152,6 +153,8 @@ class WorkerV2():
             epoch_loss (float): Loss for corresponding epoch
             most_representative(np.ndarray): Most representative data points
         """
+        self.prev_params = [p.data.copy() for p in self.model.parameters()]
+
         for _ in range(self.config.comms.interval):
             epoch_loss = 0.0
             n_batches = 0
@@ -173,13 +176,20 @@ class WorkerV2():
                 epoch_loss += batch_loss
                 n_batches += 1
             epoch_loss /= n_batches
+
+            new_params = self.model.parameters()
+            delta = np.max(
+                [np.linalg.norm(o - n.data)
+                for o, n in zip(self.prev_params, new_params)]
+            )
+            
             self._logger.info(
-                f"iteration = {self.model.iter}, Loss = {epoch_loss:7.4f}"
+                f"iteration={self.model.iter}, Loss={epoch_loss:7.4f}, delta={delta}"
             )
 
             self.model.iter += 1
 
-        return epoch_loss, most_representative
+        return epoch_loss, most_representative, delta
 
     def _recv_comm_info(self, msg):
         """Receive communication information
@@ -258,13 +268,9 @@ class WorkerV2():
                 self.model.layers[i].W.data = parameters[i][0]
                 self.model.layers[i].b.data = parameters[i][1]
 
-            self._logger.info(
-                f"W[0].shape.shape={self.model.layers[0].W.data.shape}"
-            )
-
             # Do some work
             tic = time.time()
-            epoch_loss, most_representative = self._training_loop()
+            epoch_loss, most_representative, delta = self._training_loop()
             self._logger.info("blocked for %.3f s", (time.time() - tic))
 
             data = [
@@ -280,11 +286,23 @@ class WorkerV2():
             send_work = send_work or (self.model.iter >= self.comm_every_iter)
             # send_work = send_work or (self.model.iter <= self.comm_every_iter)
             self._logger.debug(f"Send work={send_work}")
-            if send_work:
+            if send_work and self.config.comms.mode != 3:
                 multipart = [b"WORK", self.identity.encode()]
                 multipart.extend(data)
-
                 self.push.send_multipart(multipart)
+            elif self.config.comms.mode == 3:
+                # Simulating https://arxiv.org/abs/1807.03210
+                # If delta greater than threshold then we communicate paramaters
+                # back to server, else we continue
+                if delta >= self.config.distribute.delta_threshold:
+                    # send work
+                    multipart = [b"WORK", self.identity.encode()]
+                    multipart.extend(data)
+                    self.push.send_multipart(multipart)
+                else:
+                    multipart = [b"SKIP", self.identity.encode()]
+                    self.push.send_multipart(multipart)
+                
 
         if cmd == b"EXIT":
             self._logger.info("Ending session")

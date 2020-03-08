@@ -457,9 +457,14 @@ class MasterV2():
                     errors,
                     d_Wbs
                 )
-
-                i += 1
                 workers_received.append(worker)
+                i += 1
+
+            if cmd == b"SKIP":
+                # If we receive skip from worker, then ignore,
+                # but iterate our number of responses
+                i += 1
+                
 
         return i, errors, d_Wbs, workers_received
 

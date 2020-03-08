@@ -11,7 +11,7 @@ data:
   batch_size: 64
   shuffle_buffer_size: 100
   noniid: 0
-  unbalanced: 0
+  unbalanced: 1
 
 optimizer:
   learning_rate: 0.01 # Learning rate for sgd: 0.1
@@ -22,7 +22,7 @@ optimizer:
   name: "adam"
 
 comms:
-  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss
+  mode: 1 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
   interval: 1
 
 distribute:
@@ -32,12 +32,13 @@ distribute:
   overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
   aggregate_mode: 1 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
   delta_switch: 0.0004
+  delta_threshold: 0.8
   timeout: 30
   send_gradients: 0
   norm_epsilon: 1 # 1 for mnist, 10 for F-mnist
 
 executor:
-  scenario: 1
+  scenario: 3
   shared_folder: "data/"
   config_folder: "config/"
   tf_dir: "logs/tf/"
