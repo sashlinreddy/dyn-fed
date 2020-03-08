@@ -24,9 +24,7 @@ from ft_models import LogisticRegressionV2
 def train(data,
           role,
           n_workers,
-          model_cfg,
-          opt_cfg,
-          executor_cfg,
+          cfg,
           verbose,
           encoded_run_name):
     """Train model
@@ -37,27 +35,27 @@ def train(data,
     # Define optimizer
     optimizer = None
 
-    if opt_cfg["name"] == "sgd":
+    if cfg.optimizer.name == "sgd":
         optimizer = SGD(
             loss=loss, 
-            learning_rate=opt_cfg['learning_rate'], 
+            learning_rate=cfg.optimizer.learning_rate, 
             role=role, 
-            n_most_rep=opt_cfg['n_most_rep'], 
-            mu_g=opt_cfg['mu_g']
+            n_most_rep=cfg.optimizer.n_most_rep, 
+            mu_g=cfg.optimizer.mu_g
         )
-    elif opt_cfg["name"] == "adam":
+    elif cfg.optimizer.name == "adam":
         optimizer = Adam(
             loss=loss, 
-            learning_rate=opt_cfg['learning_rate'], 
+            learning_rate=cfg.optimizer.learning_rate, 
             role=role, 
-            n_most_rep=opt_cfg['n_most_rep'], 
-            mu_g=opt_cfg['mu_g']
+            n_most_rep=cfg.optimizer.n_most_rep, 
+            mu_g=cfg.optimizer.mu_g
         )
 
     # Decide on distribution strategy
     strategy = MasterWorkerStrategy(
         n_workers=n_workers-1,
-        config=executor_cfg,
+        config=cfg.executor,
         role=role
     )
 
@@ -65,8 +63,8 @@ def train(data,
     model = LogisticRegressionV2(
         optimizer, 
         strategy, 
-        max_iter=model_cfg['n_iterations'], 
-        shuffle=model_cfg['shuffle'], 
+        max_iter=cfg.model.n_iterations, 
+        shuffle=cfg.data.shuffle, 
         verbose=verbose,
         encode_name=encoded_run_name
     )
@@ -204,14 +202,12 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             }
             if 'fashion-mnist' in str(data_dir):
                 logger.info("Dataset: Fashion-MNist")
-                # executor_cfg['norm_epsilon'] = 10 # Override norm epsilon for fmnist
                 data = FashionMNist(
                     filepath=filepaths,
                     noniid=cfg.data.noniid
                 )
             else:
                 logger.info("Dataset: MNist")
-                # executor_cfg['norm_epsilon'] = 1 # Override norm epsilon for mnist
                 data = MNist(
                     filepaths,
                     noniid=cfg.data.noniid
@@ -245,9 +241,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         data,
         role,
         n_workers,
-        model_cfg,
-        opt_cfg,
-        executor_cfg,
+        cfg,
         verbose,
         encoded_run_name
     )
