@@ -148,12 +148,12 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         
     cfg = file_io.load_model_config(config_path)
 
-    model_cfg = cfg['model']
-    opt_cfg = cfg['optimizer']
-    executor_cfg = cfg['executor']
+    model_cfg = cfg.model
+    opt_cfg = cfg.optimizer
+    executor_cfg = cfg.executor
 
-    executor_cfg.update(cfg['distribute'])
-    executor_cfg.update(cfg['comms'])
+    executor_cfg.update(cfg.distribute)
+    executor_cfg.update(cfg.comms)
 
     # Create identity
     d_identity: int = 0
@@ -165,7 +165,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         if add:
             d_identity += 1000
 
-    executor_cfg['identity'] = d_identity
+    executor_cfg.identity = d_identity
 
     if 'PROJECT_DIR' in os.environ:
         executor_cfg['shared_folder'] = Path(os.environ['PROJECT_DIR'])/executor_cfg['shared_folder']
@@ -176,7 +176,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
     data = None
 
-    data_name = Path(Path(executor_cfg["shared_folder"]).stem)
+    data_name = Path(cfg.data.name)
 
     if role == "master":
         # Setup logger
@@ -188,7 +188,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             logger.info(f"SLURM_JOBID={slurm_jobid}")
 
         # Master reads in data
-        data_dir = Path(executor_cfg['shared_folder'])
+        data_dir = Path(cfg.executor.shared_folder)/data_name
 
         if 'mnist' in str(data_dir):
             # Get data
@@ -204,17 +204,17 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             }
             if 'fashion-mnist' in str(data_dir):
                 logger.info("Dataset: Fashion-MNist")
-                executor_cfg['norm_epsilon'] = 10 # Override norm epsilon for fmnist
+                # executor_cfg['norm_epsilon'] = 10 # Override norm epsilon for fmnist
                 data = FashionMNist(
                     filepath=filepaths,
-                    noniid=executor_cfg['noniid']
+                    noniid=cfg.data.noniid
                 )
             else:
                 logger.info("Dataset: MNist")
-                executor_cfg['norm_epsilon'] = 1 # Override norm epsilon for mnist
+                # executor_cfg['norm_epsilon'] = 1 # Override norm epsilon for mnist
                 data = MNist(
                     filepaths,
-                    noniid=executor_cfg['noniid']
+                    noniid=cfg.data.noniid
                 )
 
         elif 'occupancy_data' in str(data_dir):
