@@ -1,7 +1,7 @@
 model:
-  n_iterations: 10
+  n_iterations: 50
   shuffle: 1
-  batch_size: 64
+  batch_size: 128
   shuffle_buffer_size: 100
 
 data:
@@ -39,5 +39,5 @@ executor:
   shared_folder: "data/mnist"
   config_folder: "config/"
   # tf_dir: "logs/tf/"
-  # noniid: 1
-  # unbalanced: 1
+  noniid: 0
+  unbalanced: 0
