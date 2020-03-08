@@ -70,7 +70,7 @@ class MasterWorkerStrategy(DistributionStrategy):
         self.n_workers = n_workers
         self.config = config
         
-        self.tf_dir = config.get('tf_dir')
+        self.tf_dir = config.executor.get('tf_dir')
 
         self.train_dataset = None
         self.test_dataset = None

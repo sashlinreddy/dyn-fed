@@ -39,4 +39,4 @@ executor:
   scenario: 1
   shared_folder: "data/"
   config_folder: "config/"
-  # tf_dir: "logs/tf/"
+  tf_dir: "logs/tf/"

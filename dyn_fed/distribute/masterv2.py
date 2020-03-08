@@ -61,9 +61,12 @@ class MasterV2():
         self.watch_dog = WatchDog()
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
-        self._tf_logger = None
+        self._tf_logger_train = None
+        self._tf_logger_test = None
         if self.model.strategy.tf_dir is not None:
-            self._tf_logger = TFLogger(self.model.strategy.tf_dir)
+            self._logger.debug("Creating tensorboard logger")
+            self._tf_logger_train = TFLogger(self.model.strategy.tf_dir/'train')
+            self._tf_logger_test = TFLogger(self.model.strategy.tf_dir/'test')
         # Get ipaddress for workers to connect to
         self._save_ip()
 
@@ -312,7 +315,7 @@ class MasterV2():
             y_pred.data,
             reduce=True
         )
-        
+
         train_acc = accuracy_scorev2(self.y.data, y_train_pred.data)
         test_acc = accuracy_scorev2(self.y_valid.data, y_pred.data)
 
@@ -594,11 +597,11 @@ class MasterV2():
                 f"test acc={test_acc*100:7.4f}%"
             )
 
-            if self._tf_logger is not None:
-                self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
-                self._tf_logger.scalar("loss-master", test_loss, self.model.iter)
-                self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
-                self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
+            if self._tf_logger_train is not None:
+                self._tf_logger_train.scalar("loss", epoch_loss, self.model.iter)
+                self._tf_logger_test.scalar("loss", test_loss, self.model.iter)
+                self._tf_logger_train.scalar("accuracy", train_acc, self.model.iter)
+                self._tf_logger_test.scalar("accuracy", test_acc, self.model.iter)
 
             self.model.iter += 1
 
@@ -631,8 +634,8 @@ class MasterV2():
             # if self.config.comms.mode == 2:
             self._calculated_byte_size = True
         # Log to tensorboard
-        if self._tf_logger is not None:
-            self._tf_logger.scalar(
+        if self._tf_logger_train is not None:
+            self._tf_logger_train.scalar(
                 "msg-size",
                 self._n_mbs,
                 self.model.iter
