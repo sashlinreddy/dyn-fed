@@ -1,4 +1,9 @@
 """Client example using zmqstreams and heartbeating. To be used with server.py
+
+Using tensorflow.
+
+Currently doesn't seem to speed up. Not sure what's wrong with
+tf.function in eager execution mode.
 """
 import logging
 import time

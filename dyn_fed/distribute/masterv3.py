@@ -1,4 +1,7 @@
-"""Master with heartbeater
+"""Master with heartbeater - using tensorflow
+
+Currently doesn't seem to speed up. Not sure what's wrong with
+tf.function in eager execution mode. Seems to be slow in the workerv3.py
 """
 import logging
 import signal
