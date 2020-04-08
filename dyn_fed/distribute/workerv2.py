@@ -51,6 +51,8 @@ class WorkerV2():
         self.comm_every_iter = 1
         self.subscribed = False
         self.prev_params = None
+        # Assume all workers have violated the dynamic operator threshold
+        self.violated = True
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
 
@@ -253,6 +255,16 @@ class WorkerV2():
                 self.sub.on_recv(self.recv_params)
                 self.subscribed = True
 
+    def update_params(self, parameters):
+        """Update model parameters
+
+        Args:
+            parameters (list of model parameters for each layer (if ANN))
+        """
+        for i in np.arange(self.model.n_layers):
+            self.model.layers[i].W.data = parameters[i][0]
+            self.model.layers[i].b.data = parameters[i][1]
+
     def recv_params(self, msg):
         """Recv params
         """
@@ -260,17 +272,37 @@ class WorkerV2():
         cmd = msg[1]
         if cmd == b"WORK_PARAMS":
             self._logger.info("Receiving params...")
-            parameters = parse_params_from_string(msg[2])
-            packet_size = len(msg[2])
-            self._logger.debug(f"Packet size of params={packet_size}")
-            
-            for i in np.arange(self.model.n_layers):
-                self.model.layers[i].W.data = parameters[i][0]
-                self.model.layers[i].b.data = parameters[i][1]
+            # Simulating https://arxiv.org/abs/1807.03210
+            # If delta greater than threshold then we communicate paramaters
+            # back to server, else we continue
+            # If you are less than the dynamic operator threshold, then you skip
+            # communicating back to coordinator
+            if self.violated:
+                parameters = parse_params_from_string(msg[2])
+                packet_size = len(msg[2])
+                self._logger.debug(f"Packet size of params={packet_size}")
+                self.update_params(parameters)
+            else:
+                self._logger.debug("Delta < threshold - no need to update params")
 
             # Do some work
             tic = time.time()
+            # Initialize to some low number so that all clients are communicating
+            delta = 0.0
+            
             epoch_loss, most_representative, delta = self._training_loop()
+            if self.config.comms.mode == 3:
+                # Only do this for dynamic averaging technique
+                if delta < self.config.distribute.delta_threshold:
+                    self.violated = False
+                # If exceeds threshold then will communicate
+                else:
+                    self._logger.debug(
+                        f"Sending work, delta >= threshold="
+                        f"{self.config.distribute.delta_threshold}"
+                    )
+                    self.violated = True
+
             self._logger.info("blocked for %.3f s", (time.time() - tic))
 
             data = [
@@ -284,27 +316,17 @@ class WorkerV2():
             send_work = (self.model.iter - 1) % self.comm_interval == 0
             self._logger.debug(f"send_work={send_work}, {self.model.iter}, {self.comm_interval}")
             send_work = send_work or (self.model.iter >= self.comm_every_iter)
+            send_work = send_work and self.violated # If work is violated, we send the work
             # send_work = send_work or (self.model.iter <= self.comm_every_iter)
             self._logger.debug(f"Send work={send_work}")
-            if send_work and self.config.comms.mode != 3:
+            if send_work:
                 multipart = [b"WORK", self.identity.encode()]
                 multipart.extend(data)
                 self.push.send_multipart(multipart)
-            elif self.config.comms.mode == 3:
-                # Simulating https://arxiv.org/abs/1807.03210
-                # If delta greater than threshold then we communicate paramaters
-                # back to server, else we continue
-                if delta >= self.config.distribute.delta_threshold:
-                    # send work
-                    self._logger.debug(f"Sending work, delta >= threshold={self.config.distribute.delta_threshold}")
-                    multipart = [b"WORK", self.identity.encode()]
-                    multipart.extend(data)
-                    self.push.send_multipart(multipart)
-                else:
-                    self._logger.debug(f"Skipping sending work")
-                    multipart = [b"SKIP", self.identity.encode()]
-                    self.push.send_multipart(multipart)
-                
+            elif not send_work and self.config.comms.mode == 3:
+                self._logger.debug(f"Skipping sending work")
+                multipart = [b"SKIP", self.identity.encode()]
+                self.push.send_multipart(multipart)
 
         if cmd == b"EXIT":
             self._logger.info("Ending session")

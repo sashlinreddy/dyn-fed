@@ -298,6 +298,7 @@ class MasterV2():
             multipart.extend(msg)
 
             self._logger.info("Sending params")
+            # Using pub socket, so worker will determine if he receives work
             self.pub_socket.send_multipart(multipart)
 
     def _check_metrics(self):
