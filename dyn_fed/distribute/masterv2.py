@@ -449,8 +449,8 @@ class MasterV2():
             msg = self.pull_socket.recv_multipart()
             cmd = msg[0]
             worker = msg[1]
-            content = msg[2]
             if cmd == b"WORK":
+                content = msg[2]
                 errors, d_Wbs = self._gather(
                     worker,
                     content,

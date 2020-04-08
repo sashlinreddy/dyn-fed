@@ -179,7 +179,7 @@ class WorkerV2():
 
             new_params = self.model.parameters()
             delta = np.max(
-                [np.linalg.norm(o - n.data)
+                [np.linalg.norm(o - n.data)**2
                 for o, n in zip(self.prev_params, new_params)]
             )
             
@@ -296,10 +296,12 @@ class WorkerV2():
                 # back to server, else we continue
                 if delta >= self.config.distribute.delta_threshold:
                     # send work
+                    self._logger.debug(f"Sending work, delta >= threshold={self.config.distribute.delta_threshold}")
                     multipart = [b"WORK", self.identity.encode()]
                     multipart.extend(data)
                     self.push.send_multipart(multipart)
                 else:
+                    self._logger.debug(f"Skipping sending work")
                     multipart = [b"SKIP", self.identity.encode()]
                     self.push.send_multipart(multipart)
                 
