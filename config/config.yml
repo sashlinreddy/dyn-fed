@@ -1,6 +1,7 @@
 model:
   type: "nn1"
   n_iterations: 50
+  check_overfitting: True
   # shuffle: 1
   # batch_size: 64
   # shuffle_buffer_size: 100
@@ -22,7 +23,7 @@ optimizer:
   name: "adam"
 
 comms:
-  mode: 1 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
+  mode: 3 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
   interval: 1
 
 distribute:

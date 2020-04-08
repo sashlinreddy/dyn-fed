@@ -11,6 +11,7 @@ import numpy as np
 np.random.seed(42)
 
 from dyn_fed.data import MNist, FashionMNist, OccupancyData
+from dyn_fed.data import mnist
 from dyn_fed.distribute import MasterWorkerStrategy
 
 from dyn_fed.lib.io import file_io
@@ -91,11 +92,25 @@ def train(data,
         logger.info("STARTING TRAINING")
         logger.info("*******************************")
 
-        # Learn model parameters
-        if data:
-            model.fit(data.X_train, data.y_train, data.X_test, data.y_test)
+        if isinstance(data, tuple):
+            if role == "master":
+                X_train, y_train, X_test, y_test = data
+            else:
+                X_test, y_test = data # Unpack tuple
         else:
-            model.fit()
+            if role == "master": # Old data class
+                X_train, y_train, X_test, y_test = (
+                    data.X_train,
+                    data.y_train,
+                    data.X_test,
+                    data.y_test
+                )
+
+        # Learn model parameters
+        if role == "master":
+            model.fit(X_train, y_train, X_test, y_test)
+        else:
+            model.fit(None, None, X_test, y_test)
 
         logger.info("*******************************")
         logger.info("COMPLETED TRAINING")
@@ -104,12 +119,12 @@ def train(data,
         if role == "master":
             
             # Print confusion matrix
-            y_pred = model.forward(data.X_test)
-            conf_matrix = confusion_matrix(data.y_test.data, y_pred.data)
+            y_pred = model.forward(X_test)
+            conf_matrix = confusion_matrix(y_test.data, y_pred.data)
             logger.info(f"Confusion matrix=\n{conf_matrix}")
 
             # Accuracy
-            acc = accuracy_scorev2(data.y_test.data, y_pred.data)
+            acc = accuracy_scorev2(y_test.data, y_pred.data)
             logger.info(f"Accuracy={acc * 100:7.4f}%")
 
             # Plot metrics
@@ -220,10 +235,17 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
                 )
             else:
                 logger.info("Dataset: MNist")
-                data = MNist(
-                    filepaths,
-                    noniid=cfg.data.noniid
+                data = mnist.load_data(
+                    noniid=cfg.data.noniid,
+                    onehot=True, # One hot encode labels
+                    convert_types=True, # Converts labels to 0.01 and 0.99 / to float 32
+                    reshape=True, # Reshape to 2D
+                    tensorize=True
                 )
+                # data = MNist(
+                #     filepaths,
+                #     noniid=cfg.data.noniid
+                # )
 
         elif 'occupancy_data' in str(data_dir):
             logger.info("Dataset: Occupancy data")
@@ -243,7 +265,19 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
         # time.sleep(2)
     else:
-        setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
+        logger = setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
+
+        if cfg.data.name == "mnist":
+            logger.info("Dataset: MNist, test set only")
+            data = mnist.load_data(
+                noniid=cfg.data.noniid,
+                onehot=True, # One hot encode labels
+                convert_types=True, # Converts labels to 0.01 and 0.99 / to float 32
+                reshape=True, # Reshape to 2D
+                test_only=True, # Load only test set
+                tensorize=True # Convert to our special tensor
+            )
+            logger.info(f"Loaded in test set with shape={data[0].shape}")
 
         if "tf_dir" in executor_cfg:
             executor_cfg["tf_dir"] = Path(

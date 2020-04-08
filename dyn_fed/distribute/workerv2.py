@@ -13,6 +13,7 @@ from zmq.eventloop import zmqstream
 from tornado import ioloop
 
 from dyn_fed.operators import Tensor
+from dyn_fed.metrics import accuracy_scorev2
 from dyn_fed.proto.utils import (params_response_to_string,
                                            parse_params_from_string,
                                            parse_setup_from_string,
@@ -39,9 +40,12 @@ class WorkerV2():
         self.config = self.model.strategy.config
         self.X = None
         self.y = None
+        self.X_valid = None # To check for overfitting/underfitting.
+        self.y_valid = None # To check for overfitting/underfitting
         self.n_samples: int = None
         self.n_features: int = None
         self.n_classes: int = None
+        self.check_overfitting = self.config.model.check_overfitting
 
         # Distribute variables
         self.state = None
@@ -148,6 +152,27 @@ class WorkerV2():
         
         return batch_loss, most_representative
 
+    def _check_metrics(self):
+        """Checks metrics on training and validation dataset
+
+        Returns:
+            train_acc (float): Training accuracy
+            test_acc (float): Test accuracy
+        """
+        y_pred = self.model.forward(self.X_valid)
+        y_train_pred = self.model.forward(self.X)
+        
+        test_loss = self.model.optimizer.compute_loss(
+            self.y_valid.data,
+            y_pred.data,
+            reduce=True
+        )
+
+        train_acc = accuracy_scorev2(self.y.data, y_train_pred.data)
+        test_acc = accuracy_scorev2(self.y_valid.data, y_pred.data)
+
+        return train_acc, test_acc, test_loss
+
     def _training_loop(self):
         """Perform training loop
 
@@ -180,14 +205,24 @@ class WorkerV2():
             epoch_loss /= n_batches
 
             new_params = self.model.parameters()
-            delta = np.max(
-                [np.linalg.norm(o - n.data)**2
-                for o, n in zip(self.prev_params, new_params)]
-            )
-            
-            self._logger.info(
-                f"iteration={self.model.iter}, Loss={epoch_loss:7.4f}, delta={delta}"
-            )
+            delta = np.max([
+                np.linalg.norm(o - n.data)**2
+                for o, n in zip(self.prev_params, new_params)
+            ])
+
+            # Check metrics
+            if self.check_overfitting:
+                train_acc, test_acc, test_loss = self._check_metrics()
+                self._logger.info(
+                    f"iteration={self.model.iter}, delta={delta:7.4f}, "
+                    f"train_loss={epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
+                    f"train acc={train_acc*100:7.4f}%, "
+                    f"test acc={test_acc*100:7.4f}%"
+                )
+            else:
+                self._logger.info(
+                    f"iteration={self.model.iter}, train_loss={epoch_loss:7.4f}, delta={delta}"
+                )
 
             self.model.iter += 1
 
@@ -331,6 +366,12 @@ class WorkerV2():
         if cmd == b"EXIT":
             self._logger.info("Ending session")
             self.kill()
+
+    def setup(self, X_valid=None, y_valid=None):
+        """Setup master with data
+        """
+        self.X_valid = X_valid
+        self.y_valid = y_valid
 
     def start(self):
         """Start session

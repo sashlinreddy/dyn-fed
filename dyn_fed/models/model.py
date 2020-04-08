@@ -279,6 +279,7 @@ class ModelV2():
             self._master.start()
         else:
             # Worker training
+            self._worker.setup(X_valid, y_valid)
             self._worker.start()
 
     def add(self, layers):
