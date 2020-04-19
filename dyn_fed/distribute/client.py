@@ -24,7 +24,7 @@ from dyn_fed.lib.io.file_io import FileWatcher
 
 
 # pylint: disable=no-member
-class WorkerV2():
+class Client():
     """Client class
     """
     def __init__(self, model, identity=None):

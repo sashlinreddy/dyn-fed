@@ -7,9 +7,9 @@ import logging
 import time
 
 from dyn_fed.distribute import Master, Worker
-from dyn_fed.distribute.masterv2 import MasterV2
+from dyn_fed.distribute.server import Server
 from dyn_fed.distribute.strategy import LocalStrategy
-from dyn_fed.distribute.workerv2 import WorkerV2
+from dyn_fed.distribute.client import Client
 from dyn_fed.layers import Layer
 from dyn_fed.operators import Tensor
 
@@ -98,23 +98,23 @@ class Model():
         elif self.strategy.name == "master_worker":
             if self.strategy.role == "master":
                 # Setup master
-                self._master = Master(
+                self._server = Master(
                     model=self
                 )
                 self._logger.info("Connecting master sockets")
-                self._master.connect()
+                self._server.connect()
             else:
 
                 time.sleep(3)
 
-                self._worker = Worker(
+                self._client = Worker(
                     model=self,
                     verbose=self.verbose,
                     identity=self.strategy.identity
                 )
 
                 self._logger.info("Connecting worker sockets")
-                self._worker.connect()
+                self._client.connect()
 
     def _fit_mw(self, X=None, y=None):
         """Training logistic regression using the master worker strategy
@@ -125,10 +125,10 @@ class Model():
         """
         if self.strategy.role == "master":
             # Master training
-            self._master.start(X)
+            self._server.start(X)
         else:
             # Worker training
-            self._worker.start()
+            self._client.start()
 
     def add(self, layers):
         """Add new layer(s) to model
@@ -249,22 +249,22 @@ class ModelV2():
         elif self.strategy.name == "master_worker":
             if self.strategy.role == "master":
                 # Setup master
-                self._master = MasterV2(
+                self._server = Server(
                     model=self
                 )
                 self._logger.info("Connecting master sockets")
-                # self._master.connect()
+                # self._server.connect()
             else:
 
                 time.sleep(3)
 
-                self._worker = WorkerV2(
+                self._client = Client(
                     model=self,
                     identity=self.strategy.identity
                     )
 
-                self._logger.info("Connecting worker sockets")
-                # self._worker.connect()
+                self._logger.info("Connecting client sockets")
+                # self._client.connect()
 
     def _fit_mw(self, X=None, y=None, X_valid=None, y_valid=None):
         """Training logistic regression using the master worker strategy
@@ -275,12 +275,12 @@ class ModelV2():
         """
         if self.strategy.role == "master":
             # Master training
-            self._master.setup(X, y, X_valid, y_valid)
-            self._master.start()
+            self._server.setup(X, y, X_valid, y_valid)
+            self._server.start()
         else:
             # Worker training
-            self._worker.setup(X_valid, y_valid)
-            self._worker.start()
+            self._client.setup(X_valid, y_valid)
+            self._client.start()
 
     def add(self, layers):
         """Add new layer(s) to model

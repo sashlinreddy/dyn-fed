@@ -28,7 +28,7 @@ from dyn_fed.tools import TFLogger
 
 # pylint: disable=no-member
 
-class MasterV2():
+class Server():
     """Master class
     """
     def __init__(self, model, period=1000):
