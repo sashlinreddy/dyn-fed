@@ -187,6 +187,10 @@ class WorkerV3():
             # # Compare predicted label to actual
             self.epoch_accuracy.update_state(y, predictions)
 
+        self.prev_params = [
+            p.numpy().copy() for p in self.model.trainable_weights
+        ]
+
         start = time.time()
         for x, y in self.train_dataset:
             train_loop(x, y)
@@ -198,10 +202,16 @@ class WorkerV3():
         epoch_loss = self.epoch_loss_avg.result()
         epoch_train_acc = self.epoch_accuracy.result()
 
+        new_params = [w.numpy() for w in self.model.trainable_weights]
+        delta = np.max([
+            np.linalg.norm(o - n)**2
+            for o, n in zip(self.prev_params, new_params)
+        ])
+
         if self.check_overfitting:
             test_acc, test_loss = self._check_metrics()
             self._logger.info(
-                f"iteration = {self.iter}, "
+                f"iteration = {self.iter}, delta={delta}"
                 f"train_loss = {epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
                 f"train_acc={epoch_train_acc*100:7.4}%, "
                 f"test_acc={test_acc*100:7.4f}%"
