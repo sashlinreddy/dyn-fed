@@ -78,7 +78,8 @@ class MasterV3():
         self.watch_dog = WatchDog()
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
-        self._tf_logger = None
+        self._tf_logger_train = None
+        self._tf_logger_test = None
         # Get ipaddress for clients to connect to
         self._save_ip()
 
@@ -613,11 +614,50 @@ class MasterV3():
 
             self._logger.info(
                 f"iteration = {self.iter}, "
-                f"Loss = {epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
-                f"train acc={train_acc*100:7.4f}%, test acc={test_acc*100:7.4f}%"
+                f"train_loss={epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
+                f"train acc={train_acc*100:7.4f}%, "
+                f"test acc={test_acc*100:7.4f}%"
             )
 
             self.iter += 1
+
+    def _calculate_packet_size(self):
+        """Calculate packet size for parameters using number
+        of communication rounds
+        """
+        msg = [params_to_stringv2(self.model.trainable_weights)]
+
+        if not self._calculated_byte_size:
+            param_byte_size = len(msg[0])
+            # n_bytes = param_byte_size * len(self.watch_dog.states) * self.n_iterations
+            # if (self.config.comms.mode == 1) or \
+            #     (self.config.comms.mode == 2):
+            comm_rounds = np.sum([
+                client.comm_rounds for client in self.watch_dog.states
+            ])
+            self._logger.debug(f"Comm rounds={comm_rounds}")
+            # b_sizes = comm_rounds * param_byte_size
+            n_bytes = comm_rounds * param_byte_size
+            self._logger.debug(f"n_bytes={n_bytes}")
+            # n_bytes = np.sum(b_sizes)
+
+            self._n_mbs = np.round(n_bytes/1024/1024, 3)
+
+            self._logger.debug(f"Msg params size={param_byte_size}")
+            # self._logger.info(
+            #     f"Total params size in MBs for iter{self.model.iter} is "
+            # )
+            # if self.config.comms.mode == 2:
+            self._calculated_byte_size = True
+        # Log to tensorboard
+        if self._tf_logger_train is not None:
+            self._tf_logger_train.scalar(
+                "msg-size",
+                self._n_mbs,
+                self.model.iter
+            )
+
+        return self._n_mbs
 
     def setup(self, train_dataset: Tuple, test_dataset: Optional[Tuple]=None):
         """Setup server with train and test data and train steps
@@ -678,7 +718,6 @@ class MasterV3():
             while self.iter < self.n_iterations:
                 # Need to have a small sleep to enable gevent threading
                 gevent.sleep(0.00000001)
-                # self._logger.info(f'Iteration={self.iter}')
 
                 # Send data or params
                 self._map()
@@ -686,7 +725,7 @@ class MasterV3():
                 # Aggregate params
                 self._recv()
 
-            # self._n_mbs = self._calculate_packet_size()
+            self._n_mbs = self._calculate_packet_size()
 
             self.done()
             end = time.time()
