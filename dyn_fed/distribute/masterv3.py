@@ -483,6 +483,45 @@ class MasterV3():
 
         return i, errors, weights, workers_received
 
+    def _calculate_dynamic_comms_loss(self, clients):
+        """Calculate dynamic comms based on loss
+        """
+        losses = np.array(
+            [self.watch_dog.states[client].prev_loss for client in clients]
+        )
+
+        self._logger.debug(f"Losses={losses}")
+        
+        min_loss = np.min(losses)
+        max_loss = np.max(losses)
+
+        if min_loss == max_loss:
+            normalized_losses = np.ones_like(losses)
+        else:
+            # Min max normalization
+            normalized_losses = (losses - min_loss) / (max_loss - min_loss)
+
+        normalized_losses = np.where(np.isnan(normalized_losses), 0, normalized_losses)
+
+        self._logger.debug(f"Normalized losses={normalized_losses}")
+
+        # Get new calculated no. of iterations for each client
+        comm_iterations = np.ceil(
+            normalized_losses * (self.max_iter - self.model.iter)
+        ).astype(int)
+        comm_iterations = np.where(comm_iterations == 0, 1, comm_iterations)
+
+        comm_intervals = np.ceil((self.max_iter - self.model.iter) / comm_iterations).astype(int)
+        comm_every_iter = self.max_iter - \
+            (comm_iterations - (self.max_iter // comm_intervals))
+
+        self._logger.debug(f"Comm_iterations loss mode ={comm_iterations}")
+
+        for i, client in enumerate(clients):
+            self.watch_dog.states[client].comm_iterations = comm_iterations[i]
+            self.watch_dog.states[client].comm_interval = comm_intervals[i]
+            self.watch_dog.states[client].comm_every_iter = comm_every_iter[i]
+
     def _expected_responses(self):
         """Returns expected no. of responses
         """
