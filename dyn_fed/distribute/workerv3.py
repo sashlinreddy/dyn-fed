@@ -66,6 +66,9 @@ class WorkerV3():
         self.subscribed = False
         self.test_loss_avg = None
         self.test_acc_avg = None
+        self.prev_params = None
+        # Assume all clients have violated the dynamic operator threshold
+        self.violated = True
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
 
@@ -211,7 +214,7 @@ class WorkerV3():
         if self.check_overfitting:
             test_acc, test_loss = self._check_metrics()
             self._logger.info(
-                f"iteration = {self.iter}, delta={delta}"
+                f"iteration = {self.iter}, delta={delta:7.4f}"
                 f"train_loss = {epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
                 f"train_acc={epoch_train_acc*100:7.4}%, "
                 f"test_acc={test_acc*100:7.4f}%"
@@ -229,7 +232,7 @@ class WorkerV3():
 
         self.iter += 1
 
-        return epoch_loss
+        return epoch_loss, delta
 
     def _recv_comm_info(self, msg):
         """Receive communication information
@@ -327,17 +330,36 @@ class WorkerV3():
         cmd = msg[1]
         if cmd == b"WORK_PARAMS":
             self._logger.info("Receiving params...")
-            parameters = parse_params_from_stringv2(msg[2])
-            packet_size = len(msg[2])
-            self._logger.debug(f"Packet size of params={packet_size}")
-            
-            # Update local model using global parameters
-            self.model.set_weights(parameters)
+            # Simulating https://arxiv.org/abs/1807.03210
+            # If delta greater than threshold then we communicate paramaters
+            # back to server, else we continue
+            # If you are less than the dynamic operator threshold, then you skip
+            # communicating back to coordinator
+            if self.violated:
+                parameters = parse_params_from_stringv2(msg[2])
+                packet_size = len(msg[2])
+                self._logger.debug(f"Packet size of params={packet_size}")
+                
+                # Update local model using global parameters
+                self.model.set_weights(parameters)
+            else:
+                self._logger.debug("Delta < threshold - no need to update params")
 
             # Do some work
             tic = time.time()
-            epoch_loss = self._training_loop()
+            epoch_loss, delta = self._training_loop()
             self._logger.info("blocked for %.3f s", (time.time() - tic))
+            if self.config.comms.mode == 3:
+                # Only do this for dynamic averaging technique
+                if delta < self.config.distribute.delta_threshold:
+                    self.violated = False
+                # If exceeds threshold then will communicate
+                else:
+                    self._logger.debug(
+                        f"Sending work, delta >= threshold="
+                        f"{self.config.distribute.delta_threshold}"
+                    )
+                    self.violated = True
 
             data = [
                 params_response_to_stringv2(
@@ -349,11 +371,16 @@ class WorkerV3():
             send_work = (self.iter - 1) % self.comm_interval == 0
             self._logger.debug(f"send_work={send_work}, {self.iter}, {self.comm_interval}")
             send_work = send_work or (self.iter >= self.comm_every_iter)
+            send_work = send_work and self.violated # If work is violated, we send the work
             # send_work = send_work or (self.iter <= self.comm_every_iter)
             self._logger.debug(f"Send work={send_work}")
             if send_work:
                 multipart = [b"WORK", self.identity.encode()]
                 multipart.extend(data)
+            # elif not send_work and self.config.comms.mode == 3:
+            #     self._logger.debug(f"Skipping sending work")
+            #     multipart = [b"SKIP", self.identity.encode()]
+            #     self.push.send_multipart(multipart)
 
                 self.push.send_multipart(multipart)
 
