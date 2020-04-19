@@ -227,7 +227,7 @@ class WorkerV3():
             # self.y = y
             self.train_dataset = tf.data.Dataset.from_tensor_slices((X, y))
             self.train_dataset = (
-                self.train_dataset.shuffle(self.config.model.shuffle_buffer_size)
+                self.train_dataset.shuffle(self.config.data.shuffle_buffer_size)
                 .batch(self.config.data.batch_size)
             )
             # self.X = Tensor(self.X)
