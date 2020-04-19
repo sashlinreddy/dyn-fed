@@ -52,6 +52,7 @@ class WorkerV3():
         self.epoch_accuracy = None
         self.epoch_loss_avg = None
         self.iter = 0
+        self.max_iter = self.config.model.n_iterations
 
         self.n_samples: int = None
 
@@ -189,7 +190,7 @@ class WorkerV3():
         """
         self.comm_iterations, self.comm_interval, self.comm_every_iter = \
                 parse_comm_setup_from_string(msg[1])
-        self.start_comms_iter = self.model.max_iter - \
+        self.start_comms_iter = self.max_iter - \
             self.comm_iterations
             
         self._logger.debug(
@@ -219,13 +220,15 @@ class WorkerV3():
             X, y, n_samples, state = parse_setup_from_string(msg[1])
             # If is 3d. Leaving this out for now
             size_3d = np.sqrt(X.shape[1]).astype(int)
-            X = X.reshape(X.shape[0], size_3d, size_3d)
+            # X = X.reshape(X.shape[0], size_3d, size_3d)
 
             self.n_samples = n_samples
             self.state = state
             # self.X = X
             # self.y = y
-            self.train_dataset = tf.data.Dataset.from_tensor_slices((X, y))
+            self.train_dataset = tf.data.Dataset.from_tensor_slices(
+                (X.reshape(X.shape[0], size_3d, size_3d), y)
+            )
             self.train_dataset = (
                 self.train_dataset.shuffle(self.config.data.shuffle_buffer_size)
                 .batch(self.config.data.batch_size)
