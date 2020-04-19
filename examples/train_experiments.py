@@ -80,8 +80,8 @@ def run(platform):
     folder_name = _create_experiments()
     folder_name = 'config'/folder_name
     # n_workers = [8, 32, 64, 128]
-    # n_workers = [8, 16, 32]
-    n_workers = [64]
+    n_workers = [8, 16, 32, 64]
+    # n_workers = [64]
     project_dir = Path(__file__).resolve().parents[1]
     launch_script_path = str(project_dir/'scripts/slurm_launch.sh')
 
