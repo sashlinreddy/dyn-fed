@@ -44,6 +44,10 @@ def train(train_dataset, test_dataset, strategy, config):
         optimizer = tf.keras.optimizers.SGD(
             learning_rate=opt_cfg.get('learning_rate')
         )
+    elif opt_cfg.get("name") == "adam":
+        optimizer = tf.keras.optimizers.Adam(
+            learning_rate=opt_cfg.get('learning_rate')
+        )
 
     logger.debug("Running strategy")
 
@@ -127,13 +131,13 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             logger.info(f"SLURM_JOBID={slurm_jobid}")
 
         # Master reads in data
-        if 'mnist' in str(data_cfg['name']):
+        if str(data_name) == 'mnist':
             # Get data
             X_train, y_train, X_test, y_test = df.data.mnist.load_data(
-                noniid=data_cfg['noniid']
+                noniid=data_cfg.noniid
             )
 
-            logger.info(f"Dataset={data_cfg['name']}")
+            logger.info(f"Dataset={data_cfg.name}")
             
         else:
             raise Exception("Please enter valid dataset")
