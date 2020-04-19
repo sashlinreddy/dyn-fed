@@ -53,6 +53,7 @@ class MasterV3():
 
         # Counter
         self.iter = 0
+        self.max_iter = self.config.model.n_iterations
         self.n_iterations = int(
             np.ceil(
                 self.config.model.n_iterations /
@@ -137,6 +138,102 @@ class MasterV3():
         poller.register(self.heart_ctrl_socket, zmq.POLLIN | zmq.POLLERR)
 
         return poller
+
+    def _poll_svd(self, i):
+        """Poll for the SVD index from clients
+        """
+        # Poll messages from clients and collect them
+        events = dict(self.poller.poll())
+        if (self.pull_socket in events) and \
+            (events.get(self.pull_socket) == zmq.POLLIN):
+            # Receive svd info
+            msg = self.pull_socket.recv_multipart()
+            cmd = msg[0]
+            if cmd == b"SVD":
+                client = msg[1]
+                content = msg[2]
+                svd_idx = parse_setup_response_from_string(content)
+                self._logger.info(
+                    f"SVD_idx for client {client} is {svd_idx}"
+                )
+                self.watch_dog.states[client].svd_idx = svd_idx
+                i += 1
+        return i
+
+    def _send_comm_info(self):
+        """Send communication information to each client
+        """
+        for heart in self.heartbeater.hearts:
+            client = self.watch_dog.states[heart]
+            msg = [
+                comms_setup_to_string(
+                    client.comm_iterations,
+                    client.comm_interval,
+                    client.comm_every_iter
+                )
+            ]
+            multipart = [heart, b"COMM_INFO"]
+            multipart.extend(msg)
+            self.ctrl_socket.send_multipart(multipart)
+
+    def _calculate_dynamic_comms(self):
+        """Calculate dynamic comm period
+        """
+        self._logger.info("Waiting for SVD idxs from each client...")
+        i = 0
+        n_responses = len(self.heartbeater.hearts)
+        start = time.time()
+        while i < n_responses:
+            # Need to sleep gevent to be able to have heartbeat thread
+            gevent.sleep(0.00000001)
+
+            i = self._poll_svd(i)
+
+            # Update no. of expected responses to end the while loop
+            n_responses = self._check_responses(n_responses)
+
+        end = time.time()
+        self.svd_time = end - start
+
+        self._logger.debug(f'Time taken to calculate SVDs={self.svd_time:.3f}')
+
+        if self.config.comms.mode == 1:
+            # Normalize svd idx
+            svds = np.array([state.svd_idx for state in self.watch_dog.states])
+
+            min_svd = np.min(svds)
+            max_svd = np.max(svds)
+
+            if min_svd == max_svd:
+                normalized_svds = np.ones_like(svds)
+            else:
+                normalized_svds = (svds - min_svd) / (max_svd - min_svd)
+
+            self._logger.debug(f"Normalized svds={normalized_svds}")
+
+            comm_iterations = np.ceil(normalized_svds * self.n_iterations).astype(int)
+            # Clients should have at least 1 iterations
+            comm_iterations = np.where(comm_iterations == 0, 1, comm_iterations)
+
+            self._logger.debug(f"Comm iterations={comm_iterations}")
+
+            comm_intervals = np.ceil(self.max_iter / comm_iterations).astype(int)
+            comm_every_iter = self.max_iter - \
+                (comm_iterations - (self.max_iter // comm_intervals))
+            # comm_every_iter = (comm_iterations - (self.model.max_iter // comm_intervals))
+            
+            self._logger.debug(f"SVDs={svds}")
+            self._logger.debug(
+                f"Comm intervals={comm_intervals}, "
+                f"comm_every_iter={comm_every_iter}"
+            )
+
+            for i, client in enumerate(self.watch_dog.states):
+                client.comm_iterations = comm_iterations[i]
+                client.comm_interval = comm_intervals[i]
+                client.comm_every_iter = comm_every_iter[i]
+
+            self._send_comm_info()
 
     def _track_samples(self, heart, i, x_batch):
         """Track samples
@@ -367,8 +464,8 @@ class MasterV3():
             msg = self.pull_socket.recv_multipart()
             cmd = msg[0]
             client = msg[1]
-            content = msg[2]
             if cmd == b"WORK":
+                content = msg[2]
                 errors, weights = self._gather(
                     client,
                     content,
@@ -378,6 +475,11 @@ class MasterV3():
 
                 i += 1
                 workers_received.append(client)
+
+            if cmd == b"SKIP":
+                # If we receive skip from client, then ignore,
+                # but iterate our number of responses
+                i += 1
 
         return i, errors, weights, workers_received
 
