@@ -34,6 +34,9 @@ def encode_run_name(n_workers, config):
     global_cfg.update(config["distribute"])
     encode_name = string_utils.dict_to_str(global_cfg, encode_vars)
 
+    if config.comms.mode == 3:
+        encode_name += "-" + str(config.distribute.delta_threshold)
+
     if "LOGDIR" in os.environ:
         data_name = Path(config.data.name)
         model_type = Path(config.model.type)
