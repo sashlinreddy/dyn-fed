@@ -37,18 +37,23 @@ def _create_experiments():
     counter = 0
     # Write all config to folder
     for i, experiment in enumerate(experiments):
+        # Validate comm interval
+        n_iterations = experiment.get('n_iterations', 100) if \
+                experiment.get('model_type') == "logistic" else 50
+        interval = experiment.get('interval', 1) if \
+                experiment.get('interval', 1) <= n_iterations else n_iterations
         rendered_config = model_utils.render_template(
             config_dir,
             'template.yml',
             model_type=experiment.get('model_type', 'logistic'),
-            n_iterations=experiment.get('n_iterations', 100),
+            n_iterations=n_iterations,
             check_overfitting=experiment.get('check_overfitting', False),
             data_name=experiment.get('data_name', 'mnist'),
             noniid=experiment.get('noniid', 0),
             unbalanced=experiment.get('unbalanced', 0),
             optimizer=experiment.get('optimizer', 'sgd'),
             comm_mode=experiment.get('mode', 0),
-            interval=experiment.get('interval', 1),
+            interval=interval,
             agg_mode=experiment.get('aggregate_mode', 0),
             delta_threshold=experiment.get('delta_threshold', 0.0),
             data_dir=experiment.get('shared_folder', 'data/mnist/')

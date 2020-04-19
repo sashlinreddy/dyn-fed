@@ -205,6 +205,10 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
 
+    # Validate config
+    if cfg.comms.interval > cfg.model.n_iterations:
+        cfg.comms.interval = cfg.model.n_iterations
+
     data = None
 
     data_name = Path(cfg.data.name)
