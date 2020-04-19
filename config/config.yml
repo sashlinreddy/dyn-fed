@@ -7,7 +7,7 @@ model:
   # shuffle_buffer_size: 100
 
 data:
-  name: "mnist"
+  name: fashion-mnist
   shuffle: 1
   batch_size: 64
   shuffle_buffer_size: 100
@@ -20,14 +20,14 @@ optimizer:
   clip_val: 0
   mu_g: 0.0
   n_most_rep: 100
-  name: "adam"
+  name: adam
 
 comms:
-  mode: 3 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
+  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
   interval: 1
 
 distribute:
-  strategy: "mw"
+  strategy: mw
   remap: 1
   quantize: 0
   overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
@@ -40,6 +40,6 @@ distribute:
 
 executor:
   scenario: 3
-  shared_folder: "data/"
-  config_folder: "config/"
-  tf_dir: "logs/tf/"
+  shared_folder: data/
+  config_folder: config/
+  tf_dir: logs/tf/
