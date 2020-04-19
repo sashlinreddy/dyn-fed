@@ -12,10 +12,10 @@ import tensorflow as tf
 np.random.seed(42)
 
 from dyn_fed.distribute.strategy import MasterWorkerStrategyV2
+from dyn_fed.data import mnist, fashion_mnist
 
 from dyn_fed.lib.io import file_io
 from dyn_fed.utils import model_utils, setup_logger
-import dyn_fed as df
 
 from ft_models import LogisticRegressionV2
 
@@ -129,9 +129,16 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             logger.info(f"SLURM_JOBID={slurm_jobid}")
 
         # Master reads in data
-        if str(data_name) == 'mnist':
+        if str(data_name) == "fashion-mnist":
+            logger.info("Dataset: Fashion-MNist")
+            X_train, y_train, X_test, y_test = fashion_mnist.load_data(
+                noniid=cfg.data.noniid
+            )
+            logger.info(f"Dataset={data_cfg.name}")
+
+        elif str(data_name) == 'mnist':
             # Get data
-            X_train, y_train, X_test, y_test = df.data.mnist.load_data(
+            X_train, y_train, X_test, y_test = mnist.load_data(
                 noniid=data_cfg.noniid
             )
 
@@ -148,7 +155,21 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         test_dataset = (X_test, y_test)
 
     else:
-        setup_logger(filename=f'log-client-{d_identity}.log', level=verbose)
+        logger = setup_logger(filename=f'log-client-{d_identity}.log', level=verbose)
+
+        if cfg.model.check_overfitting:
+            if cfg.data.name == "mnist":
+                logger.info("Dataset: MNist, test set only")
+                test_dataset = mnist.load_data(
+                    noniid=cfg.data.noniid,
+                    test_only=True
+                )
+            elif cfg.data.name == "fashion-mnist":
+                logger.info("Dataset: Fashion-MNist, test set only")
+                test_dataset = fashion_mnist.load_data(
+                    noniid=cfg.data.noniid,
+                    test_only=True
+                )
 
         if "tf_dir" in executor_cfg:
             executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/client-{d_identity}"

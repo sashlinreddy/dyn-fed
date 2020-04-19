@@ -55,6 +55,7 @@ class WorkerV3():
         self.max_iter = self.config.model.n_iterations
 
         self.n_samples: int = None
+        self.check_overfitting = self.config.model.check_overfitting
 
         # Distribute variables
         self.state = None
@@ -63,6 +64,8 @@ class WorkerV3():
         self.comm_interval = 1
         self.comm_every_iter = 1
         self.subscribed = False
+        self.test_loss_avg = None
+        self.test_acc_avg = None
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
 
@@ -131,7 +134,29 @@ class WorkerV3():
         # wait for connections
         time.sleep(1)
 
-        self._logger.info(f"Connected")        
+        self._logger.info(f"Connected")       
+
+    def _check_metrics(self):
+        """Checks metrics on training and validation dataset
+
+        Returns:
+            train_acc (float): Training accuracy
+            test_acc (float): Test accuracy
+        """
+        def model_validate(features, labels):
+            predictions = self.model(features, training=False)
+            v_loss = self.loss_func(labels, predictions)
+
+            self.test_loss_avg(v_loss)
+            self.test_acc_avg(labels, predictions)
+
+        for x, y in self.test_dataset:
+            model_validate(x, y)
+
+        test_loss = self.test_loss_avg.result()
+        test_acc = self.test_acc_avg.result()
+
+        return test_acc, test_loss 
 
     def _training_loop(self):
         """Perform training loop
@@ -173,13 +198,24 @@ class WorkerV3():
         epoch_loss = self.epoch_loss_avg.result()
         epoch_train_acc = self.epoch_accuracy.result()
 
+        if self.check_overfitting:
+            test_acc, test_loss = self._check_metrics()
+            self._logger.info(
+                f"iteration = {self.iter}, "
+                f"train_loss = {epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
+                f"train_acc={epoch_train_acc*100:7.4}%, "
+                f"test_acc={test_acc*100:7.4f}%"
+            )
+        else:
+            self._logger.info(
+                f"iteration={self.model.iter}, train_loss={epoch_loss:7.4f}, "
+                f"delta={delta}"
+            )
+
         self.epoch_loss_avg.reset_states()
         self.epoch_accuracy.reset_states()
-
-        self._logger.info(
-            f"iteration = {self.iter}, train_loss = {epoch_loss:7.4f}, "
-            f"train_acc={epoch_train_acc*100:7.4}%"
-        )
+        self.test_loss_avg.reset_states()
+        self.test_acc_avg.reset_states()
 
         self.iter += 1
 
@@ -202,6 +238,10 @@ class WorkerV3():
         """Setup server with train and test data and train steps
         """
         self.train_dataset = train_dataset
+        
+        X_test, y_test = test_dataset
+        test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+        test_dataset = test_dataset.batch(self.config.data.batch_size)
         self.test_dataset = test_dataset
 
         # Define loss function
@@ -209,6 +249,8 @@ class WorkerV3():
 
         self.epoch_loss_avg = tf.keras.metrics.Mean()
         self.epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+        self.test_loss_avg = tf.keras.metrics.Mean()
+        self.test_acc_avg = tf.keras.metrics.SparseCategoricalAccuracy()
 
     def recv_work(self, msg):
         """Receive work

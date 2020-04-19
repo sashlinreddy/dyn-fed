@@ -324,12 +324,10 @@ class MasterV3():
             train_acc (float): Training accuracy
             test_acc (float): Test accuracy
         """
-        @tf.function
         def train_validate(features, labels):
             predictions = self.model(features, training=False)
             self.train_accuracy(labels, predictions)
 
-        @tf.function
         def model_validate(features, labels):
             predictions = self.model(features, training=False)
             v_loss = self.loss_func(labels, predictions)

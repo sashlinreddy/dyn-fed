@@ -164,7 +164,8 @@ class MasterWorkerStrategyV2(DistributionStrategy):
             )
 
             self._worker.setup(
-                train_dataset=None
+                train_dataset=None,
+                test_dataset=test_dataset
             )
 
             self._worker.start()
