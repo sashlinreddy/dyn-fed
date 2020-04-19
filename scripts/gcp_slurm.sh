@@ -43,7 +43,7 @@ export MASTER_EXE=$EXE_PATH
 export WORKER_EXE=$EXE_PATH
 export DATA_DIR=/home/g675723_students_wits_ac_za/dyn-fed/data/fashion-mnist
 
-echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r master $verbose > /home/g675723_students_wits_ac_za/dyn-fed/m_w_$SLURM_JOBID.conf
-echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r worker $verbose -i %t >> /home/g675723_students_wits_ac_za/dyn-fed/m_w_$SLURM_JOBID.conf
+echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r server $verbose > /home/g675723_students_wits_ac_za/dyn-fed/m_w_$SLURM_JOBID.conf
+echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r client $verbose -i %t >> /home/g675723_students_wits_ac_za/dyn-fed/m_w_$SLURM_JOBID.conf
 
 srun --multi-prog /home/g675723_students_wits_ac_za/dyn-fed/m_w_$SLURM_JOBID.conf

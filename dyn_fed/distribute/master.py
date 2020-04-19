@@ -1,6 +1,6 @@
-"""Contains all master logic for fault tolerant ml.
+"""Contains all server logic for fault tolerant ml.
 
-Any master devices should run the master logic.
+Any server devices should run the server logic.
 """
 from __future__ import absolute_import, division, print_function
 
@@ -54,7 +54,7 @@ class Master():
         self.strategy = self.model.strategy
         self.delay_change = False
 
-        # Get ipaddress for workers to connect to
+        # Get ipaddress for clients to connect to
         self.hostname = socket.gethostname()
         self.ip_address = socket.gethostbyname(self.hostname)
 
@@ -70,7 +70,7 @@ class Master():
         self.times = []
         self._tf_logger = None
         if "TFDIR" in os.environ:
-            logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.model.encode_name}/master")
+            logdir = os.path.join(os.environ["TFDIR"], f"tf/{self.model.encode_name}/server")
             self._tf_logger = TFLogger(logdir)
 
         # Setup logger
@@ -91,7 +91,7 @@ class Master():
     @dfl_train_collect
     def _train_iteration(self, events):
         W_p = self.model.layers[0].W.copy()
-        # Receive updated parameters from workers
+        # Receive updated parameters from clients
         # d_W, epoch_loss = self.gather(events, timeout=10)
         params = {
             "watch_dog": self.watch_dog,
@@ -139,14 +139,14 @@ class Master():
 
         if self._tf_logger is not None:
             self._tf_logger.histogram(
-                "W-master", self.model.layers[0].W.data, 
+                "W-server", self.model.layers[0].W.data, 
                 self.model.iter, bins=self.n_iterations
             )
-            self._tf_logger.scalar("loss-master", epoch_loss, self.model.iter)
-            self._tf_logger.scalar("train-accuracy-master", train_acc, self.model.iter)
-            self._tf_logger.scalar("test-accuracy-master", test_acc, self.model.iter)
+            self._tf_logger.scalar("loss-server", epoch_loss, self.model.iter)
+            self._tf_logger.scalar("train-accuracy-server", train_acc, self.model.iter)
+            self._tf_logger.scalar("test-accuracy-server", test_acc, self.model.iter)
             grad_l2_norm = np.linalg.norm(parameters)
-            self._tf_logger.scalar("gradnorm-master", grad_l2_norm, self.model.iter)
+            self._tf_logger.scalar("gradnorm-server", grad_l2_norm, self.model.iter)
 
         # delta = np.max(np.abs(W_p - self.model.layers[0].W))
         delta = np.max(np.abs(W_p.data - self.model.layers[0].W.data))
@@ -186,7 +186,7 @@ class Master():
             # Poll events
             events = dict(self.poller.poll())
 
-            # If we have more than 1 worker
+            # If we have more than 1 client
             if len(self.watch_dog.states) > 0: # pylint: disable=len-as-condition
                 # Map tasks
                 self.map()
@@ -202,7 +202,7 @@ class Master():
                     if command == b"CONNECT":
                         self.register_workers()
 
-        # Tell workers to exit
+        # Tell clients to exit
         self.done()
         self.state = COMPLETE
         end = time.time()
@@ -212,11 +212,11 @@ class Master():
         """Handle remapping of data
         """
         self._logger.debug(f"Redistributing data")
-        # Remap = 1 is remap only points of dead worker
+        # Remap = 1 is remap only points of dead client
         if self.strategy.remap == 1:
             
-            # Remap only data for workers that went down in previous iteration
-            # Get indices for dead workers
+            # Remap only data for clients that went down in previous iteration
+            # Get indices for dead clients
             if self.mapping:
                 dead_worker = [
                     w for w in self.watch_dog.states 
@@ -237,7 +237,7 @@ class Master():
                     if not w.mr_idxs_used and not w.state
                 ]
                 self._logger.debug(f"remapping idxs={remap_idxs}, worker_ids={worker_ids_down}")
-                self._logger.debug(f"Dead worker={len(dead_worker.mapping.keys())}")
+                self._logger.debug(f"Dead client={len(dead_worker.mapping.keys())}")
                 
                 self._logger.debug(f"Remap idxs={remap_idxs.shape}")
             else:
@@ -302,7 +302,7 @@ class Master():
         self.coordinator.map(
             socket=self.ctrl_socket, 
             data=data, 
-            workers=self.watch_dog.states, 
+            clients=self.watch_dog.states, 
             params=params, 
             gen_func=next_batch
         )
@@ -337,10 +337,10 @@ class Master():
     def send_heartbeat(self):
         """Send heartbeat - not using this at the moment
         """
-        for worker in self.watch_dog.states:
+        for client in self.watch_dog.states:
             self._logger.debug('PING')
-            worker.state = False
-            self.ctrl_socket.send_multipart([worker.identity, b'HEARTBEAT'])
+            client.state = False
+            self.ctrl_socket.send_multipart([client.identity, b'HEARTBEAT'])
 
     def heartbeat_loop(self):
         """Heartbeat thread
@@ -351,7 +351,7 @@ class Master():
                 self.send_heartbeat()
 
     def register_workers(self, worker_id=None):
-        """Registers workers in a round robin fashion
+        """Registers clients in a round robin fashion
         """
         if not worker_id:
             worker_id = self.pull_socket.recv()
@@ -359,8 +359,8 @@ class Master():
         self.watch_dog.add_worker(worker_id)
 
     def detect_workers(self):
-        """Detects workers by polling whoever has sent through the
-        CONNECT command along with their worker ids
+        """Detects clients by polling whoever has sent through the
+        CONNECT command along with their client ids
         """
         timeout = self.strategy.worker_timeout # 10 second time out
         start = time.time()
@@ -379,11 +379,11 @@ class Master():
         
                 end = time.time()
                 if end-start > timeout:
-                    self._logger.info(f"{timeout} second timeout - no more workers found")
+                    self._logger.info(f"{timeout} second timeout - no more clients found")
                     break
 
-        self._logger.info(f"Signed up all {len(self.watch_dog.states)} workers")
-        self._logger.debug(f"Signed up all workers = {self.watch_dog.states}")
+        self._logger.info(f"Signed up all {len(self.watch_dog.states)} clients")
+        self._logger.debug(f"Signed up all clients = {self.watch_dog.states}")
 
     def set_params(self):
         """Prepares parameters to be sent by the coordinator
@@ -413,7 +413,7 @@ class Master():
         """Starts new task depending on the state of the system.
 
         Possible states range from mapping of data, remapping of data 
-        (if worker dies or another worker is added), or distributing parameters.
+        (if client dies or another client is added), or distributing parameters.
         """
         if self.state == START:
 
@@ -426,7 +426,7 @@ class Master():
             self.coordinator.map(
                 socket=self.ctrl_socket, 
                 data=data, 
-                workers=self.watch_dog.states, 
+                clients=self.watch_dog.states, 
                 params=params, 
                 gen_func=next_batch
             )
@@ -460,13 +460,13 @@ class Master():
             # data = self.model.layers[0].W.data if self.strategy.quantize != 1 
             # else linspace_quantization(self.model.layers[0].W.data, interval=200)
             data = [params_to_string(self.model.layers)]
-            workers = None
+            clients = None
             params = self.set_params()
 
             self.coordinator.map(
                 socket=self.publisher, 
                 data=data, 
-                workers=workers, 
+                clients=clients, 
                 params=params
             )
 
@@ -482,11 +482,11 @@ class Master():
     def main_loop(self):
         """Main loop for training.
 
-        First detects workers who are willing to do work. Then distributes
+        First detects clients who are willing to do work. Then distributes
         the data accordingly. Then we perform gradient descent iteratively. 
         We parallelize the gradient calculation and calculate a weighted average
         gradient matrix. This weighted average is calculated as the number of
-        samples that a worker received as a fraction of the total number of
+        samples that a client received as a fraction of the total number of
         samples in the entire dataset.
         """        
         self._logger.info(f"Initialized dummy data of size {self.data}")
@@ -501,7 +501,7 @@ class Master():
         self.print_metrics()
         
     def start(self, data):
-        """Starts work of master. First connects to workers and then performs
+        """Starts work of server. First connects to clients and then performs
         machine learning training
         """
         self.data = data
@@ -529,7 +529,7 @@ class Master():
         # self.context.term()
 
     def done(self):
-        """Sends exit signal to workers
+        """Sends exit signal to clients
         """
         time.sleep(1)
         self.publisher.send_multipart([b"", b"EXIT"])

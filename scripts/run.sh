@@ -1,7 +1,7 @@
 #!/bin/bash
 # Script deprecated
 
-# n_workers=6 # Default no. of workers
+# n_workers=6 # Default no. of clients
 # if [ $# -gt 0 ]; then
 # 	if [ $1 == "-n" ]; then
 # 		shift
@@ -10,7 +10,7 @@
 # fi
 
 #!/bin/bash
-echo "Running slurm jobs for different number of workers"
+echo "Running slurm jobs for different number of clients"
 workers_list=( 10 20 26 39 48)
 for value in "${workers_list[@]}"
 do

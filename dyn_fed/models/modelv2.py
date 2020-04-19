@@ -76,12 +76,12 @@ class ModelV3():
         if self.strategy.name == "local":
             pass # TODO: Local strategy
         elif self.strategy.name == "master_worker":
-            if self.strategy.role == "master":
-                # Setup master
+            if self.strategy.role == "server":
+                # Setup server
                 self._master = Master(
                     model=self
                 )
-                self._logger.info("Connecting master sockets")
+                self._logger.info("Connecting server sockets")
                 self._master.connect()
             else:
 
@@ -93,17 +93,17 @@ class ModelV3():
                     identity=self.strategy.identity
                 )
 
-                self._logger.info("Connecting worker sockets")
+                self._logger.info("Connecting client sockets")
                 self._worker.connect()
 
     def _fit_mw(self, X=None, y=None):
-        """Training logistic regression using the master worker strategy
+        """Training logistic regression using the server client strategy
 
         Args:
             X (fault_tolerant.operators.Tensor): Feature dataset
             y (fault_tolerant.operators.Tensor): Labels
         """
-        if self.strategy.role == "master":
+        if self.strategy.role == "server":
             # Master training
             self._master.start(X)
         else:
@@ -179,12 +179,12 @@ class ModelV3():
         if self.strategy.name == "local":
             pass # TODO: Local strategy
         elif self.strategy.name == "master_worker":
-            if self.strategy.role == "master":
-                # Setup master
+            if self.strategy.role == "server":
+                # Setup server
                 self._master = MasterV2(
                     model=self
                 )
-                self._logger.info("Connecting master sockets")
+                self._logger.info("Connecting server sockets")
                 # self._master.connect()
             else:
 
@@ -195,17 +195,17 @@ class ModelV3():
                     identity=self.strategy.identity
                     )
 
-                self._logger.info("Connecting worker sockets")
+                self._logger.info("Connecting client sockets")
                 # self._worker.connect()
 
     def _fit_mw(self, X=None, y=None, X_valid=None, y_valid=None):
-        """Training logistic regression using the master worker strategy
+        """Training logistic regression using the server client strategy
 
         Args:
             X (fault_tolerant.operators.Tensor): Feature dataset
             y (fault_tolerant.operators.Tensor): Labels
         """
-        if self.strategy.role == "master":
+        if self.strategy.role == "server":
             # Master training
             self._master.setup(X, y, X_valid, y_valid)
             self._master.start()

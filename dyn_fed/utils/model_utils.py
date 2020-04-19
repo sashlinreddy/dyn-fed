@@ -14,7 +14,7 @@ def encode_run_name(n_workers, config):
     """Encode model run name given it's config. Useful for tracking experiments
 
     Args:
-        n_workers (int): No. of workers in experiment
+        n_workers (int): No. of clients in experiment
         config (dict): Configuration for model
 
     Returns:

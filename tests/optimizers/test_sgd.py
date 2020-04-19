@@ -48,7 +48,7 @@ class TestSGDOptimizer(unittest.TestCase):
 
         W_prev = Tensor(np.random.randn(784, 10).astype(np.float32) * 0.01, is_param=True)
         loss = CrossEntropyLoss()
-        optimizer = SGDOptimizer(loss, learning_rate=0.99, role="worker")
+        optimizer = SGDOptimizer(loss, learning_rate=0.99, role="client")
 
         # Forward pass
         s = self.data.X_train @ W_prev

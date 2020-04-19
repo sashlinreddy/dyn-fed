@@ -64,10 +64,10 @@ def _create_experiments():
 @click.command()
 @click.option('--platform', '-p', default='slurm', type=str, help='Platform running experiments')
 def run(platform):
-    """Controller function which creates the master and starts off the training
+    """Controller function which creates the server and starts off the training
 
     Args:
-        n_workers (int): No. of workers to be used for the session
+        n_workers (int): No. of clients to be used for the session
         verbose (int): The logger level as an integer. See more in the logging
             file for different options
     """

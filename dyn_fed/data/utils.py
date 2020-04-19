@@ -42,7 +42,7 @@ def next_batch(X, y, batch_size, shuffle=True, overlap=0.0):
         X_batch = X[start:end]
         y_batch = y[start:end]
         if end > X.shape[0] and overlap > 0.0:
-            # We need to circle back and stack the points from worker 1 onto these points
+            # We need to circle back and stack the points from client 1 onto these points
             end = end - X.shape[0]
             X_batch = Tensor(np.vstack([X_batch.data, X.data[0:end]]))
             y_batch = Tensor(np.vstack([y_batch.data, y.data[0:end]]))

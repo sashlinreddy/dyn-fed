@@ -1,32 +1,32 @@
-"""Watch dog for workers joining and leaving
+"""Watch dog for clients joining and leaving
 """
 from __future__ import print_function
 
 import logging
 
 class WorkerState():
-    """Keeps track of workers state for multiple different things.
+    """Keeps track of clients state for multiple different things.
     
-    Has a unique identifier, the state (whether or not the worker is alive),
+    Has a unique identifier, the state (whether or not the client is alive),
     their most representative data points for when they die, the lower and upper
     bounds for the indices they have, their data indices, the number of samples,
     and the mapping from the new data point indices to the original data point
     indices.
     
     Attributes:
-        identity (byte string): Unique identifier of the worker
-        state (bool): Whether or not the worker is alive
+        identity (byte string): Unique identifier of the client
+        state (bool): Whether or not the client is alive
         most_representative (numpy.ndarray): A vector of the indices of the
         most representative data points
-        lower_bound (int): The lower bound data index the worker contains
-        upper_bound (int): The upper bound data index the worker contains
-        idxs (numpy.ndarray): The indices the worker contains
-        n_samples (int): The number of samples the worker has
-        mr_idxs_used (bool): Whether or not a worker's most representative
-        indices have already been distributed. This applies when to only workers
+        lower_bound (int): The lower bound data index the client contains
+        upper_bound (int): The upper bound data index the client contains
+        idxs (numpy.ndarray): The indices the client contains
+        n_samples (int): The number of samples the client has
+        mr_idxs_used (bool): Whether or not a client's most representative
+        indices have already been distributed. This applies when to only clients
         that are dead
         mapping (dict): A mapping from the new data point indices to the original
-        data indices. This will be the same for workers that haven't died.
+        data indices. This will be the same for clients that haven't died.
     """
     def __init__(self, identity):
         self.identity = identity
@@ -65,7 +65,7 @@ class WorkerState():
 
     @comm_iterations.setter
     def comm_iterations(self, comm_iterations):
-        """Updates worker comm period
+        """Updates client comm period
         """
         self._comm_iterations = comm_iterations
 
@@ -77,7 +77,7 @@ class WorkerState():
 
     @comm_interval.setter
     def comm_interval(self, comm_interval):
-        """Updates worker comm intervals
+        """Updates client comm intervals
         """
         self._comm_interval = comm_interval
     
@@ -89,7 +89,7 @@ class WorkerState():
 
     @comm_every_iter.setter
     def comm_every_iter(self, comm_every_iter):
-        """Updates worker comm every iter
+        """Updates client comm every iter
         """
         self._comm_every_iter = comm_every_iter
 
@@ -101,7 +101,7 @@ class WorkerState():
 
     @comm_rounds.setter
     def comm_rounds(self, comm_rounds):
-        """Updates worker comm every iter
+        """Updates client comm every iter
         """
         self._comm_rounds = comm_rounds
 
@@ -161,33 +161,33 @@ class WorkerStates(object):
         return rep
 
     def keys(self):
-        """Returns worker state keys
+        """Returns client state keys
         """
         return [s.decode() for s in self._states]
 
-    def add(self, worker):
-        """Add worker state to dictionary
+    def add(self, client):
+        """Add client state to dictionary
         
         Args:
-            worker (byte string): Worker identifier
+            client (byte string): Worker identifier
         """
-        self._states[worker] = WorkerState(worker)
+        self._states[client] = WorkerState(client)
 
-    def pop(self, worker):
-        """Remove worker from dictionary
+    def pop(self, client):
+        """Remove client from dictionary
         
         Args:
-            worker (byte string): Worker identifier
+            client (byte string): Worker identifier
         """
-        self._states.pop(worker, None)
+        self._states.pop(client, None)
 
-    def update_state(self, worker, state):
-        """Updates worker state
+    def update_state(self, client, state):
+        """Updates client state
         """
-        self._states[worker] = state
+        self._states[client] = state
 
 class WatchDog(object):
-    """Keeps a watch on all worker related activities
+    """Keeps a watch on all client related activities
     
     Attributes:
         worker_states (tools.WorkerStates): A dictionary of WorkerState objects
@@ -202,43 +202,43 @@ class WatchDog(object):
 
     @property
     def states(self):
-        """Returns worker states
+        """Returns client states
         """
         return self._worker_states
 
     @property
     def n_alive(self):
-        """Returns number of workers that are alive
+        """Returns number of clients that are alive
         
         Returns:
-            n_alive (int): No. of alive workers
+            n_alive (int): No. of alive clients
         """
         self._n_alive = sum([s.state for s in self._worker_states().values()])
         return self._n_alive
 
     @property
     def active_workers(self):
-        """Returns activate workers
+        """Returns activate clients
         """
         return [w.identity for w in self.states if w.state]
 
-    def add_worker(self, worker):
-        """Adds new worker to dictonary of workers
+    def add_worker(self, client):
+        """Adds new client to dictonary of clients
         
         Args:
-            worker (byte str): Unique identifier for worker
+            client (byte str): Unique identifier for client
         """
-        if worker not in self.states():
-            self.logger.info(f"Worker Registered: {worker}")
-            self.states.add(worker)
-        elif not self.states()[worker].state:
-            self.logger.info(f"Worker {worker} alive again")
-            self.states[worker].state = True
+        if client not in self.states():
+            self.logger.info(f"Worker Registered: {client}")
+            self.states.add(client)
+        elif not self.states()[client].state:
+            self.logger.info(f"Worker {client} alive again")
+            self.states[client].state = True
         else:
             self.logger.debug("Worker asking for work again?")
 
-    def pop(self, worker):
-        """Remove worker
+    def pop(self, client):
+        """Remove client
         """
-        self.logger.info(f"Removing worker {worker} due to heart failure :(")
-        self._worker_states.pop(worker)
+        self.logger.info(f"Removing client {client} due to heart failure :(")
+        self._worker_states.pop(client)

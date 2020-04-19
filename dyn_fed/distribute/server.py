@@ -67,7 +67,7 @@ class Server():
             self._logger.debug("Creating tensorboard logger")
             self._tf_logger_train = TFLogger(self.model.strategy.tf_dir/'train')
             self._tf_logger_test = TFLogger(self.model.strategy.tf_dir/'test')
-        # Get ipaddress for workers to connect to
+        # Get ipaddress for clients to connect to
         self._save_ip()
 
     def _save_ip(self):
@@ -127,9 +127,9 @@ class Server():
         return poller
 
     def _poll_svd(self, i):
-        """Poll for the SVD index from workers
+        """Poll for the SVD index from clients
         """
-        # Poll messages from workers and collect them
+        # Poll messages from clients and collect them
         events = dict(self.poller.poll())
         if (self.pull_socket in events) and \
             (events.get(self.pull_socket) == zmq.POLLIN):
@@ -137,26 +137,26 @@ class Server():
             msg = self.pull_socket.recv_multipart()
             cmd = msg[0]
             if cmd == b"SVD":
-                worker = msg[1]
+                client = msg[1]
                 content = msg[2]
                 svd_idx = parse_setup_response_from_string(content)
                 self._logger.info(
-                    f"SVD_idx for worker {worker} is {svd_idx}"
+                    f"SVD_idx for client {client} is {svd_idx}"
                 )
-                self.watch_dog.states[worker].svd_idx = svd_idx
+                self.watch_dog.states[client].svd_idx = svd_idx
                 i += 1
         return i
 
     def _send_comm_info(self):
-        """Send communication information to each worker
+        """Send communication information to each client
         """
         for heart in self.heartbeater.hearts:
-            worker = self.watch_dog.states[heart]
+            client = self.watch_dog.states[heart]
             msg = [
                 comms_setup_to_string(
-                    worker.comm_iterations,
-                    worker.comm_interval,
-                    worker.comm_every_iter
+                    client.comm_iterations,
+                    client.comm_interval,
+                    client.comm_every_iter
                 )
             ]
             multipart = [heart, b"COMM_INFO"]
@@ -166,7 +166,7 @@ class Server():
     def _calculate_dynamic_comms(self):
         """Calculate dynamic comm period
         """
-        self._logger.info("Waiting for SVD idxs from each worker...")
+        self._logger.info("Waiting for SVD idxs from each client...")
         i = 0
         n_responses = len(self.heartbeater.hearts)
         start = time.time()
@@ -215,10 +215,10 @@ class Server():
                 f"comm_every_iter={comm_every_iter}"
             )
 
-            for i, worker in enumerate(self.watch_dog.states):
-                worker.comm_iterations = comm_iterations[i]
-                worker.comm_interval = comm_intervals[i]
-                worker.comm_every_iter = comm_every_iter[i]
+            for i, client in enumerate(self.watch_dog.states):
+                client.comm_iterations = comm_iterations[i]
+                client.comm_interval = comm_intervals[i]
+                client.comm_every_iter = comm_every_iter[i]
 
             self._send_comm_info()
 
@@ -234,10 +234,10 @@ class Server():
             self.watch_dog.states[heart].mapping = idx_mapping
 
     def _map(self):
-        """Map data to workers
+        """Map data to clients
         """
         if self.state == MAP:
-            self._logger.info("Sending work to workers")
+            self._logger.info("Sending work to clients")
             # First map data
             n_samples = self.X.shape[0]
 
@@ -277,16 +277,16 @@ class Server():
 
             self.state = MAP_PARAMS
 
-            # Keep track of iterations for each worker
-            for worker in self.watch_dog.states:
-                worker.comm_iterations = self.n_iterations
+            # Keep track of iterations for each client
+            for client in self.watch_dog.states:
+                client.comm_iterations = self.n_iterations
 
             if self.config.comms.mode == 1 or \
                 self.config.distribute.aggregate_mode == 3:
                 self._calculate_dynamic_comms()
 
         if self.state == MAP_PARAMS:
-            # Determine if worker needs to communicate
+            # Determine if client needs to communicate
             if self.config.comms.mode == 2:
                 self._logger.debug("Sending communication info")
                 self._send_comm_info()
@@ -298,7 +298,7 @@ class Server():
             multipart.extend(msg)
 
             self._logger.info("Sending params")
-            # Using pub socket, so worker will determine if he receives work
+            # Using pub socket, so client will determine if he receives work
             self.pub_socket.send_multipart(multipart)
 
     def _check_metrics(self):
@@ -356,9 +356,9 @@ class Server():
 
         Args:
             d_Wbs (list): List of parameters received
-            errors (list): List of losses for each worker
+            errors (list): List of losses for each client
             model (dfl.Model): Model being used
-            samples (list): List containing number of samples for each worker
+            samples (list): List containing number of samples for each client
             n_samples (int): Total number of samples
             mode (int): Aggregation mode (default: 0)
 
@@ -367,28 +367,28 @@ class Server():
             epoch_loss (float): Aggregated epoch loss
         """
         # pylint: disable=too-many-arguments, too-many-locals
-        # Iterate through workers and weight parameters by corresponding epoch loss
+        # Iterate through clients and weight parameters by corresponding epoch loss
         parameters = [
             [np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers
         ]
         sum_es = np.sum(np.exp(errors))
         sum_svds = np.sum(
-            np.exp([self.watch_dog.states[worker].svd_idx for worker in workers_received])
+            np.exp([self.watch_dog.states[client].svd_idx for client in workers_received])
         )
         epoch_loss = np.mean(errors)
         for j in np.arange(len(errors)):
-            weight = 1.0 / len(errors)  # Default aggregation is the average across workers
-            # Weight by loss calculated by worker - worker with highest loss has greater weight
+            weight = 1.0 / len(errors)  # Default aggregation is the average across clients
+            # Weight by loss calculated by client - client with highest loss has greater weight
             if mode == 1:
-                pass # TODO: Add number of samples for each worker to heartbeat version
+                pass # TODO: Add number of samples for each client to heartbeat version
                 # n_samples_worker = samples[j]
                 # weight = n_samples_worker / n_samples
             elif mode == 2:
                 weight = np.exp(errors[j]) / sum_es
             elif mode == 3:
-                worker = workers_received[j]
-                weight = np.exp(self.watch_dog.states[worker].svd_idx) / sum_svds
-            self._logger.debug(f"worker={j}, weight={weight}, loss={errors[j]}")
+                client = workers_received[j]
+                weight = np.exp(self.watch_dog.states[client].svd_idx) / sum_svds
+            self._logger.debug(f"client={j}, weight={weight}, loss={errors[j]}")
             for k in np.arange(model.n_layers):
                 parameters[k][0] += (
                     d_Wbs[j][k][0] * weight
@@ -403,21 +403,21 @@ class Server():
 
         return parameters, epoch_loss
 
-    def _gather(self, worker, content, errors, d_Wbs):
-        """Gather parameters from worker
+    def _gather(self, client, content, errors, d_Wbs):
+        """Gather parameters from client
         """
         parameters, mr, loss = \
             parse_params_response_from_string(content)
 
         self._logger.debug(
-            f"Received work from {worker}, mr.shape={mr.shape}"
+            f"Received work from {client}, mr.shape={mr.shape}"
         )
 
         # Update previous and current loss
-        self.watch_dog.states[worker].prev_loss = \
-            self.watch_dog.states[worker].current_loss
+        self.watch_dog.states[client].prev_loss = \
+            self.watch_dog.states[client].current_loss
 
-        self.watch_dog.states[worker].current_loss = loss
+        self.watch_dog.states[client].current_loss = loss
 
         # Collect loss and parameters
         errors.append(loss)
@@ -442,38 +442,38 @@ class Server():
         return n_responses
 
     def _poll(self, i, errors, d_Wbs, workers_received):
-        """Poll for events from worker
+        """Poll for events from client
         """
         events = dict(self.poller.poll())
         if (self.pull_socket in events) and \
             (events.get(self.pull_socket) == zmq.POLLIN):
             msg = self.pull_socket.recv_multipart()
             cmd = msg[0]
-            worker = msg[1]
+            client = msg[1]
             if cmd == b"WORK":
                 content = msg[2]
                 errors, d_Wbs = self._gather(
-                    worker,
+                    client,
                     content,
                     errors,
                     d_Wbs
                 )
-                workers_received.append(worker)
+                workers_received.append(client)
                 i += 1
 
             if cmd == b"SKIP":
-                # If we receive skip from worker, then ignore,
+                # If we receive skip from client, then ignore,
                 # but iterate our number of responses
                 i += 1
                 
 
         return i, errors, d_Wbs, workers_received
 
-    def _calculate_dynamic_comms_loss(self, workers):
+    def _calculate_dynamic_comms_loss(self, clients):
         """Calculate dynamic comms based on loss
         """
         losses = np.array(
-            [self.watch_dog.states[worker].prev_loss for worker in workers]
+            [self.watch_dog.states[client].prev_loss for client in clients]
         )
 
         self._logger.debug(f"Losses={losses}")
@@ -491,7 +491,7 @@ class Server():
 
         self._logger.debug(f"Normalized losses={normalized_losses}")
 
-        # Get new calculated no. of iterations for each worker
+        # Get new calculated no. of iterations for each client
         comm_iterations = np.ceil(
             normalized_losses * (self.model.max_iter - self.model.iter)
         ).astype(int)
@@ -503,10 +503,10 @@ class Server():
 
         self._logger.debug(f"Comm_iterations loss mode ={comm_iterations}")
 
-        for i, worker in enumerate(workers):
-            self.watch_dog.states[worker].comm_iterations = comm_iterations[i]
-            self.watch_dog.states[worker].comm_interval = comm_intervals[i]
-            self.watch_dog.states[worker].comm_every_iter = comm_every_iter[i]
+        for i, client in enumerate(clients):
+            self.watch_dog.states[client].comm_iterations = comm_iterations[i]
+            self.watch_dog.states[client].comm_interval = comm_intervals[i]
+            self.watch_dog.states[client].comm_every_iter = comm_every_iter[i]
 
     def _expected_responses(self):
         """Returns expected no. of responses
@@ -516,14 +516,14 @@ class Server():
         if self.config.comms.mode == 1 or \
             self.config.comms.mode == 2:
             comm_intervals = np.array(
-                [worker.comm_interval for worker in self.watch_dog.states]
+                [client.comm_interval for client in self.watch_dog.states]
             )
             comm_every_iter = np.array(
-                [worker.comm_every_iter for worker in self.watch_dog.states]
+                [client.comm_every_iter for client in self.watch_dog.states]
             )
 
             identities = np.array(
-                [worker.identity for worker in self.watch_dog.states]
+                [client.identity for client in self.watch_dog.states]
             )
 
             self._logger.debug(f"Comm intervals={comm_intervals}")
@@ -544,7 +544,7 @@ class Server():
         return n_responses
 
     def _recv(self):
-        """Reduce params from workers
+        """Reduce params from clients
         """
         if self.state == MAP_PARAMS:
             self._logger.info("Recv work")
@@ -562,7 +562,7 @@ class Server():
                 # Need to sleep gevent to be able to have heartbeat thread
                 gevent.sleep(0.00000001)
 
-                # Poll messages from workers and collect them
+                # Poll messages from clients and collect them
                 i, errors, d_Wbs, workers_received = \
                     self._poll(i, errors, d_Wbs, workers_received)
 
@@ -574,9 +574,9 @@ class Server():
                 if workers_received:
                     self._calculate_dynamic_comms_loss(workers_received)
 
-            # Keep track of communication rounds for each worker
-            for worker in workers_received:
-                self.watch_dog.states[worker].comm_rounds += 1
+            # Keep track of communication rounds for each client
+            for client in workers_received:
+                self.watch_dog.states[client].comm_rounds += 1
 
             # Aggregate parameters
             parameters, epoch_loss = self._reduce(
@@ -623,7 +623,7 @@ class Server():
             # if (self.config.comms.mode == 1) or \
             #     (self.config.comms.mode == 2):
             comm_rounds = np.sum([
-                worker.comm_rounds for worker in self.watch_dog.states
+                client.comm_rounds for client in self.watch_dog.states
             ])
             self._logger.debug(f"Comm rounds={comm_rounds}")
             # b_sizes = comm_rounds * param_byte_size
@@ -650,7 +650,7 @@ class Server():
         return self._n_mbs
 
     def setup(self, X, y, X_valid=None, y_valid=None):
-        """Setup master with data
+        """Setup server with data
         """
         self.X = X
         self.y = y
@@ -743,7 +743,7 @@ class Server():
         self.kill()
 
     def done(self):
-        """Sends exit signal to workers
+        """Sends exit signal to clients
         """
         time.sleep(1)
         self.pub_socket.send_multipart([b"", b"EXIT"])

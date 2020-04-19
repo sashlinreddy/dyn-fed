@@ -39,7 +39,7 @@ class WorkerV3():
         self.loop = None
         identity = strategy.identity
         self.identity = \
-            str(uuid.uuid4()) if identity is None else f"worker-{identity}"
+            str(uuid.uuid4()) if identity is None else f"client-{identity}"
 
         # Model variables
         self.model = model
@@ -68,7 +68,7 @@ class WorkerV3():
         self._logger.info("Setting up...")
 
     def _load_master_ip(self):
-        """Load master IP from shared folder
+        """Load server IP from shared folder
         """
         self._logger.info("Loading in Master IP")
         ip_filename = "ip_config.json"
@@ -198,7 +198,7 @@ class WorkerV3():
         )
     
     def setup(self, train_dataset, test_dataset=None):
-        """Setup master with train and test data and train steps
+        """Setup server with train and test data and train steps
         """
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset

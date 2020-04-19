@@ -35,16 +35,16 @@ if __name__ == "__main__":
             # msg = rep.recv_multipart()
             msg: bytes = rep.recv_multipart()
 
-            worker, m = msg
+            client, m = msg
             m = m.decode()
             # print(f"Msg={msg}")
             # m = m.decode()
-            print(f"Request received={m} from {worker}")
+            print(f"Request received={m} from {client}")
 
-            print("Sending back to worker")
+            print("Sending back to client")
             reply = "World ".encode()
             # rep.se
-            rep.send_multipart([worker, reply])
+            rep.send_multipart([client, reply])
 
     except KeyboardInterrupt:
         print("Keyboard interrupt")

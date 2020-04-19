@@ -78,7 +78,7 @@ class MasterV3():
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
         self._tf_logger = None
-        # Get ipaddress for workers to connect to
+        # Get ipaddress for clients to connect to
         self._save_ip()
 
     def _save_ip(self):
@@ -150,10 +150,10 @@ class MasterV3():
             self.watch_dog.states[heart].mapping = idx_mapping
 
     def _map(self):
-        """Map data to workers
+        """Map data to clients
         """
         if self.state == MAP:
-            self._logger.info("Sending work to workers")
+            self._logger.info("Sending work to clients")
             # First map data
 
             self._logger.debug(f"State={self.state}")
@@ -196,16 +196,16 @@ class MasterV3():
 
             self.state = MAP_PARAMS
 
-            # Keep track of iterations for each worker
-            for worker in self.watch_dog.states:
-                worker.comm_iterations = self.n_iterations
+            # Keep track of iterations for each client
+            for client in self.watch_dog.states:
+                client.comm_iterations = self.n_iterations
 
             if self.config.comms.mode == 1 or \
                 self.config.distribute.aggregate_mode == 3:
                 self._calculate_dynamic_comms()
 
         if self.state == MAP_PARAMS:
-            # Determine if worker needs to communicate
+            # Determine if client needs to communicate
             if self.config.comms.mode == 2:
                 self._logger.debug("Sending communication info")
                 self._send_comm_info()
@@ -262,9 +262,9 @@ class MasterV3():
 
         Args:
             d_Wbs (list): List of parameters received
-            errors (list): List of losses for each worker
+            errors (list): List of losses for each client
             model (dfl.Model): Model being used
-            samples (list): List containing number of samples for each worker
+            samples (list): List containing number of samples for each client
             n_samples (int): Total number of samples
             mode (int): Aggregation mode (default: 0)
 
@@ -273,28 +273,28 @@ class MasterV3():
             epoch_loss (float): Aggregated epoch loss
         """
         # pylint: disable=too-many-arguments, too-many-locals
-        # Iterate through workers and weight parameters by corresponding epoch loss
+        # Iterate through clients and weight parameters by corresponding epoch loss
         parameters = [
             np.zeros_like(w.numpy()) for w in model.trainable_weights
         ]
         sum_es = np.sum(np.exp(errors))
         sum_svds = np.sum(
-            np.exp([self.watch_dog.states[worker].svd_idx for worker in workers_received])
+            np.exp([self.watch_dog.states[client].svd_idx for client in workers_received])
         )
         epoch_loss = np.mean(errors)
         for j in np.arange(len(errors)):
-            weight = 1.0 / len(errors)  # Default aggregation is the average across workers
-            # Weight by loss calculated by worker - worker with highest loss has greater weight
+            weight = 1.0 / len(errors)  # Default aggregation is the average across clients
+            # Weight by loss calculated by client - client with highest loss has greater weight
             if mode == 1:
-                pass # TODO: Add number of samples for each worker to heartbeat version
+                pass # TODO: Add number of samples for each client to heartbeat version
                 # n_samples_worker = samples[j]
                 # weight = n_samples_worker / n_samples
             elif mode == 2:
                 weight = np.exp(errors[j]) / sum_es
             elif mode == 3:
-                worker = workers_received[j]
-                weight = np.exp(self.watch_dog.states[worker].svd_idx) / sum_svds
-            self._logger.debug(f"worker={j}, weight={weight}, loss={errors[j]}")
+                client = workers_received[j]
+                weight = np.exp(self.watch_dog.states[client].svd_idx) / sum_svds
+            self._logger.debug(f"client={j}, weight={weight}, loss={errors[j]}")
             for k in np.arange(len(model.trainable_weights)):
                 parameters[k] += (
                     weights[j][k] * weight
@@ -304,23 +304,23 @@ class MasterV3():
 
         return parameters, epoch_loss
 
-    def _gather(self, worker, content, errors, weights):
-        """Gather parameters from worker
+    def _gather(self, client, content, errors, weights):
+        """Gather parameters from client
         """
         parameters, loss = \
             parse_params_response_from_stringv2(content)
 
         self._logger.debug(
-            f"Received work from {worker}"
+            f"Received work from {client}"
         )
 
         # Update previous and current loss
-        self.watch_dog.states[worker].prev_loss = \
-            self.watch_dog.states[worker].current_loss
+        self.watch_dog.states[client].prev_loss = \
+            self.watch_dog.states[client].current_loss
 
-        self.watch_dog.states[worker].current_loss = loss
+        self.watch_dog.states[client].current_loss = loss
 
-        # Collect loss and parameters for indivual worker
+        # Collect loss and parameters for indivual client
         errors.append(loss)
         weights.append(parameters)
 
@@ -344,25 +344,25 @@ class MasterV3():
 
 
     def _poll(self, i, errors, weights, workers_received):
-        """Poll for events from worker
+        """Poll for events from client
         """
         events = dict(self.poller.poll())
         if (self.pull_socket in events) and \
             (events.get(self.pull_socket) == zmq.POLLIN):
             msg = self.pull_socket.recv_multipart()
             cmd = msg[0]
-            worker = msg[1]
+            client = msg[1]
             content = msg[2]
             if cmd == b"WORK":
                 errors, weights = self._gather(
-                    worker,
+                    client,
                     content,
                     errors,
                     weights
                 )
 
                 i += 1
-                workers_received.append(worker)
+                workers_received.append(client)
 
         return i, errors, weights, workers_received
 
@@ -374,14 +374,14 @@ class MasterV3():
         if self.config.comms.mode == 1 or \
             self.config.comms.mode == 2:
             comm_intervals = np.array(
-                [worker.comm_interval for worker in self.watch_dog.states]
+                [client.comm_interval for client in self.watch_dog.states]
             )
             comm_every_iter = np.array(
-                [worker.comm_every_iter for worker in self.watch_dog.states]
+                [client.comm_every_iter for client in self.watch_dog.states]
             )
 
             identities = np.array(
-                [worker.identity for worker in self.watch_dog.states]
+                [client.identity for client in self.watch_dog.states]
             )
 
             self._logger.debug(f"Comm intervals={comm_intervals}")
@@ -402,7 +402,7 @@ class MasterV3():
         return n_responses
 
     def _recv(self):
-        """Reduce params from workers
+        """Reduce params from clients
         """
         if self.state == MAP_PARAMS:
             self._logger.info("Recv work")
@@ -420,7 +420,7 @@ class MasterV3():
                 # Need to sleep gevent to be able to have heartbeat thread
                 gevent.sleep(0.00000001)
 
-                # Poll messages from workers and collect them
+                # Poll messages from clients and collect them
                 i, errors, weights, workers_received = \
                     self._poll(i, errors, weights, workers_received)
 
@@ -432,9 +432,9 @@ class MasterV3():
                 if workers_received:
                     self._calculate_dynamic_comms_loss(workers_received)
 
-            # Keep track of communication rounds for each worker
-            for worker in workers_received:
-                self.watch_dog.states[worker].comm_rounds += 1
+            # Keep track of communication rounds for each client
+            for client in workers_received:
+                self.watch_dog.states[client].comm_rounds += 1
 
             # Aggregate parameters
             parameters, epoch_loss = self._reduce(
@@ -464,7 +464,7 @@ class MasterV3():
             self.iter += 1
 
     def setup(self, train_dataset: Tuple, test_dataset: Optional[Tuple]=None):
-        """Setup master with train and test data and train steps
+        """Setup server with train and test data and train steps
         """
         self.train_dataset = train_dataset # Numpy tuple
         self.test_dataset = test_dataset # Numpy tuple
@@ -573,7 +573,7 @@ class MasterV3():
         self.kill()
 
     def done(self):
-        """Sends exit signal to workers
+        """Sends exit signal to clients
         """
         time.sleep(1)
         self.pub_socket.send_multipart([b"", b"EXIT"])

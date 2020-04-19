@@ -93,12 +93,12 @@ def train(data,
         logger.info("*******************************")
 
         if isinstance(data, tuple):
-            if role == "master":
+            if role == "server":
                 X_train, y_train, X_test, y_test = data
             else:
                 X_test, y_test = data # Unpack tuple
         else:
-            if role == "master": # Old data class
+            if role == "server": # Old data class
                 X_train, y_train, X_test, y_test = (
                     data.X_train,
                     data.y_train,
@@ -107,7 +107,7 @@ def train(data,
                 )
 
         # Learn model parameters
-        if role == "master":
+        if role == "server":
             model.fit(X_train, y_train, X_test, y_test)
         else:
             # Clients will only have test set if we are checking overfitting
@@ -120,7 +120,7 @@ def train(data,
         logger.info("COMPLETED TRAINING")
         logger.info("*******************************")
 
-        if role == "master":
+        if role == "server":
             
             # Print confusion matrix
             y_pred = model.forward(X_test)
@@ -145,17 +145,17 @@ def train(data,
 
 @click.command()
 @click.argument('n_workers', type=int)
-@click.option('--role', '-r', default="worker", type=str)
+@click.option('--role', '-r', default="client", type=str)
 @click.option('--verbose', '-v', default="INFO", type=str)
 @click.option('--identity', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
 @click.option('--add', '-a', default=0, type=int)
 @click.option('--config', '-c', default='config/config.yml', type=str)
 def run(n_workers, role, verbose, identity, tmux, add, config):
-    """Controller function which creates the master and starts off the training
+    """Controller function which creates the server and starts off the training
 
     Args:
-        n_workers (int): No. of workers to be used for the session
+        n_workers (int): No. of clients to be used for the session
         verbose (int): The logger level as an integer. See more in the logging
             file for different options
     """
@@ -211,7 +211,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     opt_name = Path(cfg.optimizer.name)
     model_type = Path(cfg.model.type)
 
-    if role == "master":
+    if role == "server":
         # Setup logger
         logger = setup_logger(level=verbose)
 
@@ -221,8 +221,6 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             logger.info(f"SLURM_JOBID={slurm_jobid}")
 
         # Server reads in data
-        logger.debug(f"data_name={type(data_name)}")
-
         if str(data_name) == "fashion-mnist":
             logger.info("Dataset: Fashion-MNist")
             data = fashion_mnist.load_data(
@@ -255,12 +253,12 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             executor_cfg["tf_dir"] = (
                 Path(
                     executor_cfg["tf_dir"]
-                )/data_name/model_type/opt_name/f"{encoded_run_name}/master"
+                )/data_name/model_type/opt_name/f"{encoded_run_name}/server"
             )    
 
         # time.sleep(2)
     else:
-        logger = setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
+        logger = setup_logger(filename=f'log-client-{d_identity}.log', level=verbose)
 
         if cfg.model.check_overfitting:
             if cfg.data.name == "mnist":
@@ -289,7 +287,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         if "tf_dir" in executor_cfg:
             executor_cfg["tf_dir"] = Path(
                 executor_cfg["tf_dir"]
-            )/data_name/model_type/opt_name/f"{encoded_run_name}/worker-{d_identity}"
+            )/data_name/model_type/opt_name/f"{encoded_run_name}/client-{d_identity}"
 
     if ('SLURM_JOBID' in os.environ) and ("tf_dir" in executor_cfg):
         executor_cfg["tf_dir"] = (

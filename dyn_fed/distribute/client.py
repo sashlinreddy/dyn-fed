@@ -33,7 +33,7 @@ class Client():
         self.ctrl = None
         self.loop = None
         self.identity = \
-            str(uuid.uuid4()) if identity is None else f"worker-{identity}"
+            str(uuid.uuid4()) if identity is None else f"client-{identity}"
 
         # Model variables
         self.model = model
@@ -55,7 +55,7 @@ class Client():
         self.comm_every_iter = 1
         self.subscribed = False
         self.prev_params = None
-        # Assume all workers have violated the dynamic operator threshold
+        # Assume all clients have violated the dynamic operator threshold
         self.violated = True
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
@@ -63,7 +63,7 @@ class Client():
         self._logger.info("Setting up...")
 
     def _load_master_ip(self):
-        """Load master IP from shared folder
+        """Load server IP from shared folder
         """
         self._logger.info("Loading in Master IP")
         ip_filename = "ip_config.json"
@@ -193,7 +193,7 @@ class Client():
 
                 X_batch = self.X[start:end]
                 y_batch = self.y[start:end]
-                # Each worker does work and we get the resulting parameters
+                # Each client does work and we get the resulting parameters
                 batch_loss, most_representative = \
                 self._do_work(
                     X_batch,
@@ -368,7 +368,7 @@ class Client():
             self.kill()
 
     def setup(self, X_valid=None, y_valid=None):
-        """Setup master with data
+        """Setup server with data
         """
         self.X_valid = X_valid
         self.y_valid = y_valid

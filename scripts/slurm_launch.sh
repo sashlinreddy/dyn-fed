@@ -38,13 +38,16 @@ elif [ "$MODEL" == "V2" ]; then
 elif [ "$MODEL" == "NN" ]; then
     echo "Running NN Model"
     EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_nn.py
+elif [ "$MODEL" == "TF" ]; then
+    echo "Running TF Model"
+    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/run_training.py
 fi
 
 export PYTHON_EXE=/home-mscluster/sreddy/miniconda3/envs/ftml/bin/python3
 export MASTER_EXE=$EXE_PATH
 export WORKER_EXE=$EXE_PATH
 
-echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r master $verbose $config > /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
-echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r worker $verbose -i %t $config >> /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
+echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r server $verbose $config > /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
+echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r client $verbose -i %t $config >> /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
 
 srun --multi-prog /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf

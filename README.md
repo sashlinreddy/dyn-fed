@@ -20,7 +20,7 @@ ____
 ## Features
 
 * Parameter quantization
-* Fault tolerant training - master keeps track of workers most representative data samples. If the worker goes down, the master redistributes those points to the workers that continue to do work
+* Fault tolerant training - server keeps track of clients most representative data samples. If the worker goes down, the server redistributes those points to the clients that continue to do work
 * Periodic communication - Workers only communicate parameters based on a selected interval
 
 ## Development
@@ -60,7 +60,7 @@ Go to http://localhost:6006.
 sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh
 ```
 
-The [slurm launch](scripts/slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [master execution script](examples/train_logisticv2.py). However, arguments can be passed to the job submission as below:
+The [slurm launch](scripts/slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [server execution script](examples/train_logisticv2.py). However, arguments can be passed to the job submission as below:
 
 ```bash
 sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh -v 20
@@ -78,7 +78,7 @@ The config of the model can be set in the [config file](config/config.yml). The 
     * learning_rate: Rate at which model learns
         * Mnist: SGD: 0.1, Adam: 0.01
         * Fashion Mnist: SGD: 0.25, Adam: 0.001
-    * mu_g: Weighting given to global W when workers updating local parameters. 0.0 for normal local update.
+    * mu_g: Weighting given to global W when clients updating local parameters. 0.0 for normal local update.
     * n_most_rep: No. of most representative data points to keep track of when worker goes down
     * name: Name of optimizer (Currently supports sgd and adam)
 
@@ -89,8 +89,8 @@ The config of the model can be set in the [config file](config/config.yml). The 
     * quantize: Whether or not to use quantization when communicating parameters
     * comm_period: How often to communicate parameters
     * delta_switch: When to switch to every iteration communication
-    * timeout: Time given for any workers to join
-    * send_gradients: Whether or not to send gradients back to master
+    * timeout: Time given for any clients to join
+    * send_gradients: Whether or not to send gradients back to server
     * shared_folder: Dataset to be used
 
 ## View Results

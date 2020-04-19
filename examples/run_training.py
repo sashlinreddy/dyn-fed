@@ -56,17 +56,17 @@ def train(train_dataset, test_dataset, strategy, config):
 
 @click.command()
 @click.argument('n_workers', type=int)
-@click.option('--role', '-r', default="worker", type=str)
+@click.option('--role', '-r', default="client", type=str)
 @click.option('--verbose', '-v', default="INFO", type=str)
 @click.option('--identity', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
 @click.option('--add', '-a', default=0, type=int)
 @click.option('--config', '-c', default='config/config.yml', type=str)
 def run(n_workers, role, verbose, identity, tmux, add, config):
-    """Controller function which creates the master and starts off the training
+    """Controller function which creates the server and starts off the training
 
     Args:
-        n_workers (int): No. of workers to be used for the session
+        n_workers (int): No. of clients to be used for the session
         verbose (int): The logger level as an integer. See more in the logging
             file for different options
     """
@@ -117,7 +117,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
     data_name = Path(data_cfg["name"])
 
-    if role == "master":
+    if role == "server":
         # Setup logger
         logger = setup_logger(level=verbose)
 
@@ -140,16 +140,16 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
         if "tf_dir" in executor_cfg:
             executor_cfg["tf_dir"] = (
-                Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/master"
+                Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/server"
             )
         train_dataset = (X_train, y_train)
         test_dataset = (X_test, y_test)
 
     else:
-        setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
+        setup_logger(filename=f'log-client-{d_identity}.log', level=verbose)
 
         if "tf_dir" in executor_cfg:
-            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/worker-{d_identity}"
+            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/client-{d_identity}"
 
     if ('SLURM_JOBID' in os.environ) and ("tf_dir" in executor_cfg):
         executor_cfg["tf_dir"] = Path.home()/executor_cfg["tf_dir"]/data_name

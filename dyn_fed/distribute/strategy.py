@@ -11,7 +11,7 @@ from dyn_fed.distribute.workerv3 import WorkerV3
 class DistributionStrategy(metaclass=ABCMeta):
     """Strategy for distributing within the cluster
     
-    Responsible for master-worker strategy. Contains all variables regarding the strategy
+    Responsible for server-client strategy. Contains all variables regarding the strategy
     
     Attributes:
         type (int): strategy type
@@ -50,10 +50,10 @@ class LocalStrategy(DistributionStrategy):
 
 
 class MasterWorkerStrategy(DistributionStrategy):
-    """Master worker strategy for distributing within the cluster
+    """Master client strategy for distributing within the cluster
     
     Attributes:
-        n_workers (int): No. of workers being used for session
+        n_workers (int): No. of clients being used for session
         remap (int): Remap strategy
         quantize (int): Whether or not to quantize parameters
         comm_period (int): Communicate every comm_period iteration(s)
@@ -61,12 +61,12 @@ class MasterWorkerStrategy(DistributionStrategy):
         weighted by loss, etc)
         delta_switch (float): The delta threshold we reach before switching back
         to communication every iteration
-        worker_timeout (int): Timeout to pickup workers
+        worker_timeout (int): Timeout to pickup clients
         send_gradients (int): Whether or not to send gradients or parameters
         shared_folder (str): Path to shared data folder
-        role (str): Master or worker role
+        role (str): Master or client role
     """
-    def __init__(self, n_workers, config, role='master'):
+    def __init__(self, n_workers, config, role='server'):
         self.n_workers = n_workers
         self.config = config
         
@@ -88,10 +88,10 @@ class MasterWorkerStrategy(DistributionStrategy):
         pass
 
 class MasterWorkerStrategyV2(DistributionStrategy):
-    """Master worker strategy for distributing within the cluster
+    """Master client strategy for distributing within the cluster
     
     Attributes:
-        n_workers (int): No. of workers being used for session
+        n_workers (int): No. of clients being used for session
         remap (int): Remap strategy
         quantize (int): Whether or not to quantize parameters
         comm_period (int): Communicate every comm_period iteration(s)
@@ -99,12 +99,12 @@ class MasterWorkerStrategyV2(DistributionStrategy):
         weighted by loss, etc)
         delta_switch (float): The delta threshold we reach before switching back
         to communication every iteration
-        worker_timeout (int): Timeout to pickup workers
+        worker_timeout (int): Timeout to pickup clients
         send_gradients (int): Whether or not to send gradients or parameters
         shared_folder (str): Path to shared data folder
-        role (str): Master or worker role
+        role (str): Master or client role
     """
-    def __init__(self, n_workers, config, role='master'):
+    def __init__(self, n_workers, config, role='server'):
         self.n_workers = n_workers
         self.config = config
 
@@ -140,9 +140,9 @@ class MasterWorkerStrategyV2(DistributionStrategy):
         optimizer = args[1]
         train_dataset = args[2]
         test_dataset = kwargs.get('test_dataset')
-        if self.role == "master":
-            # Setup master
-            self._logger.debug("Setting up master")
+        if self.role == "server":
+            # Setup server
+            self._logger.debug("Setting up server")
             self._master = MasterV3(
                 model=model,
                 optimizer=optimizer,
@@ -169,4 +169,4 @@ class MasterWorkerStrategyV2(DistributionStrategy):
 
             self._worker.start()
 
-            self._logger.info("Connecting worker sockets")
+            self._logger.info("Connecting client sockets")
