@@ -24,20 +24,18 @@ def train(train_dataset, test_dataset, strategy, config):
     """
     logger = logging.getLogger('dfl.train')
     opt_cfg = config.get('optimizer')
-    # BATCH_SIZE = model_config.get('batch_size')
-    # SHUFFLE_BUFFER_SIZE = 100
 
-
-    # Only do after partition
-    # train_dataset = train_dataset.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE)
-    # batch_size = config['model']['batch_size'] * strategy.n_workers
-    # test_dataset = test_dataset.batch(batch_size)
-
-    model = tf.keras.Sequential([
-        tf.keras.layers.Flatten(input_shape=(28, 28)),
-        # tf.keras.layers.Dense(128, activation='relu'),
-        tf.keras.layers.Dense(10, activation="sigmoid")
-    ])
+    if config.model.type == "logistic":
+        model = tf.keras.Sequential([
+            tf.keras.layers.Flatten(input_shape=(28, 28)),
+            tf.keras.layers.Dense(10, activation="sigmoid")
+        ])
+    elif config.model.type == "nn1":
+        model = tf.keras.Sequential([
+            tf.keras.layers.Flatten(input_shape=(28, 28)),
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dense(10, activation="sigmoid")
+        ])
 
     if opt_cfg.get('name') == 'sgd':
         # Define optimizer
