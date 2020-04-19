@@ -29,13 +29,16 @@ if [ "$MODEL" == "LINEAR" ]; then
 elif [ "$MODEL" == "LOGISTIC" ]; then
     echo "Running Logistic Model"
     pythonw examples/train_logistic.py $NWORKERS -r master $VERBOSE
-elif [ "$MODEL" == "LOG2" ]; then
-    echo "Running Logistic Model"
-    pythonw examples/train_logisticv2.py $NWORKERS -r master $VERBOSE $config
+elif [ "$MODEL" == "V2" ]; then
+    echo "Running Version2 Model"
+    pythonw examples/train_model.py $NWORKERS -r master $VERBOSE $config
 elif [ "$MODEL" == "NN" ]; then
     echo "Running NN Model"
     pythonw examples/train_nn.py $NWORKERS -r master $VERBOSE
 elif [ "$MODEL" == "TF" ]; then
     echo "Running TF Model"
     pythonw examples/run_training.py $NWORKERS -r master $VERBOSE $config
+else
+    echo "Running Version2 Model"
+    pythonw examples/train_model.py $NWORKERS -r master $VERBOSE $config
 fi

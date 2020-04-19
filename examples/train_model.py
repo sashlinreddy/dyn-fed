@@ -10,8 +10,8 @@ import numpy as np
 # pylint: disable=wrong-import-position
 np.random.seed(42)
 
-from dyn_fed.data import MNist, FashionMNist, OccupancyData
-from dyn_fed.data import mnist
+from dyn_fed.data import OccupancyData
+from dyn_fed.data import mnist, fashion_mnist
 from dyn_fed.distribute import MasterWorkerStrategy
 
 from dyn_fed.lib.io import file_io
@@ -61,7 +61,7 @@ def train(data,
     )
 
     # Create model
-    if cfg.model.type == "logreg":
+    if cfg.model.type == "logistic":
         model = LogisticRegressionV2(
             optimizer, 
             strategy,
@@ -110,7 +110,11 @@ def train(data,
         if role == "master":
             model.fit(X_train, y_train, X_test, y_test)
         else:
-            model.fit(None, None, X_test, y_test)
+            # Clients will only have test set if we are checking overfitting
+            if cfg.model.check_overfitting:
+                model.fit(X_valid=X_test, y_valid=y_test)
+            else:
+                model.fit()
 
         logger.info("*******************************")
         logger.info("COMPLETED TRAINING")
@@ -191,8 +195,12 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     executor_cfg.identity = d_identity
 
     if 'PROJECT_DIR' in os.environ:
-        executor_cfg['shared_folder'] = Path(os.environ['PROJECT_DIR'])/executor_cfg['shared_folder']
-        executor_cfg['config_folder'] = Path(os.environ['PROJECT_DIR'])/executor_cfg['config_folder']
+        executor_cfg['shared_folder'] = (
+            Path(os.environ['PROJECT_DIR'])/executor_cfg['shared_folder']
+        )
+        executor_cfg['config_folder'] = (
+            Path(os.environ['PROJECT_DIR'])/executor_cfg['config_folder']
+        )
 
     # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
@@ -212,42 +220,29 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         if slurm_jobid is not None:
             logger.info(f"SLURM_JOBID={slurm_jobid}")
 
-        # Master reads in data
-        data_dir = Path(cfg.executor.shared_folder)/data_name
+        # Server reads in data
+        logger.debug(f"data_name={type(data_name)}")
 
-        if 'mnist' in str(data_dir):
-            # Get data
-            filepaths = {
-                "train": {
-                    "images": data_dir/"train-images-idx3-ubyte.gz",
-                    "labels": data_dir/"train-labels-idx1-ubyte.gz"
-                },
-                "test": {
-                    "images": data_dir/"t10k-images-idx3-ubyte.gz",
-                    "labels": data_dir/"t10k-labels-idx1-ubyte.gz"
-                }
-            }
-            if 'fashion-mnist' in str(data_dir):
-                logger.info("Dataset: Fashion-MNist")
-                data = FashionMNist(
-                    filepath=filepaths,
-                    noniid=cfg.data.noniid
-                )
-            else:
-                logger.info("Dataset: MNist")
-                data = mnist.load_data(
-                    noniid=cfg.data.noniid,
-                    onehot=True, # One hot encode labels
-                    convert_types=True, # Converts labels to 0.01 and 0.99 / to float 32
-                    reshape=True, # Reshape to 2D
-                    tensorize=True
-                )
-                # data = MNist(
-                #     filepaths,
-                #     noniid=cfg.data.noniid
-                # )
+        if str(data_name) == "fashion-mnist":
+            logger.info("Dataset: Fashion-MNist")
+            data = fashion_mnist.load_data(
+                noniid=cfg.data.noniid,
+                onehot=True, # One hot encode labels
+                convert_types=True, # Converts labels to 0.01 and 0.99 / to float 32
+                reshape=True, # Reshape to 2D
+                tensorize=True
+            )
+        elif str(data_name) == "mnist":
+            logger.info("Dataset: MNist")
+            data = mnist.load_data(
+                noniid=cfg.data.noniid,
+                onehot=True, # One hot encode labels
+                convert_types=True, # Converts labels to 0.01 and 0.99 / to float 32
+                reshape=True, # Reshape to 2D
+                tensorize=True
+            )
 
-        elif 'occupancy_data' in str(data_dir):
+        elif str(data_name) == "occupancy_data":
             logger.info("Dataset: Occupancy data")
             data = OccupancyData(
                 filepath="data/occupancy_data/datatraining.txt",
@@ -267,17 +262,29 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     else:
         logger = setup_logger(filename=f'log-worker-{d_identity}.log', level=verbose)
 
-        if cfg.data.name == "mnist":
-            logger.info("Dataset: MNist, test set only")
-            data = mnist.load_data(
-                noniid=cfg.data.noniid,
-                onehot=True, # One hot encode labels
-                convert_types=True, # Converts labels to 0.01 and 0.99 / to float 32
-                reshape=True, # Reshape to 2D
-                test_only=True, # Load only test set
-                tensorize=True # Convert to our special tensor
-            )
-            logger.info(f"Loaded in test set with shape={data[0].shape}")
+        if cfg.model.check_overfitting:
+            if cfg.data.name == "mnist":
+                logger.info("Dataset: MNist, test set only")
+                data = mnist.load_data(
+                    noniid=cfg.data.noniid,
+                    onehot=True, # One hot encode labels
+                    convert_types=True, # Converts labels to 0.01 and 0.99 / to float 32
+                    reshape=True, # Reshape to 2D
+                    test_only=True, # Load only test set
+                    tensorize=True # Convert to our special tensor
+                )
+                logger.info(f"Loaded in test set with shape={data[0].shape}")
+            elif cfg.data.name == "fashion-mnist":
+                logger.info("Dataset: Fashion-MNist, test set only")
+                data = fashion_mnist.load_data(
+                    noniid=cfg.data.noniid,
+                    onehot=True, # One hot encode labels
+                    convert_types=True, # Converts labels to 0.01 and 0.99 / to float 32
+                    reshape=True, # Reshape to 2D
+                    test_only=True, # Load only test set
+                    tensorize=True # Convert to our special tensor
+                )
+                logger.info(f"Loaded in test set with shape={data[0].shape}")
 
         if "tf_dir" in executor_cfg:
             executor_cfg["tf_dir"] = Path(

@@ -40,13 +40,18 @@ def _create_experiments():
         rendered_config = model_utils.render_template(
             config_dir,
             'template.yml',
+            model_type=experiment.get('model_type', 'logistic'),
             n_iterations=experiment.get('n_iterations', 100),
+            check_overfitting=experiment.get('check_overfitting', False),
+            data_name=experiment.get('data_name', 'mnist'),
+            noniid=experiment.get('noniid', 0),
+            unbalanced=experiment.get('unbalanced', 0),
+            optimizer=experiment.get('optimizer', 'sgd'),
             comm_mode=experiment.get('mode', 0),
             interval=experiment.get('interval', 1),
             agg_mode=experiment.get('aggregate_mode', 0),
-            data_dir=f"\"{experiment.get('shared_folder', 'data/mnist/')}\"",
-            noniid=experiment.get('noniid', 0),
-            unbalanced=experiment.get('unbalanced', 0)
+            delta_threshold=experiment.get('delta_threshold', 0.0),
+            data_dir=experiment.get('shared_folder', 'data/mnist/')
         )
         counter = i + 1
         with open(f'{folder_path}/config-{i+1}.yml', 'w') as f:
