@@ -20,7 +20,7 @@ from dyn_fed.metrics import accuracy_scorev2, confusion_matrix
 from dyn_fed.optimizers import SGD, Adam
 from dyn_fed.utils import model_utils, setup_logger
 
-from ft_models import LogisticRegressionV2, SimpleNN
+from ft_models import LogisticRegressionV2, SimpleNN, NN2
 
 def train(data,
           role,
@@ -73,6 +73,16 @@ def train(data,
         )
     elif cfg.model.type == "nn1":
         model = SimpleNN(
+            optimizer, 
+            strategy,
+            batch_size=cfg.data.batch_size,
+            max_iter=cfg.model.n_iterations, 
+            shuffle=cfg.data.shuffle, 
+            verbose=verbose,
+            encode_name=encoded_run_name
+        )
+    elif cfg.model.type == "nn2":
+        model = NN2(
             optimizer, 
             strategy,
             batch_size=cfg.data.batch_size,
