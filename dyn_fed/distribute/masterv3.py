@@ -508,11 +508,11 @@ class MasterV3():
 
         # Get new calculated no. of iterations for each client
         comm_iterations = np.ceil(
-            normalized_losses * (self.max_iter - self.model.iter)
+            normalized_losses * (self.max_iter - self.iter)
         ).astype(int)
         comm_iterations = np.where(comm_iterations == 0, 1, comm_iterations)
 
-        comm_intervals = np.ceil((self.max_iter - self.model.iter) / comm_iterations).astype(int)
+        comm_intervals = np.ceil((self.max_iter - self.iter) / comm_iterations).astype(int)
         comm_every_iter = self.max_iter - \
             (comm_iterations - (self.max_iter // comm_intervals))
 
@@ -546,7 +546,7 @@ class MasterV3():
             who_comms = np.mod(self.iter, comm_intervals)
             who_comms = set(np.argwhere(who_comms == 0).flatten())
             every_iter = set(np.argwhere(self.iter >= comm_every_iter).flatten())
-            # every_iter = set(np.argwhere(self.model.iter <= comm_every_iter).flatten())
+            # every_iter = set(np.argwhere(self.iter <= comm_every_iter).flatten())
             both = who_comms.union(every_iter)
             identities = identities[list(both)]
             n_responses = len(both)
@@ -645,7 +645,7 @@ class MasterV3():
 
             self._logger.debug(f"Msg params size={param_byte_size}")
             # self._logger.info(
-            #     f"Total params size in MBs for iter{self.model.iter} is "
+            #     f"Total params size in MBs for iter{self.iter} is "
             # )
             # if self.config.comms.mode == 2:
             self._calculated_byte_size = True
@@ -654,7 +654,7 @@ class MasterV3():
             self._tf_logger_train.scalar(
                 "msg-size",
                 self._n_mbs,
-                self.model.iter
+                self.iter
             )
 
         return self._n_mbs
