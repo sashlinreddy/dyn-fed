@@ -227,6 +227,11 @@ class MasterV3():
             test_acc (float): Test accuracy
         """
         @tf.function
+        def train_validate(features, labels):
+            predictions = self.model(features, training=False)
+            self.train_accuracy(labels, predictions)
+
+        @tf.function
         def model_validate(features, labels):
             predictions = self.model(features, training=False)
             v_loss = self.loss_func(labels, predictions)
@@ -236,6 +241,16 @@ class MasterV3():
 
         for x, y in self.test_dataset:
             model_validate(x, y)
+
+        if isinstance(self.train_dataset, tuple):
+            X_train, y_train = self.train_dataset
+            train_dataset = tf.data.Dataset.from_tensor_slices(
+                (X_train, y_train)
+            )
+            self.td = train_dataset.batch(self.config.data.batch_size)
+
+        for x, y in self.td:
+            train_validate(x, y)
 
         train_acc = self.train_accuracy.result()
         test_acc = self.test_accuracy.result()
