@@ -37,7 +37,7 @@ elif [ "$MODEL" == "NN" ]; then
     pythonw examples/train_nn.py $NWORKERS -r server $VERBOSE
 elif [ "$MODEL" == "TF" ]; then
     echo "Running TF Model"
-    pythonw examples/run_training.py $NWORKERS -r server $VERBOSE $config
+    pythonw examples/train_tf_model.py $NWORKERS -r server $VERBOSE $config
 else
     echo "Running Version2 Model"
     pythonw examples/train_model.py $NWORKERS -r server $VERBOSE $config

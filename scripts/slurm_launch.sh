@@ -40,7 +40,7 @@ elif [ "$MODEL" == "NN" ]; then
     EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_nn.py
 elif [ "$MODEL" == "TF" ]; then
     echo "Running TF Model"
-    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/run_training.py
+    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_tf_model.py
 fi
 
 export PYTHON_EXE=/home-mscluster/sreddy/miniconda3/envs/ftml/bin/python3

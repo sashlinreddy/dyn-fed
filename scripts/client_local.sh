@@ -37,7 +37,7 @@ elif [ "$MODEL" == "NN" ]; then
     pythonw examples/train_nn.py $NWORKERS -r client $VERBOSE -i $TMUX_PANE -t 1
 elif [ "$MODEL" == "TF" ]; then
     echo "Running TF Model"
-    pythonw examples/run_training.py $NWORKERS -r client $VERBOSE -i $TMUX_PANE -t 1 $config
+    pythonw examples/train_tf_model.py $NWORKERS -r client $VERBOSE -i $TMUX_PANE -t 1 $config
 else
     echo "Running Version2 Model"
     pythonw examples/train_model.py $NWORKERS -r client $VERBOSE -i $TMUX_PANE -t 1 $config
