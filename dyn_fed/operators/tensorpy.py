@@ -104,6 +104,26 @@ class Tensor():
     def __pow__(self, p):
         is_param = self.is_param
         return Tensor(self.data ** p, is_param=is_param)
+
+    def __lt__(self, value):
+        other = ensure_tensor(value)
+        is_param = self.is_param or other.is_param
+        return Tensor(self.data < other.data, is_param=is_param)
+
+    def __gt__(self, value):
+        other = ensure_tensor(value)
+        is_param = self.is_param or other.is_param
+        return Tensor(self.data > other.data, is_param=is_param)
+
+    def __le__(self, value):
+        other = ensure_tensor(value)
+        is_param = self.is_param or other.is_param
+        return Tensor(self.data <= other.data, is_param=is_param)
+
+    def __ge__(self, value):
+        other = ensure_tensor(value)
+        is_param = self.is_param or other.is_param
+        return Tensor(self.data >= other.data, is_param=is_param)
     
     def __getitem__(self, idxs):
         is_param = self.is_param
@@ -169,6 +189,12 @@ class Tensor():
             ),
             is_param=is_param
         )
+
+    def astype(self, dtype):
+        """Convert type of tensor
+        """
+        is_param = self.is_param
+        return Tensor(self.data.astype(dtype), is_param=is_param)
 
     def tostring(self):
         """Return numpy array as byte string
