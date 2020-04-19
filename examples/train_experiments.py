@@ -77,6 +77,8 @@ def run(platform):
     # n_workers = [8, 32, 64, 128]
     # n_workers = [8, 16, 32]
     n_workers = [64]
+    project_dir = Path(__file__).resolve().parents[1]
+    launch_script_path = str(project_dir/'scripts/slurm_launch.sh')
 
     if platform == 'slurm':
         for fname in folder_name.iterdir():
@@ -86,11 +88,11 @@ def run(platform):
                     'sbatch',
                     '-n',
                     str(n_worker),
-                    '/home-mscluster/sreddy/fault-tolerant-ml/scripts/slurm_launch.sh',
+                    launch_script_path,
                     '-v',
                     'DEBUG',
                     '-m',
-                    'LOG2',
+                    'V2',
                     '-c',
                     str(fname)
                 ])
