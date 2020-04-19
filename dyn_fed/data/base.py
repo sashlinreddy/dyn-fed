@@ -1,9 +1,18 @@
 """Base class for all dfl Datasets
 """
 from __future__ import absolute_import, print_function
+import gzip
+import struct
 
+import numpy as np
 
-
+def _unarchive(fname):
+    """Unarchive filename
+    """
+    with gzip.open(fname) as f:
+        _, _, dims = struct.unpack('>HBB', f.read(4))
+        shape = tuple(struct.unpack('>I', f.read(4))[0] for d in range(dims))
+        return np.fromstring(f.read(), dtype=np.uint8).reshape(shape)
 class Dataset():
     """Base class for all datasets for dyn_fed
     """
