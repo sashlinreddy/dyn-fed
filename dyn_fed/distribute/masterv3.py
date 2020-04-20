@@ -340,10 +340,11 @@ class MasterV3():
 
         if isinstance(self.train_dataset, tuple):
             X_train, y_train = self.train_dataset
+            n_samples, _, _ = X_train.shape
             train_dataset = tf.data.Dataset.from_tensor_slices(
                 (X_train, y_train)
             )
-            self.td = train_dataset.batch(self.config.data.batch_size)
+            self.td = train_dataset.batch(n_samples)
 
         for x, y in self.td:
             train_validate(x, y)
@@ -476,6 +477,7 @@ class MasterV3():
                 workers_received.append(client)
 
             if cmd == b"SKIP":
+                self._logger.debug(f"Received skip command from client {client}")
                 # If we receive skip from client, then ignore,
                 # but iterate our number of responses
                 i += 1
