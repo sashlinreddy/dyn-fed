@@ -50,6 +50,7 @@ class WorkerState():
         self._comm_every_iter = 1
         self._comm_rounds = 0
         self.violated = False
+        self.divergence = 0.0
 
     def __repr__(self):
         return f"<WorkerState identity={self.identity.decode()}>"
