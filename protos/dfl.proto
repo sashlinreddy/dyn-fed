@@ -74,4 +74,5 @@ message SubscriptionResponseV2 {
     repeated Tensor trainable_weights = 1;
     Tensor most_rep = 2;
     float loss = 3;
+    float divergence = 4;
 }

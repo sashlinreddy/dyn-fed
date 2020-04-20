@@ -25,6 +25,7 @@ from dyn_fed.distribute.states import (
 )
 from dyn_fed.proto.utils import (params_to_stringv2,
                                  parse_params_response_from_stringv2,
+                                 parse_skip_params_from_string,
                                  parse_setup_response_from_string,
                                  setup_to_string,
                                  comms_setup_to_string)
@@ -320,16 +321,22 @@ class ServerV2():
             multipart = [b"", b"WORK_PARAMS"]
             multipart.extend(msg)
             update_ref_model = (
-                (self.model_watchdog.violation_counter == self.watch_dog.n_alive) or 
+                (self.model_watchdog.violation_counter == self.watch_dog.n_alive and
+                self.model_watchdog.divergence <= self.model_watchdog.delta_threshold) or 
                 (self.iter == 0)
             )
-            # self._logger.debug(
-            #     f"violation_counter={self.model_watchdog.violation_counter} ,"
-            #     f"n_alive={self.watch_dog.n_alive} ,"
-            #     f"update_ref_model={update_ref_model}"
-            # )
+            update_ref_model = np.array(update_ref_model)
+            if self.iter == 0:
+                self.model_watchdog.update_ref_model(
+                    [p.numpy() for p in self.model.trainable_weights]
+                )
+            self._logger.debug(
+                f"violation_counter={self.model_watchdog.violation_counter} ,"
+                f"n_alive={self.watch_dog.n_alive} ,"
+                f"update_ref_model={update_ref_model}"
+            )
 
-            update_ref_model = update_ref_model.to_bytes(1, 'little')
+            update_ref_model = update_ref_model.tostring()
             multipart.extend([update_ref_model])
             self.model_watchdog.violation_counter = 0
 
@@ -497,8 +504,12 @@ class ServerV2():
                 self.watch_dog.states[client].violation = True
 
             if cmd == b"SKIP":
+                content = msg[2]
                 # Update worker violation state
                 self.watch_dog.states[client].violation = False
+                self.watch_dog.states[client].divergence = (
+                    parse_skip_params_from_string(content)
+                )
                 self._logger.debug(f"Received skip command from client {client}")
                 # If we receive skip from client, then ignore,
                 # but iterate our number of responses
@@ -615,53 +626,57 @@ class ServerV2():
             for client in workers_received:
                 self.watch_dog.states[client].comm_rounds += 1
 
+            deltas = [c.divergence for c in self.watch_dog.states]
+            self.model_watchdog.calculate_divergence(deltas, local=False)
+
             # Aggregate parameters
-            parameters, epoch_loss = self._reduce(
-                weights=weights,
-                errors=errors,
-                model=self.model,
-                workers_received=workers_received,
-                mode=self.config.distribute.aggregate_mode
-            )
+            if workers_received:
+                parameters, epoch_loss = self._reduce(
+                    weights=weights,
+                    errors=errors,
+                    model=self.model,
+                    workers_received=workers_received,
+                    mode=self.config.distribute.aggregate_mode
+                )
 
-            # Check how many have violated condition
-            # self.model_watchdog.violation_counter = np.sum(
-            #     [self.watch_dog.states[c].violation for c in workers_received]
-            # )
+                if self.model_watchdog.violation_counter == self.watch_dog.n_alive and \
+                    self.model_watchdog.divergence <= self.model_watchdog.delta_threshold:
+                    self.model_watchdog.update_ref_model(parameters)
+                    
 
-            # self.model_watchdog.calculate_divergence(weights)
+                # Update model with these parameters
+                if parameters:
+                    self.model.set_weights(parameters)
+                    # delta = self._update_model(parameters)
 
-            # if self.model_watchdog.violation_counter == self.watch_dog.n_alive and \
-            #     self.model_watchdog.divergence <= self.model_watchdog.delta_threshold:
-            #     self.model_watchdog.update_ref_model(parameters)
-                
+                # Check metrics
+                train_acc, test_acc, test_loss = self._check_metrics()
 
-            # Update model with these parameters
-            if parameters:
-                self.model.set_weights(parameters)
-                # delta = self._update_model(parameters)
+                self._logger.info(
+                    f"iteration = {self.iter}, "
+                    f"divergence={self.model_watchdog.divergence:7.4f}, "
+                    f"train_loss={epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
+                    f"train acc={train_acc*100:7.4f}%, "
+                    f"test acc={test_acc*100:7.4f}% ,"
+                    f"violation_counter={self.model_watchdog.violation_counter}"
+                )
 
-            # Check metrics
-            train_acc, test_acc, test_loss = self._check_metrics()
+                if self._tf_logger_train is not None:
+                    with self._tf_logger_train.as_default():
+                        tf.summary.scalar('loss', epoch_loss, step=self.iter)
+                        tf.summary.scalar('accuracy', train_acc, step=self.iter)
 
-            self._logger.info(
-                f"iteration = {self.iter}, "
-                f"divergence={self.model_watchdog.divergence:7.4f}, "
-                f"train_loss={epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
-                f"train acc={train_acc*100:7.4f}%, "
-                f"test acc={test_acc*100:7.4f}% ,"
-                f"violation_counter={self.model_watchdog.violation_counter}"
-            )
+                if self._tf_logger_test is not None:
+                    with self._tf_logger_test.as_default():
+                        tf.summary.scalar('loss', test_loss, step=self.iter)
+                        tf.summary.scalar('accuracy', test_acc, step=self.iter)
 
-            if self._tf_logger_train is not None:
-                with self._tf_logger_train.as_default():
-                    tf.summary.scalar('loss', epoch_loss, step=self.iter)
-                    tf.summary.scalar('accuracy', train_acc, step=self.iter)
-
-            if self._tf_logger_test is not None:
-                with self._tf_logger_test.as_default():
-                    tf.summary.scalar('loss', test_loss, step=self.iter)
-                    tf.summary.scalar('accuracy', test_acc, step=self.iter)
+            else:
+                if self.config.comms.mode == 3:
+                    self._logger.debug(
+                        f"Comm mode = 3, all workers haven't met "
+                        f"threshold of {self.model_watchdog.delta_threshold}"
+                    )
 
             self.iter += 1
 

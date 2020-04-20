@@ -21,10 +21,12 @@ from tornado import ioloop
 
 from dyn_fed.distribute.watch_dog import ModelWatchDog
 from dyn_fed.proto.utils import (params_response_to_stringv2,
+                                 params_skip_response_to_string,
                                  parse_params_from_stringv2,
                                  parse_setup_from_string,
                                  setup_reponse_to_string,
-                                 parse_comm_setup_from_string)
+                                 parse_comm_setup_from_string,
+                                 parse_numpy_from_string)
 from dyn_fed.utils.maths import arg_svd
 from dyn_fed.lib.io.file_io import FileWatcher
 
@@ -350,7 +352,7 @@ class ClientV2():
                 self._logger.debug("Delta < threshold - no need to update params")
 
             update_ref_model = msg[3]
-            update_ref_model = bool.from_bytes(update_ref_model, 'little')
+            update_ref_model = parse_numpy_from_string(update_ref_model, dtype=bool, shape=())
             self._logger.debug(f"Update ref model={update_ref_model}")
             if update_ref_model:
                 self.model_watchdog.update_ref_model(parameters)
@@ -361,7 +363,7 @@ class ClientV2():
             self._logger.info("blocked for %.3f s", (time.time() - tic))
             if self.config.comms.mode == 3:
                 # Only do this for dynamic averaging technique
-                if self.model_watchdog.divergence < self.config.distribute.delta_threshold:
+                if self.model_watchdog.divergence <= self.config.distribute.delta_threshold:
                     self.violated = False
                 # If exceeds threshold then will communicate
                 else:
@@ -381,6 +383,8 @@ class ClientV2():
             send_work = (self.iter - 1) % self.comm_interval == 0
             send_work = send_work or (self.iter >= self.comm_every_iter)
             send_work = send_work and self.violated # If work is violated, we send the work
+            if self.config.comms.mode == 3:
+                send_work = send_work or (self.iter == self.max_iter)
             # send_work = send_work or (self.iter <= self.comm_every_iter)
             self._logger.debug(
                 f"Send work={send_work}, iter={self.iter}, "
@@ -393,6 +397,8 @@ class ClientV2():
             elif not send_work and self.config.comms.mode == 3:
                 self._logger.debug(f"Skipping sending work...")
                 multipart = [b"SKIP", self.identity.encode()]
+                data = [params_skip_response_to_string(self.model_watchdog.divergence)]
+                multipart.extend(data)
                 self.push.send_multipart(multipart)
 
         if cmd == b"EXIT":

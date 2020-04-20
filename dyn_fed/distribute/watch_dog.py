@@ -271,16 +271,22 @@ class ModelWatchDog():
         """
         self.ref_model = model
 
-    def calculate_divergence(self, models: List):
+    def calculate_divergence(self, models: List, local=True):
         """Calculate divergence
         """
-        divergences = 0.0
-        for model in models:
-            divergences += np.max([
-                np.linalg.norm(o - n)**2
-                for o, n in zip(model, self.ref_model)
-            ])
-        self._divergence = divergences / len(models)
+        if local:
+            divergences = 0.0
+            if models:
+                for model in models:
+                    divergences += np.max([
+                        np.linalg.norm(o - n)**2
+                        for o, n in zip(model, self.ref_model)
+                    ])
+                self._divergence = divergences / len(models)
+            else:
+                self._divergence = 0.0
+        else:
+            self._divergence = np.mean(models)
 
     def model_condition(self):
         """Check global condition.
