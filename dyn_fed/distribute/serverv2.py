@@ -6,7 +6,7 @@ import time
 import socket
 import os
 import json
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple
 
 import gevent
 import numpy as np
@@ -15,17 +15,15 @@ import zmq.green as zmq
 import tensorflow as tf
 
 from dyn_fed.data.utils import next_batch, next_batch_unbalanced
-from dyn_fed.distribute import WatchDog
+from dyn_fed.distribute.watch_dog import WatchDog, ModelWatchDog
 from dyn_fed.distribute.heartbeater import Heartbeater
 from dyn_fed.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
                                                  START)
-from dyn_fed.metrics import accuracy_scorev2
 from dyn_fed.proto.utils import (params_to_stringv2,
                                  parse_params_response_from_stringv2,
                                  parse_setup_response_from_string,
                                  setup_to_string,
                                  comms_setup_to_string)
-from dyn_fed.tools import TFLogger
 
 # pylint: disable=no-member
 
@@ -73,7 +71,7 @@ class ServerV2():
         self.state = START
         self.heartbeater = Heartbeater(self.strategy.n_workers, period)
         self.watch_dog = WatchDog()
-
+        self.model_watchdog = None
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
         self._tf_logger_train = None
         self._tf_logger_test = None
@@ -243,13 +241,13 @@ class ServerV2():
     def _track_samples(self, heart, i, x_batch):
         """Track samples
         """
-        if self.state == START:
-            lower_bound = x_batch.shape[0] * i
-            upper_bound = lower_bound + x_batch.shape[0]
-            global_idxs = np.arange(lower_bound, upper_bound)
-            local_idxs = np.arange(x_batch.shape[0])
-            idx_mapping = dict(zip(global_idxs, local_idxs))
-            self.watch_dog.states[heart].mapping = idx_mapping
+        lower_bound = x_batch.shape[0] * i
+        upper_bound = lower_bound + x_batch.shape[0]
+        global_idxs = np.arange(lower_bound, upper_bound)
+        local_idxs = np.arange(x_batch.shape[0])
+        idx_mapping = dict(zip(global_idxs, local_idxs))
+        self.watch_dog.states[heart].mapping = idx_mapping
+        self.watch_dog.states[heart].n_samples = x_batch.shape[0]
 
     def _map(self):
         """Map data to clients
@@ -369,8 +367,6 @@ class ServerV2():
                 weights,
                 errors,
                 model,
-                samples,
-                n_samples,
                 workers_received,
                 mode=0,
                 epsilon=1e-8):
@@ -402,15 +398,15 @@ class ServerV2():
             weight = 1.0 / len(errors)  # Default aggregation is the average across clients
             # Weight by loss calculated by client - client with highest loss has greater weight
             if mode == 1:
-                pass # TODO: Add number of samples for each client to heartbeat version
-                # n_samples_worker = samples[j]
-                # weight = n_samples_worker / n_samples
+                client = workers_received[j]
+                n_samples_worker = self.watch_dog.states[client].n_samples
+                weight = n_samples_worker / self.model_watchdog.n_samples
             elif mode == 2:
                 weight = np.exp(errors[j]) / sum_es
             elif mode == 3:
                 client = workers_received[j]
                 weight = np.exp(self.watch_dog.states[client].svd_idx) / sum_svds
-            self._logger.debug(f"client={j}, weight={weight:7.4f}, loss={errors[j]:7.4f}")
+            # self._logger.debug(f"client={j}, weight={weight:7.4f}, loss={errors[j]:7.4f}")
             for k in np.arange(len(model.trainable_weights)):
                 parameters[k] += (
                     weights[j][k] * weight
@@ -426,9 +422,9 @@ class ServerV2():
         parameters, loss = \
             parse_params_response_from_stringv2(content)
 
-        self._logger.debug(
-            f"Received work from {client}"
-        )
+        # self._logger.debug(
+        #     f"Received work from {client}"
+        # )
 
         # Update previous and current loss
         self.watch_dog.states[client].prev_loss = \
@@ -602,8 +598,6 @@ class ServerV2():
                 weights=weights,
                 errors=errors,
                 model=self.model,
-                samples=None,
-                n_samples=None,
                 workers_received=workers_received,
                 mode=self.config.distribute.aggregate_mode
             )
@@ -613,11 +607,14 @@ class ServerV2():
                 self.model.set_weights(parameters)
                 # delta = self._update_model(parameters)
 
+            self.model_watchdog.update_ref_model(self.model)
+
             # Check metrics
             train_acc, test_acc, test_loss = self._check_metrics()
 
             self._logger.info(
                 f"iteration = {self.iter}, "
+                f"divergence={self.model_watchdog.divergence:7.4f}, "
                 f"train_loss={epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
                 f"train acc={train_acc*100:7.4f}%, "
                 f"test acc={test_acc*100:7.4f}%"
@@ -689,6 +686,14 @@ class ServerV2():
         )
         self.test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
             name='test_accuracy'
+        )
+
+        n_samples = self.train_dataset[0].shape[0]
+        self.model_watchdog = ModelWatchDog(
+            self.model,
+            n_samples=n_samples,
+            n_classes=np.max(y_test) + 1,
+            delta_threshold=self.config.distribute.delta_threshold
         )
 
     def heart_loop(self):

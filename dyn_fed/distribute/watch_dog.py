@@ -4,6 +4,9 @@ from __future__ import print_function
 
 import logging
 
+import numpy as np
+import tensorflow as tf
+
 class WorkerState():
     """Keeps track of clients state for multiple different things.
     
@@ -242,3 +245,47 @@ class WatchDog(object):
         """
         self.logger.info(f"Removing client {client} due to heart failure :(")
         self._worker_states.pop(client)
+
+class ModelWatchDog():
+    """Watchdog for model related things
+    """
+    def __init__(self,
+                 model: tf.keras.Sequential,
+                 n_samples: int,
+                 n_classes: int,
+                 delta_threshold=0.8):
+        self.n_samples = n_samples
+        self.n_classes = n_classes
+        self.delta_threshold = delta_threshold
+        self.ref_model = [p.numpy() for p in model.trainable_weights]
+        self.prev_model = None
+        self._divergence = np.inf
+
+    def update_ref_model(self, model):
+        """Update reference model
+        """
+        self.prev_model = self.ref_model
+        self.ref_model = [p.numpy() for p in model.trainable_weights]
+        self.calculate_divergence()
+
+    def calculate_divergence(self):
+        """Calculate divergence
+        """
+        self._divergence = np.max([
+            np.linalg.norm(o - n)**2
+            for o, n in zip(self.prev_model, self.ref_model)
+        ])
+
+    def model_condition(self):
+        """Check global condition.
+
+        If divergence < delta_threshold then we have have not violated the condition
+        and no communication is needed
+        """
+        return self.divergence < self.delta_threshold
+
+    @property
+    def divergence(self):
+        """Property getter for divergence
+        """
+        return self._divergence
