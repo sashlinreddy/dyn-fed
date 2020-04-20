@@ -253,8 +253,9 @@ class WorkerV3():
         self.train_dataset = train_dataset
         
         X_test, y_test = test_dataset
+        n_samples, _, _ = X_test.shape
         test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
-        test_dataset = test_dataset.batch(self.config.data.batch_size)
+        test_dataset = test_dataset.batch(n_samples)
         self.test_dataset = test_dataset
 
         # Define loss function
@@ -375,13 +376,13 @@ class WorkerV3():
             # send_work = send_work or (self.iter <= self.comm_every_iter)
             self._logger.debug(f"Send work={send_work}")
             if send_work:
+                self._logger.debug(f"Sending work...")
                 multipart = [b"WORK", self.identity.encode()]
                 multipart.extend(data)
-            # elif not send_work and self.config.comms.mode == 3:
-            #     self._logger.debug(f"Skipping sending work")
-            #     multipart = [b"SKIP", self.identity.encode()]
-            #     self.push.send_multipart(multipart)
-
+                self.push.send_multipart(multipart)
+            elif not send_work and self.config.comms.mode == 3:
+                self._logger.debug(f"Skipping sending work...")
+                multipart = [b"SKIP", self.identity.encode()]
                 self.push.send_multipart(multipart)
 
         if cmd == b"EXIT":
