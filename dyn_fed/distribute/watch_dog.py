@@ -4,8 +4,9 @@ from __future__ import print_function
 
 import logging
 
+from typing import List
+
 import numpy as np
-import tensorflow as tf
 
 class WorkerState():
     """Keeps track of clients state for multiple different things.
@@ -48,6 +49,7 @@ class WorkerState():
         self._comm_interval = 1
         self._comm_every_iter = 1
         self._comm_rounds = 0
+        self.violated = False
 
     def __repr__(self):
         return f"<WorkerState identity={self.identity.decode()}>"
@@ -250,31 +252,35 @@ class ModelWatchDog():
     """Watchdog for model related things
     """
     def __init__(self,
-                 model: tf.keras.Sequential,
                  n_samples: int,
                  n_classes: int,
                  delta_threshold=0.8):
         self.n_samples = n_samples
         self.n_classes = n_classes
         self.delta_threshold = delta_threshold
-        self.ref_model = [p.numpy() for p in model.trainable_weights]
-        self.prev_model = None
+        self.ref_model = None
         self._divergence = np.inf
+        self.violation_counter = 0
 
-    def update_ref_model(self, model):
+        self._logger = logging.getLogger(
+            f"dfl.distribute.{self.__class__.__name__}"
+        )
+
+    def update_ref_model(self, model: List):
         """Update reference model
         """
-        self.prev_model = self.ref_model
-        self.ref_model = [p.numpy() for p in model.trainable_weights]
-        self.calculate_divergence()
+        self.ref_model = model
 
-    def calculate_divergence(self):
+    def calculate_divergence(self, models: List):
         """Calculate divergence
         """
-        self._divergence = np.max([
-            np.linalg.norm(o - n)**2
-            for o, n in zip(self.prev_model, self.ref_model)
-        ])
+        divergences = 0.0
+        for model in models:
+            divergences += np.max([
+                np.linalg.norm(o - n)**2
+                for o, n in zip(model, self.ref_model)
+            ])
+        self._divergence = divergences / len(models)
 
     def model_condition(self):
         """Check global condition.

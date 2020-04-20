@@ -19,6 +19,7 @@ from zmq import devices
 from zmq.eventloop import zmqstream
 from tornado import ioloop
 
+from dyn_fed.distribute.watch_dog import ModelWatchDog
 from dyn_fed.proto.utils import (params_response_to_stringv2,
                                  parse_params_from_stringv2,
                                  parse_setup_from_string,
@@ -67,6 +68,7 @@ class ClientV2():
         self.test_loss_avg = None
         self.test_acc_avg = None
         self.prev_params = None
+        self.model_watchdog: ModelWatchDog = None
         # Assume all clients have violated the dynamic operator threshold
         self.violated = True
 
@@ -190,10 +192,6 @@ class ClientV2():
             # # Compare predicted label to actual
             self.epoch_accuracy.update_state(y, predictions)
 
-        self.prev_params = [
-            p.numpy().copy() for p in self.model.trainable_weights
-        ]
-
         for _ in range(self.config.comms.interval):
             start = time.time()
             for x, y in self.train_dataset:
@@ -207,15 +205,13 @@ class ClientV2():
             epoch_train_acc = self.epoch_accuracy.result()
 
             new_params = [w.numpy() for w in self.model.trainable_weights]
-            delta = np.max([
-                np.linalg.norm(o - n)**2
-                for o, n in zip(self.prev_params, new_params)
-            ])
+            self.model_watchdog.calculate_divergence([new_params])
 
             if self.check_overfitting:
                 test_acc, test_loss = self._check_metrics()
                 self._logger.info(
-                    f"iteration = {self.iter}, delta={delta:7.4f}, "
+                    f"iteration = {self.iter}, "
+                    f"delta={self.model_watchdog.divergence:7.4f}, "
                     f"train_loss = {epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
                     f"train_acc={epoch_train_acc*100:7.4}%, "
                     f"test_acc={test_acc*100:7.4f}%"
@@ -223,7 +219,7 @@ class ClientV2():
             else:
                 self._logger.info(
                     f"iteration={self.model.iter}, train_loss={epoch_loss:7.4f}, "
-                    f"delta={delta}"
+                    f"delta={self.model_watchdog.divergence}"
                 )
 
             self.epoch_loss_avg.reset_states()
@@ -233,7 +229,7 @@ class ClientV2():
 
             self.iter += 1
 
-        return epoch_loss, delta
+        return epoch_loss
 
     def _recv_comm_info(self, msg):
         """Receive communication information
@@ -293,6 +289,12 @@ class ClientV2():
             # self.X = Tensor(self.X)
             # self.y = Tensor(self.y)
 
+            self.model_watchdog = ModelWatchDog(
+                n_samples=n_samples,
+                n_classes=np.max(y) + 1,
+                delta_threshold=self.config.distribute.delta_threshold
+            )
+
             # self._logger.info(f"X.shape={self.X.shape}, y.shape={self.y.shape}")
             self._logger.info(f"X.shape={X.shape}, y.shape={y.shape}")
 
@@ -347,13 +349,19 @@ class ClientV2():
             else:
                 self._logger.debug("Delta < threshold - no need to update params")
 
+            update_ref_model = msg[3]
+            update_ref_model = bool.from_bytes(update_ref_model, 'little')
+            self._logger.debug(f"Update ref model={update_ref_model}")
+            if update_ref_model:
+                self.model_watchdog.update_ref_model(parameters)
+
             # Do some work
             tic = time.time()
-            epoch_loss, delta = self._training_loop()
+            epoch_loss = self._training_loop()
             self._logger.info("blocked for %.3f s", (time.time() - tic))
             if self.config.comms.mode == 3:
                 # Only do this for dynamic averaging technique
-                if delta < self.config.distribute.delta_threshold:
+                if self.model_watchdog.divergence < self.config.distribute.delta_threshold:
                     self.violated = False
                 # If exceeds threshold then will communicate
                 else:

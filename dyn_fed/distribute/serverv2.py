@@ -17,8 +17,12 @@ import tensorflow as tf
 from dyn_fed.data.utils import next_batch, next_batch_unbalanced
 from dyn_fed.distribute.watch_dog import WatchDog, ModelWatchDog
 from dyn_fed.distribute.heartbeater import Heartbeater
-from dyn_fed.distribute.states import (COMPLETE, MAP, MAP_PARAMS,
-                                                 START)
+from dyn_fed.distribute.states import (
+    COMPLETE,
+    MAP,
+    MAP_PARAMS,
+    START
+)
 from dyn_fed.proto.utils import (params_to_stringv2,
                                  parse_params_response_from_stringv2,
                                  parse_setup_response_from_string,
@@ -71,7 +75,7 @@ class ServerV2():
         self.state = START
         self.heartbeater = Heartbeater(self.strategy.n_workers, period)
         self.watch_dog = WatchDog()
-        self.model_watchdog = None
+        self.model_watchdog: ModelWatchDog = None
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
         self._tf_logger_train = None
         self._tf_logger_test = None
@@ -315,6 +319,19 @@ class ServerV2():
             
             multipart = [b"", b"WORK_PARAMS"]
             multipart.extend(msg)
+            update_ref_model = (
+                (self.model_watchdog.violation_counter == self.watch_dog.n_alive) or 
+                (self.iter == 0)
+            )
+            # self._logger.debug(
+            #     f"violation_counter={self.model_watchdog.violation_counter} ,"
+            #     f"n_alive={self.watch_dog.n_alive} ,"
+            #     f"update_ref_model={update_ref_model}"
+            # )
+
+            update_ref_model = update_ref_model.to_bytes(1, 'little')
+            multipart.extend([update_ref_model])
+            self.model_watchdog.violation_counter = 0
 
             self._logger.info("Sending params")
             self.pub_socket.send_multipart(multipart)
@@ -394,13 +411,14 @@ class ServerV2():
             np.exp([self.watch_dog.states[client].svd_idx for client in workers_received])
         )
         epoch_loss = np.mean(errors)
+        n_samples = np.sum([self.watch_dog.states[c].n_samples for c in workers_received])
         for j in np.arange(len(errors)):
             weight = 1.0 / len(errors)  # Default aggregation is the average across clients
             # Weight by loss calculated by client - client with highest loss has greater weight
             if mode == 1:
                 client = workers_received[j]
                 n_samples_worker = self.watch_dog.states[client].n_samples
-                weight = n_samples_worker / self.model_watchdog.n_samples
+                weight = n_samples_worker / n_samples
             elif mode == 2:
                 weight = np.exp(errors[j]) / sum_es
             elif mode == 3:
@@ -475,8 +493,12 @@ class ServerV2():
 
                 i += 1
                 workers_received.append(client)
+                self.model_watchdog.violation_counter += 1
+                self.watch_dog.states[client].violation = True
 
             if cmd == b"SKIP":
+                # Update worker violation state
+                self.watch_dog.states[client].violation = False
                 self._logger.debug(f"Received skip command from client {client}")
                 # If we receive skip from client, then ignore,
                 # but iterate our number of responses
@@ -602,12 +624,22 @@ class ServerV2():
                 mode=self.config.distribute.aggregate_mode
             )
 
+            # Check how many have violated condition
+            # self.model_watchdog.violation_counter = np.sum(
+            #     [self.watch_dog.states[c].violation for c in workers_received]
+            # )
+
+            # self.model_watchdog.calculate_divergence(weights)
+
+            # if self.model_watchdog.violation_counter == self.watch_dog.n_alive and \
+            #     self.model_watchdog.divergence <= self.model_watchdog.delta_threshold:
+            #     self.model_watchdog.update_ref_model(parameters)
+                
+
             # Update model with these parameters
             if parameters:
                 self.model.set_weights(parameters)
                 # delta = self._update_model(parameters)
-
-            self.model_watchdog.update_ref_model(self.model)
 
             # Check metrics
             train_acc, test_acc, test_loss = self._check_metrics()
@@ -617,7 +649,8 @@ class ServerV2():
                 f"divergence={self.model_watchdog.divergence:7.4f}, "
                 f"train_loss={epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
                 f"train acc={train_acc*100:7.4f}%, "
-                f"test acc={test_acc*100:7.4f}%"
+                f"test acc={test_acc*100:7.4f}% ,"
+                f"violation_counter={self.model_watchdog.violation_counter}"
             )
 
             if self._tf_logger_train is not None:
@@ -690,7 +723,6 @@ class ServerV2():
 
         n_samples = self.train_dataset[0].shape[0]
         self.model_watchdog = ModelWatchDog(
-            self.model,
             n_samples=n_samples,
             n_classes=np.max(y_test) + 1,
             delta_threshold=self.config.distribute.delta_threshold
