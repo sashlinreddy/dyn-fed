@@ -5,8 +5,8 @@ from typing import List
 import time
 import logging
 
-from dyn_fed.distribute.masterv3 import MasterV3
-from dyn_fed.distribute.workerv3 import WorkerV3
+from dyn_fed.distribute.serverv2 import ServerV2
+from dyn_fed.distribute.clientv2 import ClientV2
 
 class DistributionStrategy(metaclass=ABCMeta):
     """Strategy for distributing within the cluster
@@ -143,31 +143,31 @@ class MasterWorkerStrategyV2(DistributionStrategy):
         if self.role == "server":
             # Setup server
             self._logger.debug("Setting up server")
-            self._master = MasterV3(
+            self._server = ServerV2(
                 model=model,
                 optimizer=optimizer,
                 strategy=self
             )
-            self._master.setup(
+            self._server.setup(
                 train_dataset=train_dataset,
                 test_dataset=test_dataset,
             )
-            self._master.start()
+            self._server.start()
         else:
 
             time.sleep(3)
 
-            self._worker = WorkerV3(
+            self._client = ClientV2(
                 model=model,
                 optimizer=optimizer,
                 strategy=self
             )
 
-            self._worker.setup(
+            self._client.setup(
                 train_dataset=None,
                 test_dataset=test_dataset
             )
 
-            self._worker.start()
+            self._client.start()
 
             self._logger.info("Connecting client sockets")

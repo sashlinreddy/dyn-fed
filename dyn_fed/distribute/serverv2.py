@@ -1,7 +1,4 @@
 """Master with heartbeater - using tensorflow
-
-Currently doesn't seem to speed up. Not sure what's wrong with
-tf.function in eager execution mode. Seems to be slow in the workerv3.py
 """
 import logging
 import signal
@@ -32,7 +29,7 @@ from dyn_fed.tools import TFLogger
 
 # pylint: disable=no-member
 
-class MasterV3():
+class ServerV2():
     """Master class
     """
     def __init__(self, model, optimizer, strategy, period=1000):
@@ -78,12 +75,15 @@ class MasterV3():
         self.watch_dog = WatchDog()
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
-        self._tf_logger_train = tf.summary.create_file_writer(
-            str(self.config.executor.tf_dir/'train')
-        )
-        self._tf_logger_test = tf.summary.create_file_writer(
-            str(self.config.executor.tf_dir/'test')
-        )
+        self._tf_logger_train = None
+        self._tf_logger_test = None
+        if self.config.executor.get("tf_dir") is not None:
+            self._tf_logger_train = tf.summary.create_file_writer(
+                str(self.config.executor.tf_dir/'train')
+            )
+            self._tf_logger_test = tf.summary.create_file_writer(
+                str(self.config.executor.tf_dir/'test')
+            )
         # Get ipaddress for clients to connect to
         self._save_ip()
 
@@ -410,7 +410,7 @@ class MasterV3():
             elif mode == 3:
                 client = workers_received[j]
                 weight = np.exp(self.watch_dog.states[client].svd_idx) / sum_svds
-            self._logger.debug(f"client={j}, weight={weight}, loss={errors[j]}")
+            self._logger.debug(f"client={j}, weight={weight:7.4f}, loss={errors[j]:7.4f}")
             for k in np.arange(len(model.trainable_weights)):
                 parameters[k] += (
                     weights[j][k] * weight

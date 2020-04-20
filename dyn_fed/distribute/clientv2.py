@@ -29,7 +29,7 @@ from dyn_fed.lib.io.file_io import FileWatcher
 
 
 # pylint: disable=no-member
-class WorkerV3():
+class ClientV2():
     """Client class
     """
     def __init__(self, model, optimizer, strategy):
@@ -194,43 +194,44 @@ class WorkerV3():
             p.numpy().copy() for p in self.model.trainable_weights
         ]
 
-        start = time.time()
-        for x, y in self.train_dataset:
-            train_loop(x, y)
-        end = time.time()
-        elapsed = end - start
-        self._logger.debug(f"Gradient calc elapsed time={elapsed}")
+        for _ in range(self.config.comms.interval):
+            start = time.time()
+            for x, y in self.train_dataset:
+                train_loop(x, y)
+            end = time.time()
+            elapsed = end - start
+            self._logger.debug(f"Gradient calc elapsed time={elapsed:7.4f}")
 
 
-        epoch_loss = self.epoch_loss_avg.result()
-        epoch_train_acc = self.epoch_accuracy.result()
+            epoch_loss = self.epoch_loss_avg.result()
+            epoch_train_acc = self.epoch_accuracy.result()
 
-        new_params = [w.numpy() for w in self.model.trainable_weights]
-        delta = np.max([
-            np.linalg.norm(o - n)**2
-            for o, n in zip(self.prev_params, new_params)
-        ])
+            new_params = [w.numpy() for w in self.model.trainable_weights]
+            delta = np.max([
+                np.linalg.norm(o - n)**2
+                for o, n in zip(self.prev_params, new_params)
+            ])
 
-        if self.check_overfitting:
-            test_acc, test_loss = self._check_metrics()
-            self._logger.info(
-                f"iteration = {self.iter}, delta={delta:7.4f}"
-                f"train_loss = {epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
-                f"train_acc={epoch_train_acc*100:7.4}%, "
-                f"test_acc={test_acc*100:7.4f}%"
-            )
-        else:
-            self._logger.info(
-                f"iteration={self.model.iter}, train_loss={epoch_loss:7.4f}, "
-                f"delta={delta}"
-            )
+            if self.check_overfitting:
+                test_acc, test_loss = self._check_metrics()
+                self._logger.info(
+                    f"iteration = {self.iter}, delta={delta:7.4f}, "
+                    f"train_loss = {epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
+                    f"train_acc={epoch_train_acc*100:7.4}%, "
+                    f"test_acc={test_acc*100:7.4f}%"
+                )
+            else:
+                self._logger.info(
+                    f"iteration={self.model.iter}, train_loss={epoch_loss:7.4f}, "
+                    f"delta={delta}"
+                )
 
-        self.epoch_loss_avg.reset_states()
-        self.epoch_accuracy.reset_states()
-        self.test_loss_avg.reset_states()
-        self.test_acc_avg.reset_states()
+            self.epoch_loss_avg.reset_states()
+            self.epoch_accuracy.reset_states()
+            self.test_loss_avg.reset_states()
+            self.test_acc_avg.reset_states()
 
-        self.iter += 1
+            self.iter += 1
 
         return epoch_loss, delta
 
@@ -370,13 +371,14 @@ class WorkerV3():
             ]
 
             send_work = (self.iter - 1) % self.comm_interval == 0
-            self._logger.debug(f"send_work={send_work}, {self.iter}, {self.comm_interval}")
             send_work = send_work or (self.iter >= self.comm_every_iter)
             send_work = send_work and self.violated # If work is violated, we send the work
             # send_work = send_work or (self.iter <= self.comm_every_iter)
-            self._logger.debug(f"Send work={send_work}")
+            self._logger.debug(
+                f"Send work={send_work}, iter={self.iter}, "
+                f"comm_interval={self.comm_interval}"
+            )
             if send_work:
-                self._logger.debug(f"Sending work...")
                 multipart = [b"WORK", self.identity.encode()]
                 multipart.extend(data)
                 self.push.send_multipart(multipart)
