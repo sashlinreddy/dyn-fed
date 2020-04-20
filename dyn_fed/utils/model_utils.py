@@ -23,7 +23,7 @@ def encode_run_name(n_workers, config):
     encode_vars = [
         "n_workers", "scenario", "quantize",
         "aggregate_mode", "interval", "mode", "noniid",
-        "unbalanced", "learning_rate"
+        "unbalanced", "learning_rate", "n_iterations"
     ]
 
     global_cfg = {"n_workers": n_workers}

@@ -114,10 +114,16 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)
 
+    # Validate config
+    if cfg.comms.interval > cfg.model.n_iterations:
+        cfg.comms.interval = cfg.model.n_iterations
+
     train_dataset = None
     test_dataset = None
 
     data_name = Path(data_cfg["name"])
+    opt_name = Path(cfg.optimizer.name)
+    model_type = Path(cfg.model.type)
 
     if role == "server":
         # Setup logger
@@ -147,12 +153,15 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         else:
             raise Exception("Please enter valid dataset")
 
-        if "tf_dir" in executor_cfg:
-            executor_cfg["tf_dir"] = (
-                Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/server"
-            )
         train_dataset = (X_train, y_train)
         test_dataset = (X_test, y_test)
+
+        if "tf_dir" in executor_cfg:
+            executor_cfg["tf_dir"] = (
+                Path(
+                    executor_cfg["tf_dir"]
+                )/data_name/model_type/opt_name/f"{encoded_run_name}/server"
+            )
 
     else:
         logger = setup_logger(filename=f'log-client-{d_identity}.log', level=verbose)
@@ -172,10 +181,14 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
                 )
 
         if "tf_dir" in executor_cfg:
-            executor_cfg["tf_dir"] = Path(executor_cfg["tf_dir"])/data_name/f"{encoded_run_name}/client-{d_identity}"
+            executor_cfg["tf_dir"] = Path(
+                executor_cfg["tf_dir"]
+            )/data_name/model_type/opt_name/f"{encoded_run_name}/client-{d_identity}"
 
     if ('SLURM_JOBID' in os.environ) and ("tf_dir" in executor_cfg):
-        executor_cfg["tf_dir"] = Path.home()/executor_cfg["tf_dir"]/data_name
+        executor_cfg["tf_dir"] = (
+            Path.home()/executor_cfg["tf_dir"]
+        )
 
     strategy = MasterWorkerStrategyV2(
         n_workers=n_workers-1,

@@ -78,8 +78,12 @@ class MasterV3():
         self.watch_dog = WatchDog()
 
         self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
-        self._tf_logger_train = None
-        self._tf_logger_test = None
+        self._tf_logger_train = tf.summary.create_file_writer(
+            str(self.config.executor.tf_dir/'train')
+        )
+        self._tf_logger_test = tf.summary.create_file_writer(
+            str(self.config.executor.tf_dir/'test')
+        )
         # Get ipaddress for clients to connect to
         self._save_ip()
 
@@ -619,6 +623,16 @@ class MasterV3():
                 f"test acc={test_acc*100:7.4f}%"
             )
 
+            if self._tf_logger_train is not None:
+                with self._tf_logger_train.as_default():
+                    tf.summary.scalar('loss', epoch_loss, step=self.iter)
+                    tf.summary.scalar('accuracy', train_acc, step=self.iter)
+
+            if self._tf_logger_test is not None:
+                with self._tf_logger_test.as_default():
+                    tf.summary.scalar('loss', test_loss, step=self.iter)
+                    tf.summary.scalar('accuracy', test_acc, step=self.iter)
+
             self.iter += 1
 
     def _calculate_packet_size(self):
@@ -651,11 +665,8 @@ class MasterV3():
             self._calculated_byte_size = True
         # Log to tensorboard
         if self._tf_logger_train is not None:
-            self._tf_logger_train.scalar(
-                "msg-size",
-                self._n_mbs,
-                self.iter
-            )
+            with self._tf_logger_train.as_default():
+                tf.summary.scalar('msg-size', self._n_mbs, step=self.iter)
 
         return self._n_mbs
 
