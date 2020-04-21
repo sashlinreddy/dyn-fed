@@ -3,6 +3,7 @@
 import os
 import logging
 from pathlib import Path
+from datetime import datetime
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -42,7 +43,8 @@ def encode_run_name(n_workers, config):
         data_name = Path(config.data.name)
         model_type = Path(config.model.type)
         opt_name = Path(config.optimizer.name)
-        logdir = os.environ["LOGDIR"]/data_name/model_type/opt_name/encode_name
+        date = Path(datetime.now().strftime("%Y%m%d"))
+        logdir = os.environ["LOGDIR"]/date/data_name/model_type/opt_name/encode_name
         logdir.mkdir(parents=True, exist_ok=True)
         os.environ["LOGDIR"] = str(logdir)
 
