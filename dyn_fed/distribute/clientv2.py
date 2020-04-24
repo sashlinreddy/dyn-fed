@@ -252,7 +252,7 @@ class ClientV2():
         self.train_dataset = train_dataset
         
         X_test, y_test = test_dataset
-        n_samples, _, _ = X_test.shape
+        n_samples = X_test.shape[0]
         test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
         test_dataset = test_dataset.batch(n_samples)
         self.test_dataset = test_dataset
@@ -273,23 +273,18 @@ class ClientV2():
 
         if cmd == b"WORK_DATA":
             X, y, n_samples, state = parse_setup_from_string(msg[1])
-            # If is 3d. Leaving this out for now
-            size_3d = np.sqrt(X.shape[1]).astype(int)
-            # X = X.reshape(X.shape[0], size_3d, size_3d)
 
             self.n_samples = n_samples
             self.state = state
             # self.X = X
             # self.y = y
             self.train_dataset = tf.data.Dataset.from_tensor_slices(
-                (X.reshape(X.shape[0], size_3d, size_3d), y)
+                (X, y)
             )
             self.train_dataset = (
                 self.train_dataset.shuffle(self.config.data.shuffle_buffer_size)
                 .batch(self.config.data.batch_size)
             )
-            # self.X = Tensor(self.X)
-            # self.y = Tensor(self.y)
 
             self.model_watchdog = ModelWatchDog(
                 n_samples=n_samples,
