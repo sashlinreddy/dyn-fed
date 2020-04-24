@@ -3,6 +3,7 @@
 import logging
 import os
 from pathlib import Path
+from datetime import datetime
 
 import click
 import numpy as np
@@ -16,8 +17,6 @@ from dyn_fed.data import mnist, fashion_mnist
 
 from dyn_fed.lib.io import file_io
 from dyn_fed.utils import model_utils, setup_logger
-
-from ft_models import LogisticRegressionV2
 
 def train(train_dataset, test_dataset, strategy, config):
     """Perform training session
@@ -36,15 +35,33 @@ def train(train_dataset, test_dataset, strategy, config):
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dense(10, activation="sigmoid")
         ])
+    elif config.model.type == "cnn1":
+        model = tf.keras.Sequential([
+            tf.keras.layers.Conv2D(
+                32, (3, 3),
+                kernel_initializer="he_uniform",
+                activation="relu",
+                input_shape=(28, 28, 1)
+            ),
+            tf.keras.layers.MaxPooling2D((2, 2)),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(
+                128,
+                activation='relu',
+                kernel_initializer="he_uniform"
+            ),
+            tf.keras.layers.Dropout(0.5),
+            tf.keras.layers.Dense(10, activation="softmax")
+        ])
 
     if opt_cfg.get('name') == 'sgd':
         # Define optimizer
         optimizer = tf.keras.optimizers.SGD(
-            learning_rate=opt_cfg.get('learning_rate')
+            learning_rate=opt_cfg.get('learning_rate', 0.01)
         )
     elif opt_cfg.get("name") == "adam":
         optimizer = tf.keras.optimizers.Adam(
-            learning_rate=opt_cfg.get('learning_rate')
+            learning_rate=opt_cfg.get('learning_rate', 0.001)
         )
 
     logger.debug("Running strategy")
@@ -125,6 +142,8 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     opt_name = Path(cfg.optimizer.name)
     model_type = Path(cfg.model.type)
 
+    date = Path(datetime.now().strftime("%Y%m%d"))
+
     if role == "server":
         # Setup logger
         logger = setup_logger(level=verbose)
@@ -138,14 +157,16 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         if str(data_name) == "fashion-mnist":
             logger.info("Dataset: Fashion-MNist")
             X_train, y_train, X_test, y_test = fashion_mnist.load_data(
-                noniid=cfg.data.noniid
+                noniid=cfg.data.noniid,
+                rgb_channel=True if cfg.model.type.find("cnn") >= 0 else False
             )
             logger.info(f"Dataset={data_cfg.name}")
 
         elif str(data_name) == 'mnist':
             # Get data
             X_train, y_train, X_test, y_test = mnist.load_data(
-                noniid=data_cfg.noniid
+                noniid=data_cfg.noniid,
+                rgb_channel=True if cfg.model.type.find("cnn") >= 0 else False
             )
 
             logger.info(f"Dataset={data_cfg.name}")
@@ -160,7 +181,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
             executor_cfg["tf_dir"] = (
                 Path(
                     executor_cfg["tf_dir"]
-                )/data_name/model_type/opt_name/f"{encoded_run_name}/server"
+                )/date/data_name/model_type/opt_name/f"{encoded_run_name}/server"
             )
 
     else:
@@ -171,19 +192,21 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
                 logger.info("Dataset: MNist, test set only")
                 test_dataset = mnist.load_data(
                     noniid=cfg.data.noniid,
-                    test_only=True
+                    test_only=True,
+                    rgb_channel=True if cfg.model.type.find("cnn") >= 0 else False
                 )
             elif cfg.data.name == "fashion-mnist":
                 logger.info("Dataset: Fashion-MNist, test set only")
                 test_dataset = fashion_mnist.load_data(
                     noniid=cfg.data.noniid,
-                    test_only=True
+                    test_only=True,
+                    rgb_channel=True if cfg.model.type.find("cnn") >= 0 else False
                 )
 
         if "tf_dir" in executor_cfg:
             executor_cfg["tf_dir"] = Path(
                 executor_cfg["tf_dir"]
-            )/data_name/model_type/opt_name/f"{encoded_run_name}/client-{d_identity}"
+            )/date/data_name/model_type/opt_name/f"{encoded_run_name}/client-{d_identity}"
 
     if ('SLURM_JOBID' in os.environ) and ("tf_dir" in executor_cfg):
         executor_cfg["tf_dir"] = (
