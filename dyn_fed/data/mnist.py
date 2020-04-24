@@ -81,7 +81,8 @@ def load_data(path: Optional[str]=None,
               convert_types=False,
               reshape: Optional[bool]=False,
               test_only: Optional[bool]=False,
-              tensorize: Optional[bool]=False):
+              tensorize: Optional[bool]=False,
+              rgb_channel: Optional[bool]=False):
     """Load mnist data - returns numpy train and test sets
     """
     # For now just using this path
@@ -133,6 +134,10 @@ def load_data(path: Optional[str]=None,
             X_test = Tensor(X_test)
             y_test = Tensor(y_test)
 
+        if rgb_channel:
+            X_train = X_train[..., np.newaxis]
+            X_test = X_test[..., np.newaxis]
+
         data = (X_train, y_train, X_test, y_test)
     else:
         X_test = _unarchive(x_test_fname)
@@ -157,6 +162,9 @@ def load_data(path: Optional[str]=None,
         if tensorize:
             X_test = Tensor(X_test)
             y_test = Tensor(y_test)
+
+        if rgb_channel:
+            X_test = X_test[..., np.newaxis]
 
         data = (X_test, y_test)
 
