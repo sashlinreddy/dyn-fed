@@ -64,7 +64,7 @@ def reconstruct_approximation(buf, shape, r_dtype=np.float32):
 
     return matrix
 
-def arg_svd(X, percentile=0.95):
+def arg_svd(X: np.ndarray, percentile=0.95):
     """Returns index of feature where there is 95% of the variance of the
     data
 
@@ -72,6 +72,9 @@ def arg_svd(X, percentile=0.95):
         idx_95: (Sum of singular values of 95 percentile)
     """
     # Only interested in the singular values
+    X = X.copy()
+    if X.ndim > 2:
+        X = X.reshape(X.shape[0], -1) # Reshape to 2d
     _, s, _ = np.linalg.svd(X, full_matrices=False)
 
     idx_95 = np.argwhere(np.cumsum(s) / np.sum(s) >= percentile).flatten()[0]
