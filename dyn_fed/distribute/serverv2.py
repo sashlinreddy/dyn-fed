@@ -63,6 +63,7 @@ class ServerV2():
 
         self.train_dataset = None
         self.test_dataset = None
+        self.train_loss = None
         self.test_loss = None
         self.train_accuracy = None
         self.test_accuracy = None
@@ -264,8 +265,6 @@ class ServerV2():
             self._logger.debug(f"State={self.state}")
 
             X, y = self.train_dataset
-            if X.ndim > 2:
-                X = X.reshape(X.shape[0], -1)
             n_samples = X.shape[0]
             if self.config.data.unbalanced:
                 hearts = len(self.heartbeater.hearts)
@@ -352,6 +351,8 @@ class ServerV2():
         """
         def train_validate(features, labels):
             predictions = self.model(features, training=False)
+            train_loss = self.loss_func(labels, predictions)
+            self.train_loss(train_loss)
             self.train_accuracy(labels, predictions)
 
         def model_validate(features, labels):
@@ -366,7 +367,7 @@ class ServerV2():
 
         if isinstance(self.train_dataset, tuple):
             X_train, y_train = self.train_dataset
-            n_samples, _, _ = X_train.shape
+            n_samples = X_train.shape[0]
             train_dataset = tf.data.Dataset.from_tensor_slices(
                 (X_train, y_train)
             )
@@ -378,14 +379,14 @@ class ServerV2():
         train_acc = self.train_accuracy.result()
         test_acc = self.test_accuracy.result()
         test_loss = self.test_loss.result()
+        train_loss = self.train_loss.result()
 
         self.test_loss.reset_states()
         self.train_accuracy.reset_states()
         self.test_accuracy.reset_states()
         
 
-        return train_acc, test_acc, test_loss
-
+        return train_acc, test_acc, test_loss, train_loss
     
     def _reduce(self,
                 weights,
@@ -419,7 +420,7 @@ class ServerV2():
         )
         epoch_loss = np.mean(errors)
         n_samples = np.sum([self.watch_dog.states[c].n_samples for c in workers_received])
-        for j in np.arange(len(errors)):
+        for j in np.arange(len(workers_received)):
             weight = 1.0 / len(errors)  # Default aggregation is the average across clients
             # Weight by loss calculated by client - client with highest loss has greater weight
             if mode == 1:
@@ -650,7 +651,7 @@ class ServerV2():
                     # delta = self._update_model(parameters)
 
                 # Check metrics
-                train_acc, test_acc, test_loss = self._check_metrics()
+                train_acc, test_acc, test_loss, train_loss = self._check_metrics()
 
                 self._logger.info(
                     f"iteration = {self.iter}, "
@@ -662,18 +663,25 @@ class ServerV2():
                 )
 
                 if self._tf_logger_train is not None:
+                    i = self.iter
+                    if self.n_iterations != self.max_iter:
+                        i = (i+1) * self.config.comms.interval
                     with self._tf_logger_train.as_default():
-                        tf.summary.scalar('loss', epoch_loss, step=self.iter)
-                        tf.summary.scalar('accuracy', train_acc, step=self.iter)
+                        tf.summary.scalar('loss', epoch_loss, step=i)
+                        tf.summary.scalar('accuracy', train_acc, step=i)
 
                 if self._tf_logger_test is not None:
+                    i = self.iter
+                    if self.n_iterations != self.max_iter:
+                        i = (i+1) * self.config.comms.interval
                     with self._tf_logger_test.as_default():
-                        tf.summary.scalar('loss', test_loss, step=self.iter)
-                        tf.summary.scalar('accuracy', test_acc, step=self.iter)
+                        tf.summary.scalar('loss', test_loss, step=i)
+                        tf.summary.scalar('accuracy', test_acc, step=i)
 
             else:
                 if self.config.comms.mode == 3:
                     self._logger.debug(
+                        f"iteration = {self.iter}, "
                         f"Comm mode = 3, all workers haven't met "
                         f"threshold of {self.model_watchdog.delta_threshold}"
                     )
@@ -728,6 +736,7 @@ class ServerV2():
 
         self.loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
+        self.train_loss = tf.keras.metrics.Mean(name='train_loss') 
         self.test_loss = tf.keras.metrics.Mean(name='test_loss')
         self.train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
             name='train_accuracy'
@@ -775,6 +784,31 @@ class ServerV2():
         """Machine learning training loop
         """
         try:
+            # Check loss before we start training
+            train_acc, test_acc, test_loss, train_loss = self._check_metrics()
+
+            self._logger.info(
+                f"iteration = {self.iter}, "
+                f"init_train_loss={train_loss:7.4f}, init_test_loss={test_loss:7.4f}, "
+                f"init_train acc={train_acc*100:7.4f}%, "
+                f"init_test acc={test_acc*100:7.4f}%"
+            )
+
+            if self._tf_logger_train is not None:
+                i = self.iter
+                if self.n_iterations != self.max_iter:
+                    i = (i) * self.config.comms.interval
+                with self._tf_logger_train.as_default():
+                    tf.summary.scalar('loss', train_loss, step=i)
+                    tf.summary.scalar('accuracy', train_acc, step=i)
+
+            if self._tf_logger_test is not None:
+                i = self.iter
+                if self.n_iterations != self.max_iter:
+                    i = (i) * self.config.comms.interval
+                with self._tf_logger_test.as_default():
+                    tf.summary.scalar('loss', test_loss, step=i)
+                    tf.summary.scalar('accuracy', test_acc, step=i)
             # Setup data and send to clients
             start = time.time()
             self._logger.debug(f"epochs={self.n_iterations}")
