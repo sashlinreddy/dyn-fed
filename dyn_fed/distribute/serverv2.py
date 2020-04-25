@@ -490,6 +490,7 @@ class ServerV2():
             msg = self.pull_socket.recv_multipart()
             cmd = msg[0]
             client = msg[1]
+            self._logger.debug(f"Received msg from {client}")
             if cmd == b"WORK":
                 content = msg[2]
                 errors, weights = self._gather(
