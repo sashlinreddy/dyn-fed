@@ -26,10 +26,10 @@ ____
 ## Development
 
 ```bash
-git clone https://github.com/sashlinreddy/fault-tolerant-ml.git
+git clone https://github.com/sashlinreddy/dyn-fed.git
 ```
 
-First you need to compile the protocol buffer file. The definitions are in the [ftml.proto](protos/ftml.proto) file.
+First you need to compile the protocol buffer file. The definitions are in the [dfl.proto](protos/dfl.proto) file.
 
 Compilation is executed with the following command:
 
@@ -42,8 +42,8 @@ protoc -I=protos/ --python_out=dyn_fed/proto/ protos/dfl.proto
 ```bash
 tmux
 export LOGDIR=${PWD}/logs
-./scripts/master_local.sh $N_WORKERS -v INFO -m $MODEL_TYPE # Run in separate window
-./scripts/worker_local.sh $N_WORKERS -v INFO -m $MODEL_TYPE # Set "setw synchronize-panes on" as a tmux setting. Use Ctrl+B,: for insert mode
+./scripts/client_local.sh $N_WORKERS -v $VERBOSE -m $MODEL_TYPE # Run in separate window
+./scripts/server_local.sh $N_WORKERS -v $VERBOSE -m $MODEL_TYPE # Set "setw synchronize-panes on" as a tmux setting. Use Ctrl+B,: for insert mode
 ```
 
 To view the results on tensorboard assuming you are in the parent directory:
@@ -56,14 +56,10 @@ Go to http://localhost:6006.
 
 ### Running on SLURM cluster
 
-```bash
-sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh
-```
-
-The [slurm launch](scripts/slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [server execution script](examples/train_logisticv2.py). However, arguments can be passed to the job submission as below:
+The [slurm launch](scripts/slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [server execution script](examples/tf_train_model.py). However, arguments can be passed to the job submission as below:
 
 ```bash
-sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh -v 20
+sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh -m $MODEL_TYPE -v $VERBOSE
 ```
 
 ## Setup config
@@ -71,27 +67,37 @@ sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh -v 20
 The config of the model can be set in the [config file](config/config.yml). The dataset can be configured in this file as well as the following parameters:
 
 * model
+    * type: Type of model
     * n_iterations:  No. of iterations
     * shuffle: Whether or not to shuffle the data in each iteration
 
+* data
+  * name: Dataset name
+  * shuffle: Whether or not to shuffle dataset # Not used
+  * batch_size: Data batch size
+  * shuffle_buffer_size: Shuffle buffer size
+  * noniid: Whether or not to make dataset noniid
+  * unbalanced: Whether or not to make dataset unbalanced
+
 * optimizer
     * learning_rate: Rate at which model learns
-        * Mnist: SGD: 0.1, Adam: 0.01
-        * Fashion Mnist: SGD: 0.25, Adam: 0.001
-    * mu_g: Weighting given to global W when clients updating local parameters. 0.0 for normal local update.
-    * n_most_rep: No. of most representative data points to keep track of when worker goes down
+        * Mnist: SGD: 0.01, Adam: 0.001
+        * Fashion Mnist: SGD: 0.01, Adam: 0.001
     * name: Name of optimizer (Currently supports sgd and adam)
 
-* executor:
+* distribute
     * strategy: Name of distribution strategy
-    * scenario: Scenario type, see code for more details.
     * remap: Redistribution strategy
     * quantize: Whether or not to use quantization when communicating parameters
     * comm_period: How often to communicate parameters
     * delta_switch: When to switch to every iteration communication
+    * delta_threshold: For dynamic averaging paper
     * timeout: Time given for any clients to join
     * send_gradients: Whether or not to send gradients back to server
     * shared_folder: Dataset to be used
+
+* executor
+    * scenario: Scenario type, see code for more details
 
 ## View Results
 
