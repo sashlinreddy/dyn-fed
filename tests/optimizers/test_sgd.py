@@ -22,7 +22,7 @@ class TestSGDOptimizer(unittest.TestCase):
         """Set up
         """
 
-        cfg = file_io.load_model_config("config.yml")
+        cfg = file_io.load_yaml("config.yml")
         executor_cfg = cfg['executor']
         data_dir = executor_cfg['shared_folder']
         # Get data

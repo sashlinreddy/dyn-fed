@@ -54,7 +54,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
     if 'PROJECT_DIR' in os.environ:
         config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
         
-    cfg = file_io.load_model_config(config_path)
+    cfg = file_io.load_yaml(config_path)
 
     model_cfg = cfg['model']
     opt_cfg = cfg['optimizer']

@@ -1,7 +1,8 @@
 model:
-  type: "nn1"
+  version: TF
+  type: nn1
   n_iterations: 100
-  check_overfitting: True
+  check_overfitting: False
   # shuffle: 1
   # batch_size: 64
   # shuffle_buffer_size: 100
@@ -12,7 +13,7 @@ data:
   batch_size: 128
   shuffle_buffer_size: 100
   noniid: 0
-  unbalanced: 0
+  unbalanced: 1
 
 optimizer:
   learning_rate: 0.01 # Learning rate for nn sgd: 0.01, 0.001 for adam
@@ -23,10 +24,11 @@ optimizer:
   name: sgd
 
 comms:
-  mode: 3 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
+  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
   interval: 1
 
 distribute:
+  n_workers: 8
   strategy: mw
   remap: 1
   quantize: 0
@@ -42,4 +44,4 @@ executor:
   scenario: 10
   shared_folder: data/
   config_folder: config/
-  tf_dir: logs/tf/
+  # tf_dir: logs/tf/

@@ -38,7 +38,7 @@ def flush_dir(dir, ignore_dir=[], mins=1, hours=0):
                 if (ignore_files_length < 1) or len(ignore_dir) > 0:
                     os.remove(curpath)
 
-def load_model_config(path):
+def load_yaml(path):
     """Load model config given path
 
     Args:

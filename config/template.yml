@@ -1,4 +1,5 @@
 model:
+  version: {{ model_version }}
   type: {{ model_type }}
   n_iterations: {{ n_iterations }}
   check_overfitting: {{ check_overfitting }}
@@ -24,6 +25,7 @@ comms:
   interval: {{ interval }}
 
 distribute:
+  n_workers: {{ n_workers }}
   strategy: mw
   remap: 1
   quantize: 0

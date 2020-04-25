@@ -1,6 +1,7 @@
 """Logistic regression example
 """
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 import itertools
@@ -24,7 +25,7 @@ def _create_experiments():
         experiments_path = Path(os.environ['PROJECT_DIR'])/'config/experiments.yml'
 
     # Load all hyperparameters
-    experiments_cfg = file_io.load_model_config(experiments_path)
+    experiments_cfg = file_io.load_yaml(experiments_path)
 
     # Generate permutations
     keys, values = zip(*experiments_cfg.items())
@@ -64,6 +65,7 @@ def _create_experiments():
         rendered_config = model_utils.render_template(
             config_dir,
             'template.yml',
+            model_version=experiment.get('model_version', 'TF'),
             model_type=experiment.get('model_type', 'logistic'),
             n_iterations=n_iterations,
             check_overfitting=experiment.get('check_overfitting', False),
@@ -74,6 +76,7 @@ def _create_experiments():
             optimizer=experiment.get('optimizer', 'sgd'),
             comm_mode=experiment.get('mode', 0),
             interval=interval,
+            n_workers=experiment.get('n_workers', 8),
             agg_mode=experiment.get('aggregate_mode', 0),
             delta_threshold=experiment.get('delta_threshold', 0.0),
             data_dir=experiment.get('shared_folder', 'data/mnist/')
@@ -100,27 +103,37 @@ def run(platform):
     folder_name = _create_experiments()
     folder_name = 'config'/folder_name
     # n_workers = [8, 32, 64, 128]
-    n_workers = [8, 16, 32, 64]
+    # n_workers = [8, 16, 32, 64]
     # n_workers = [64]
     project_dir = Path(__file__).resolve().parents[1]
     launch_script_path = str(project_dir/'scripts/slurm_launch.sh')
 
     if platform == 'slurm':
         for fname in folder_name.iterdir():
-            print(fname)
-            for n_worker in n_workers:
-                subprocess.run([
-                    'sbatch',
-                    '-n',
-                    str(n_worker),
-                    launch_script_path,
-                    '-v',
-                    'DEBUG',
-                    '-m',
-                    'V2',
-                    '-c',
-                    str(fname)
-                ])
+            # print(fname)
+            e = file_io.load_yaml(fname)
+            model_version = e["model"]["version"]
+            n_worker = e["distribute"]["n_workers"]
+            # print(model_version)
+            # print(n_workers)
+            # for n_worker in n_workers:
+            result = subprocess.run([
+                'sbatch',
+                '-n',
+                str(n_worker),
+                launch_script_path,
+                '-v',
+                'DEBUG',
+                '-m',
+                model_version,
+                '-c',
+                str(fname)
+            ])
+
+            slurm_jobid_match = re.search('(?<=batch job ).+', result.stdout)
+            if slurm_jobid_match:
+                e['slurm_jobid'] = slurm_jobid_match.group()
+                file_io.export_yaml(e, fname)
 
 if __name__ == "__main__":
     run() # pylint: disable=no-value-for-parameter

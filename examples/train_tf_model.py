@@ -105,7 +105,7 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
     if 'PROJECT_DIR' in os.environ:
         config_path = Path(os.environ['PROJECT_DIR'])/config_path
         
-    cfg = file_io.load_model_config(config_path)
+    cfg = file_io.load_yaml(config_path)
 
     data_cfg = cfg["data"]
     executor_cfg = cfg['executor']
