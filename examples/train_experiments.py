@@ -28,7 +28,23 @@ def _create_experiments():
 
     # Generate permutations
     keys, values = zip(*experiments_cfg.items())
-    experiments = [dict(zip(keys, v)) for v in itertools.product(*values)]
+    # experiments = [dict(zip(keys, v)) for v in itertools.product(*values)]
+    experiments = []
+    for v in itertools.product(*values):
+        d = dict(zip(keys, v))
+        # Ignoring invalid experiments
+        # Mode > 0 doesn't require periodic interval
+        # NNs run for 50 iterations
+        if (d.get("mode") > 0 and d.get("interval") > 1) or \
+        (d.get("model_type").find("nn1") >= 0 and d.get("interval") in [20, 100]):
+            continue
+        # Exclude threshold > 0 for mode != 3
+        # For now adam optimizer delta threshold no work
+        elif (d.get("mode") != 3 and d.get("delta_threshold") > 0.0) or \
+        (d.get('mode') == 3) and (d.get('optimizer') == 'adam'):
+            continue
+        else:
+            experiments.append(d)
 
     folder_name = Path(datetime.now().strftime("%Y%m%d-%H%M"))
     folder_path = config_dir/folder_name
