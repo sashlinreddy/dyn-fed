@@ -29,7 +29,7 @@ class TestModelUtils(unittest.TestCase):
         """Test encoding of model name
         """
         n_workers = 8
-        filename = 'config.yml'
+        filename = 'config/config.yml'
         config_path = self.config_dir/filename
             
         cfg = load_yaml(config_path)
@@ -38,7 +38,7 @@ class TestModelUtils(unittest.TestCase):
 
         encoded_run_name = encode_run_name(n_workers, cfg)
 
-        expected_run_name = "8-1-1-0-0-0.0-100-0.0-0-1-0"
+        expected_run_name = '8-3-0-1-1-0-0-0-0.01-100'
 
         logger.debug(f"Encoded run name={encoded_run_name}, expected={expected_run_name}")
 
