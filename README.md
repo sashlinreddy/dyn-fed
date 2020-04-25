@@ -62,6 +62,18 @@ The [slurm launch](scripts/slurm_launch.sh) generates a multi-prog on the fly wi
 sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh -m $MODEL_TYPE -v $VERBOSE
 ```
 
+## Generate multiple experiments
+
+```bash
+(ftml) $ python dyn-fed/examples/train_experiments.py
+```
+
+## Cancel multiple jobs
+
+```bash
+squeue -u $USER | grep $JOBIDSTART |awk '{print $1}' | xargs -n 1 scancel
+```
+
 ## Setup config
 
 The config of the model can be set in the [config file](config/config.yml). The dataset can be configured in this file as well as the following parameters:
