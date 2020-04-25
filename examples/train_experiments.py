@@ -42,6 +42,9 @@ def _create_experiments():
                 experiment.get('model_type') == "logistic" else 50
         interval = experiment.get('interval', 1) if \
                 experiment.get('interval', 1) <= n_iterations else n_iterations
+        learning_rate = 0.001 if \
+                experiment.get('optimizer', 'sgd') == 'adam' else 0.01
+
         rendered_config = model_utils.render_template(
             config_dir,
             'template.yml',
@@ -51,6 +54,7 @@ def _create_experiments():
             data_name=experiment.get('data_name', 'mnist'),
             noniid=experiment.get('noniid', 0),
             unbalanced=experiment.get('unbalanced', 0),
+            learning_rate=learning_rate,
             optimizer=experiment.get('optimizer', 'sgd'),
             comm_mode=experiment.get('mode', 0),
             interval=interval,
