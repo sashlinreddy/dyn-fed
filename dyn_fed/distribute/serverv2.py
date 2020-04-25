@@ -14,7 +14,7 @@ import zmq.green as zmq
 
 import tensorflow as tf
 
-from dyn_fed.data.utils import next_batch, next_batch_unbalanced
+from dyn_fed.data.utils import next_batch, next_batch_unbalanced, apply_noniid
 from dyn_fed.distribute.watch_dog import WatchDog, ModelWatchDog
 from dyn_fed.distribute.heartbeater import Heartbeater
 from dyn_fed.distribute.states import (
@@ -266,6 +266,11 @@ class ServerV2():
 
             X, y = self.train_dataset
             n_samples = X.shape[0]
+
+            if self.config.data.noniid and n_samples:
+                hearts = len(self.heartbeater.hearts)
+                X, y = apply_noniid(X, y, hearts)
+
             if self.config.data.unbalanced:
                 hearts = len(self.heartbeater.hearts)
                 batch_gen = next_batch_unbalanced(
@@ -291,6 +296,9 @@ class ServerV2():
                 x_batch = x_batch
                 y_batch = y_batch
                 self._logger.debug(f"X.shape={x_batch.shape}, y.shape={y_batch.shape}")
+                if self.config.data.noniid or self.config.data.unbalanced:
+                    if y_batch.ndim < 2:
+                        self._logger.debug(f"distrib={np.unique(y_batch, return_counts=True)}")
 
                 self._track_samples(heart, i, x_batch)
                 msg = [setup_to_string(x_batch, y_batch, n_samples, self.state)]
