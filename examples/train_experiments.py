@@ -111,16 +111,16 @@ def run(platform):
     if platform == 'slurm':
         for fname in folder_name.iterdir():
             # print(fname)
-            e = file_io.load_yaml(fname)
+            e = file_io.load_yaml(fname, to_obj=False)
             model_version = e["model"]["version"]
-            n_worker = e["distribute"]["n_workers"]
+            n_workers = e["distribute"]["n_workers"]
             # print(model_version)
             # print(n_workers)
             # for n_worker in n_workers:
             result = subprocess.run([
                 'sbatch',
                 '-n',
-                str(n_worker),
+                str(n_workers),
                 launch_script_path,
                 '-v',
                 'DEBUG',
@@ -128,11 +128,13 @@ def run(platform):
                 model_version,
                 '-c',
                 str(fname)
-            ])
+                ],
+                capture_output=True
+            )
 
-            slurm_jobid_match = re.search('(?<=batch job ).+', result.stdout)
+            slurm_jobid_match = re.search('(?<=batch job ).+', result.stdout.decode())
             if slurm_jobid_match:
-                e['slurm_jobid'] = slurm_jobid_match.group()
+                e['slurm'] = {"jobid": int(slurm_jobid_match.group())}
                 file_io.export_yaml(e, fname)
 
 if __name__ == "__main__":

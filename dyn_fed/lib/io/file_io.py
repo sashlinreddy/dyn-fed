@@ -38,7 +38,7 @@ def flush_dir(dir, ignore_dir=[], mins=1, hours=0):
                 if (ignore_files_length < 1) or len(ignore_dir) > 0:
                     os.remove(curpath)
 
-def load_yaml(path):
+def load_yaml(path, to_obj=True):
     """Load model config given path
 
     Args:
@@ -50,7 +50,10 @@ def load_yaml(path):
     with open(path, 'r') as ymlfile:
         cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
-    return objectify(cfg)
+    if to_obj:
+        return objectify(cfg)
+    else:
+        return cfg
 
 def export_yaml(data, path):
     """Export model config given path

@@ -148,6 +148,9 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
         # Setup logger
         logger = setup_logger(level=verbose)
 
+        name = date/data_name/model_type/opt_name/f"{encoded_run_name}/server"
+        logger.info(f"Beginning run for {name}")
+
         slurm_jobid = os.environ.get("SLURM_JOBID", None)
 
         if slurm_jobid is not None:
@@ -186,6 +189,9 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
     else:
         logger = setup_logger(filename=f'log-client-{d_identity}.log', level=verbose)
+
+        name = date/data_name/model_type/opt_name/f"{encoded_run_name}/d_identity-{d_identity}"
+        logger.info(f"Beginning run for {name}")
 
         if cfg.model.check_overfitting:
             if cfg.data.name == "mnist":
