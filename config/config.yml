@@ -1,29 +1,29 @@
 model:
   type: "nn1"
-  n_iterations: 50
+  n_iterations: 100
   check_overfitting: True
   # shuffle: 1
   # batch_size: 64
   # shuffle_buffer_size: 100
 
 data:
-  name: fashion-mnist
+  name: mnist
   shuffle: 1
-  batch_size: 64
+  batch_size: 128
   shuffle_buffer_size: 100
   noniid: 0
-  unbalanced: 1
+  unbalanced: 0
 
 optimizer:
-  learning_rate: 0.01 # Learning rate for sgd: 0.1
+  learning_rate: 0.01 # Learning rate for nn sgd: 0.01, 0.001 for adam
   clip_norm: 0
   clip_val: 0
   mu_g: 0.0
   n_most_rep: 100
-  name: adam
+  name: sgd
 
 comms:
-  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
+  mode: 3 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
   interval: 1
 
 distribute:
@@ -39,7 +39,7 @@ distribute:
   norm_epsilon: 1 # 1 for mnist, 10 for F-mnist
 
 executor:
-  scenario: 3
+  scenario: 10
   shared_folder: data/
   config_folder: config/
   tf_dir: logs/tf/
