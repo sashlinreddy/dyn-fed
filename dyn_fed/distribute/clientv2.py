@@ -58,7 +58,6 @@ class ClientV2():
         self.max_iter = self.config.model.n_iterations
 
         self.n_samples: int = None
-        self.check_overfitting = self.config.model.check_overfitting
 
         # Distribute variables
         self.state = None
@@ -209,7 +208,7 @@ class ClientV2():
             new_params = [w.numpy() for w in self.model.trainable_weights]
             self.model_watchdog.calculate_divergence([new_params])
 
-            if self.check_overfitting:
+            if self.config.model.check_overfitting:
                 test_acc, test_loss = self._check_metrics()
                 self._logger.info(
                     f"iteration = {self.iter}, "
@@ -220,7 +219,7 @@ class ClientV2():
                 )
             else:
                 self._logger.info(
-                    f"iteration={self.model.iter}, train_loss={epoch_loss:7.4f}, "
+                    f"iteration={self.iter}, train_loss={epoch_loss:7.4f}, "
                     f"delta={self.model_watchdog.divergence}"
                 )
 
@@ -251,11 +250,12 @@ class ClientV2():
         """
         self.train_dataset = train_dataset
         
-        X_test, y_test = test_dataset
-        n_samples = X_test.shape[0]
-        test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
-        test_dataset = test_dataset.batch(n_samples)
-        self.test_dataset = test_dataset
+        if self.config.model.check_overfitting:
+            X_test, y_test = test_dataset
+            n_samples = X_test.shape[0]
+            test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+            test_dataset = test_dataset.batch(n_samples)
+            self.test_dataset = test_dataset
 
         # Define loss function
         self.loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
