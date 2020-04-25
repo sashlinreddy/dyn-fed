@@ -41,8 +41,10 @@ def _create_experiments():
             continue
         # Exclude threshold > 0 for mode != 3
         # For now adam optimizer delta threshold no work
-        elif (d.get("mode") != 3 and d.get("delta_threshold") > 0.0) or \
-        (d.get('mode') == 3) and (d.get('optimizer') == 'adam'):
+        elif (d.get("mode") != 3 and d.get("delta_threshold") > 0.0):
+            continue
+        elif ((d.get('mode') == 3) and (d.get('optimizer') == 'adam') \
+            and (d.get("delta_threshold") < 2.0)):
             continue
         else:
             experiments.append(d)
