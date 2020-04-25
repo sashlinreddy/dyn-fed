@@ -48,6 +48,38 @@ def next_batch(X, y, batch_size, shuffle=True, overlap=0.0):
             y_batch = Tensor(np.vstack([y_batch.data, y.data[0:end]]))
         yield X_batch, y_batch
 
+def apply_noniid(X, y, n_partitions):
+    """Apply noniid transformation. Makes sure that there is at least 
+    2 classes in each partition. Imitates the original federated learning paper
+    """
+    # Get indices of first encountered unique values
+    n_samples = X.shape[0]
+    batch_size = int(np.ceil(n_samples / n_partitions))
+    _, idx, counts = np.unique(y, return_index=True, return_counts=True)
+    if batch_size < np.min(counts):
+        X_part = np.split(X, idx[1:])
+        y_part = np.split(y, idx[1:])
+
+        for i in np.arange(1, len(y_part), 2):
+            # Determine indices to swap
+            swap_size = np.min([X_part[i-1].shape[0] // 2, X_part[i].shape[0] // 2])
+            p_im1 = np.random.choice(X_part[i-1].shape[0], swap_size)
+            p_i = np.random.choice(X_part[i].shape[0], swap_size)
+            # Swap X data
+            tmp = X_part[i-1][p_im1].copy()
+            X_part[i-1][p_im1] = X_part[i][p_i].copy()
+            X_part[i][p_i] = tmp
+            # Swap y data
+            tmp = y_part[i-1][p_im1].copy()
+            y_part[i-1][p_im1] = y_part[i][p_i].copy()
+            y_part[i][p_i] = tmp
+
+        X = np.vstack(X_part)
+        y = np.hstack(y_part)
+
+    return X, y
+
+
 def next_batch_unbalanced(X, y, n_partitions, shuffle=True):
     """Imitates federated learning unbalanced partitioning
     """
