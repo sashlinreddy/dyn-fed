@@ -102,8 +102,8 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
     # Load in config to setup model
     config_path = config
-    if 'PROJECT_DIR' in os.environ:
-        config_path = Path(os.environ['PROJECT_DIR'])/config_path
+    project_dir = file_io.get_project_dir()
+    config_path = str(project_dir/config_path)
         
     cfg = file_io.load_yaml(config_path)
 
@@ -124,9 +124,8 @@ def run(n_workers, role, verbose, identity, tmux, add, config):
 
     executor_cfg['identity'] = d_identity
 
-    if 'PROJECT_DIR' in os.environ:
-        executor_cfg['shared_folder'] = Path(os.environ['PROJECT_DIR'])/executor_cfg['shared_folder']
-        executor_cfg['config_folder'] = Path(os.environ['PROJECT_DIR'])/executor_cfg['config_folder']
+    executor_cfg['shared_folder'] = str(project_dir/executor_cfg['shared_folder'])
+    executor_cfg['config_folder'] = str(project_dir/executor_cfg['config_folder'])
 
     # Encode run name for logs
     encoded_run_name = model_utils.encode_run_name(n_workers, cfg)

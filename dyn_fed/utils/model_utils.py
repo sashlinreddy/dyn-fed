@@ -95,7 +95,7 @@ def gen_exp_perms(experiments_cfg):
 
     return experiments
 
-def create_experiments(project_dir=None, save=True):
+def create_experiments(project_dir=None):
     """Create experiments for dfl
     """
     if project_dir is None:
@@ -103,10 +103,6 @@ def create_experiments(project_dir=None, save=True):
     config_dir = project_dir/'config/'
     config_path = project_dir/'config/template.yml'
     experiments_path = project_dir/'config/experiments.yml'
-    # if 'PROJECT_DIR' in os.environ:
-    #     config_dir = Path(os.environ["PROJECT_DIR"])/'config'
-    #     config_path = Path(os.environ['PROJECT_DIR'])/config_path
-    #     experiments_path = Path(os.environ['PROJECT_DIR'])/'config/experiments.yml'
 
     # Load all hyperparameters
     experiments_cfg = file_io.load_yaml(experiments_path)

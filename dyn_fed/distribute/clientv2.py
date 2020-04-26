@@ -10,6 +10,7 @@ import time
 import uuid
 import os
 import json
+import datetime
 
 import tensorflow as tf
 
@@ -81,7 +82,8 @@ class ClientV2():
         """Load server IP from shared folder
         """
         self._logger.info("Loading in Master IP")
-        ip_filename = "ip_config.json"
+        datestr = datetime.datetime.now().strftime("%Y%m%d")
+        ip_filename = f"ip_config_{datestr}.json"
         if "SLURM_JOBID" in os.environ:
             slurm_job_id = os.environ["SLURM_JOBID"]
             ip_filename = f"ip_config_{slurm_job_id}.json"

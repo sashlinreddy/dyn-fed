@@ -6,6 +6,7 @@ import time
 import socket
 import os
 import json
+import datetime
 from typing import Optional, Tuple
 
 import gevent
@@ -99,7 +100,8 @@ class ServerV2():
 
         self._logger.info(f"Master on ip={self.ip_address}")
 
-        ip_filename = "ip_config.json"
+        datestr = datetime.datetime.now().strftime("%Y%m%d")
+        ip_filename = f"ip_config_{datestr}.json"
         if "SLURM_JOBID" in os.environ:
             slurm_job_id = os.environ["SLURM_JOBID"]
             ip_filename = f"ip_config_{slurm_job_id}.json"
