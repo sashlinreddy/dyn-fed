@@ -3,7 +3,8 @@
 from __future__ import print_function
 
 import logging
-
+import itertools
+import bisect
 from typing import List
 
 import numpy as np
@@ -259,25 +260,35 @@ class ModelWatchDog():
         self.n_samples = n_samples
         self.n_classes = n_classes
         self.delta_threshold = delta_threshold
-        self.ref_model = None
-        self._divergence = np.inf
-        self.violation_counter = 0
+        self.setup()
 
         self._logger = logging.getLogger(
             f"dfl.distribute.{self.__class__.__name__}"
         )
+
+    def setup(self):
+        """Setup intial values
+        """
+        self.ref_model = None
+        self._divergence = np.inf
+        self.violation_counter = 0
 
     def update_ref_model(self, model: List):
         """Update reference model
         """
         self.ref_model = model
 
+    def reset(self):
+        """Reset state
+        """
+        self.setup()
+
     def calculate_divergence(self, models: List, local=True):
         """Calculate divergence
         """
         if local:
             divergences = 0.0
-            if models:
+            if models and self.ref_model is not None:
                 for model in models:
                     divergences += np.max([
                         np.linalg.norm(o - n)**2
@@ -295,10 +306,90 @@ class ModelWatchDog():
         If divergence < delta_threshold then we have have not violated the condition
         and no communication is needed
         """
-        return self.divergence < self.delta_threshold
+        return self._divergence < self.delta_threshold
 
     @property
     def divergence(self):
         """Property getter for divergence
         """
         return self._divergence
+
+class SHAPWatchDog():
+    """Watchdog for model related things
+    """
+    def __init__(self, clients):
+        self.clients = np.array(list(clients))
+        self.client_int = np.arange(len(self.clients))
+        self.client_mapping = {i:c for (i, c) in zip(self.client_int, self.clients)}
+        self.participants = None
+        self.subsets = []
+        self.sitout = []
+        self.counter = 0
+        self.pset = self.powerset()
+        self.v = np.zeros(len(self.pset))
+
+    def powerset(self):
+        """Generate powerset
+        """
+        return [
+            list(j) for i in range(len(self.client_int)) 
+            for j in itertools.combinations(self.client_int, i+1)
+        ]
+
+    def permutations(self):
+        """Determine possible permutations
+        """
+        perms = []
+        sitout = []
+        for c in self.clients:
+            sitout.append(c)
+            perms.append(set(self.clients) - set([c]))
+
+        self.subsets = perms
+        self.sitout = sitout
+
+    def set_charact_fn(self, key, value):
+        """Set characteristic function for ith element in powerset
+        """
+        # self.v =
+        self.v[key] = value
+
+    def shapley_values(self):
+        """Calculate shapley value for ith client
+        """
+        shapley_values = []
+        N = self.powerset()
+        n = len(self.clients)
+        for i in range(n):
+            shapley = 0
+            for j in N:
+                if i not in j:
+                    cmod = len(j)
+                    # print(cmod, i, j)
+                    cmb = j[:] # Create a copy
+                    # Insert in appropriate position in sorted array
+                    bisect.insort_left(cmb, i)
+                    l = N.index(j)
+                    k = N.index(cmb)
+                    temp = (
+                        (self.v[k] - self.v[l]) *
+                        (np.math.factorial(cmod) * np.math.factorial(n - cmod - 1)) /
+                        np.math.factorial(n)
+                    )
+                    shapley += temp
+                    # if i is 0:
+                    #     print j, Cui, cmod, n-cmod-1, characteristic_function[k], characteristic_function[l], math.factorial(cmod), math.factorial(n - cmod - 1), math.factorial(n)
+
+            # shapley value for this player contribution itself
+            cmod = 0
+            cmb = [i]
+            k = N.index(cmb)
+            temp = (
+                self.v[k] *
+                (np.math.factorial(cmod) * np.math.factorial(n - cmod - 1)) /
+                np.math.factorial(n)
+            )
+            shapley += temp
+
+            shapley_values.append(shapley)
+        return shapley_values

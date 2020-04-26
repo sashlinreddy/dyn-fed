@@ -16,13 +16,14 @@ import zmq.green as zmq
 import tensorflow as tf
 
 from dyn_fed.data.utils import next_batch, next_batch_unbalanced, apply_noniid
-from dyn_fed.distribute.watch_dog import WatchDog, ModelWatchDog
+from dyn_fed.distribute.watch_dog import WatchDog, ModelWatchDog, SHAPWatchDog
 from dyn_fed.distribute.heartbeater import Heartbeater
 from dyn_fed.distribute.states import (
     COMPLETE,
     MAP,
     MAP_PARAMS,
-    START
+    START,
+    SHAP
 )
 from dyn_fed.proto.utils import (params_to_stringv2,
                                  parse_params_response_from_stringv2,
@@ -257,7 +258,7 @@ class ServerV2():
         self.watch_dog.states[heart].mapping = idx_mapping
         self.watch_dog.states[heart].n_samples = x_batch.shape[0]
 
-    def _map(self):
+    def _map(self, model=None):
         """Map data to clients
         """
         if self.state == MAP:
@@ -308,7 +309,10 @@ class ServerV2():
                 multipart.extend(msg)
                 self.ctrl_socket.send_multipart(multipart)
 
-            self.state = MAP_PARAMS
+            if self.config.shap.mode == 1:
+                self.state = SHAP
+            else:
+                self.state = MAP_PARAMS
 
             # Keep track of iterations for each client
             for client in self.watch_dog.states:
@@ -351,6 +355,17 @@ class ServerV2():
 
             self._logger.info("Sending params")
             self.pub_socket.send_multipart(multipart)
+
+        if self.state == SHAP:
+            # Map params
+            if model is not None:
+                msg = [params_to_stringv2(model.trainable_weights)]
+                
+                multipart = [b"", b"SHAP"]
+                multipart.extend(msg)
+
+                self._logger.info("Sending params")
+                self.pub_socket.send_multipart(multipart)
 
     def _check_metrics(self):
         """Checks metrics on training and validation dataset
@@ -527,6 +542,18 @@ class ServerV2():
                 # but iterate our number of responses
                 i += 1
 
+            if cmd == b"SHAP":
+                content = msg[2]
+                errors, weights = self._gather(
+                    client,
+                    content,
+                    errors,
+                    weights
+                )
+
+                i += 1
+                workers_received.append(client)
+
         return i, errors, weights, workers_received
 
     def _calculate_dynamic_comms_loss(self, clients):
@@ -600,6 +627,9 @@ class ServerV2():
                 f"b={both}, responses={n_responses}, \nidentities={identities}, "
                 f"intervals for responses={comm_intervals[list(who_comms)]}"
             )
+        elif self.config.shap.mode == 1:
+            # Do shapley mode
+            n_responses = len(self.heartbeater.hearts)
 
         return n_responses
 
@@ -698,6 +728,37 @@ class ServerV2():
                     )
 
             self.iter += 1
+
+    def _shap_recv(self):
+        """Receive parameters for shapley session
+        """
+        if self.state == SHAP:
+            self._logger.info("Recv work")
+            # Recv work
+            i = 0
+            errors = []
+            weights = []
+            workers_received = []
+            
+            n_responses = self._expected_responses()
+
+            self._logger.debug(f"Expected responses={n_responses}")
+
+            while i < n_responses:
+                # Need to sleep gevent to be able to have heartbeat thread
+                gevent.sleep(0.00000001)
+
+                # Poll messages from clients and collect them
+                i, errors, weights, workers_received = \
+                    self._poll(i, errors, weights, workers_received)
+
+                # Update no. of expected responses to end the while loop
+                n_responses = self._check_responses(n_responses)
+
+            self._logger.debug("Done collecting parameters for shap")
+            self.shap_iter += 1
+            self.shap_weights = np.array(weights)
+            self.shap_clients = np.array(workers_received)
 
     def _calculate_packet_size(self):
         """Calculate packet size for parameters using number
@@ -798,6 +859,9 @@ class ServerV2():
             # Check loss before we start training
             train_acc, test_acc, test_loss, train_loss = self._check_metrics()
 
+            if self.config.shap.mode == 1:
+                self.shap_train()
+
             self._logger.info(
                 f"iteration = {self.iter}, "
                 f"init_train_loss={train_loss:7.4f}, init_test_loss={test_loss:7.4f}, "
@@ -857,6 +921,87 @@ class ServerV2():
         finally:
             self._logger.info("Exiting peacefully")
             # self.kill()
+
+    def shap_train(self):
+        """Determine client contribution to training using shap values
+        """
+        model = tf.keras.Sequential([
+            tf.keras.layers.Flatten(input_shape=(28, 28)),
+            tf.keras.layers.Dense(10, activation="sigmoid")
+        ])
+
+        loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+
+        epoch_loss_avg = tf.keras.metrics.Mean()
+        epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+        test_loss_avg = tf.keras.metrics.Mean()
+        test_acc_avg = tf.keras.metrics.SparseCategoricalAccuracy()
+
+        def model_validate(features, labels):
+            predictions = model(features, training=False)
+            v_loss = loss_func(labels, predictions)
+
+            test_loss_avg(v_loss)
+            test_acc_avg(labels, predictions)
+
+        try:
+            init_params = [p.numpy().copy() for p in model.trainable_weights]
+            # Send data or params
+            # Run workers for a number of iterations and gather their weights
+            self.shap_iter = 0
+            while self.shap_iter < 1:
+                # Need to have a small sleep to enable gevent threading
+                gevent.sleep(0.00000001)
+                self._map(model=model)
+
+                # Aggregate params
+                self._shap_recv()
+
+            self.shap_watchdog = SHAPWatchDog(self.shap_clients)
+            for i in range(len(self.shap_watchdog.pset)):
+                client_idxs = self.shap_watchdog.pset[i]
+                clients = self.shap_watchdog.clients[client_idxs]
+                # Average parameters amongst these clients
+                params, _ = self._reduce(
+                    self.shap_weights[client_idxs],
+                    np.ones(clients.shape),
+                    model,
+                    clients,
+                    mode=1
+                )
+                self._logger.debug(f"={i}/{len(self.shap_watchdog.pset)}")
+                model.set_weights(params)
+                
+                for x, y in self.test_dataset:
+                    model_validate(x, y)
+
+                test_loss = test_loss_avg.result()
+                # Store as characteristic function for this combination
+                self.shap_watchdog.set_charact_fn(i, test_loss)
+
+                test_loss_avg.reset_states()
+                test_acc_avg.reset_states()
+
+            shapley_values = self.shap_watchdog.shapley_values()
+            print(shapley_values)
+            print(np.exp(shapley_values) / np.sum(np.exp(shapley_values)))
+
+            self._logger.debug(f"Done shap calculation")
+            self.state = MAP_PARAMS
+            # train_acc, test_acc, test_loss, train_loss = self._check_metrics()
+            # self.shap_watchdog.v_all = test_loss
+
+        except KeyboardInterrupt:
+            self._logger.info("Keyboard quit")
+            self.done()
+        except zmq.ZMQError:
+            self._logger.info("ZMQError")
+            self.done()
+        except Exception as e:
+            self._logger.exception(e)
+            self.done()
+        finally:
+            self._logger.info("Exiting peacefully")
 
     def start(self):
         """Start server
