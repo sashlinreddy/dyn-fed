@@ -94,7 +94,7 @@ class ClientV2():
                 ip_config = json.load(f)
         else:
             file_watcher = FileWatcher(self.config.executor.config_folder, full_path)
-            file_found = file_watcher.run(timeout=30)
+            file_found = file_watcher.run(timeout=60)
             if file_found:
                 self._logger.info("Found IP Address file. Loading...")
                 with open(full_path, "r") as f:
