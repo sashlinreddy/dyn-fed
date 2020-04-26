@@ -99,7 +99,7 @@ def create_experiments(project_dir=None, save=True):
     """Create experiments for dfl
     """
     if project_dir is None:
-        project_dir = Path(__file__).resolve().parents[1]
+        project_dir = Path(__file__).resolve().parents[2]
     config_dir = project_dir/'config/'
     config_path = project_dir/'config/template.yml'
     experiments_path = project_dir/'config/experiments.yml'
