@@ -16,6 +16,10 @@ from dyn_fed.utils.general_utils import objectify
 
 logger = logging.getLogger("dfl.lib.io.file_io")
 
+def get_project_dir():
+    p = Path(__file__).resolve().parents[3]
+    return p
+
 def flush_dir(dir, ignore_dir=[], mins=1, hours=0):
     """Flushes directory for files that were modified hours, mins ago
 
