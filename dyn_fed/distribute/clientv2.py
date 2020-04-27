@@ -326,6 +326,90 @@ class ClientV2():
                 self.sub.on_recv(self.recv_params)
                 self.subscribed = True
 
+    def _shap_work(self, msg):
+        """Do shap work
+        """
+        self._logger.info("Shapley loops...")
+        parameters = parse_params_from_stringv2(msg[2])
+        packet_size = len(msg[2])
+        self._logger.debug(f"Packet size of params={packet_size}")
+
+        model = tf.keras.Sequential([
+            tf.keras.layers.Flatten(input_shape=(28, 28)),
+            tf.keras.layers.Dense(10, activation="sigmoid")
+        ])
+
+        optimizer = tf.keras.optimizers.Adam(0.001)
+
+        loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+
+        epoch_loss_avg = tf.keras.metrics.Mean()
+        epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+        test_loss_avg = tf.keras.metrics.Mean()
+        test_acc_avg = tf.keras.metrics.SparseCategoricalAccuracy()
+        
+        # Update local model using global parameters
+        model.set_weights(parameters)
+
+        @tf.function
+        def train_loop(x, y):
+
+            # Calculate gradients
+            with tf.GradientTape() as t:
+                # training=training is needed only if there are layers with different
+                # behavior during training versus inference (e.g. Dropout).
+                predictions = model(x, training=True)
+                loss = loss_func(y, predictions)
+
+            grads = t.gradient(loss, model.trainable_variables)
+
+            # Optimize the model
+            optimizer.apply_gradients(zip(grads, model.trainable_variables))
+
+            # Track progress
+            epoch_loss_avg(loss)
+
+            # # Compare predicted label to actual
+            epoch_accuracy.update_state(y, predictions)
+
+        # Do some work
+        tic = time.time()
+        for _ in np.arange(self.config.comms.shap_epochs):
+            start = time.time()
+            for x, y in self.train_dataset:
+                train_loop(x, y)
+            end = time.time()
+            elapsed = end - start
+            self._logger.debug(f"Gradient calc elapsed time={elapsed:7.4f}")
+
+            epoch_loss = epoch_loss_avg.result()
+            epoch_train_acc = epoch_accuracy.result()
+
+            self._logger.info(
+                f"iteration={self.iter}, train_loss={epoch_loss:7.4f}, "
+                f"delta={self.model_watchdog.divergence}"
+            )
+
+            epoch_loss_avg.reset_states()
+            epoch_accuracy.reset_states()
+            test_loss_avg.reset_states()
+            test_acc_avg.reset_states()
+
+        self._logger.info("blocked for %.3f s", (time.time() - tic))
+
+        data = [
+            params_response_to_stringv2(
+                model.trainable_weights,
+                epoch_loss
+            )
+        ]
+
+        self._logger.debug(f"Sending shap work back to server")
+        multipart = [b"SHAP", self.identity.encode()]
+        multipart.extend(data)
+        self.push.send_multipart(multipart)
+        self.model_watchdog.reset()
+
     def recv_params(self, msg):
         """Recv params
         """
@@ -382,6 +466,7 @@ class ClientV2():
             send_work = send_work and self.violated # If work is violated, we send the work
             if self.config.comms.mode == 3:
                 send_work = send_work or (self.iter == self.max_iter)
+
             # send_work = send_work or (self.iter <= self.comm_every_iter)
             self._logger.debug(
                 f"Send work={send_work}, iter={self.iter}, "
@@ -397,6 +482,9 @@ class ClientV2():
                 data = [params_skip_response_to_string(self.model_watchdog.divergence)]
                 multipart.extend(data)
                 self.push.send_multipart(multipart)
+
+        if cmd == b"SHAP":
+            self._shap_work(msg)
 
         if cmd == b"EXIT":
             self._logger.info("Ending session")
