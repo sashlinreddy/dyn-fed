@@ -8,6 +8,7 @@ from datetime import datetime
 import click
 import numpy as np
 import tensorflow as tf
+tf.random.set_seed(42)
 # For reproducibility
 # pylint: disable=wrong-import-position
 np.random.seed(42)

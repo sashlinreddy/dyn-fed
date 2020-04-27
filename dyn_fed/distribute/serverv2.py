@@ -698,7 +698,8 @@ class ServerV2():
                 self._logger.info(
                     f"iteration = {self.iter}, "
                     f"divergence={self.model_watchdog.divergence:7.4f}, "
-                    f"train_loss={epoch_loss:7.4f}, test_loss={test_loss:7.4f}, "
+                    f"train_loss={epoch_loss:7.4f}, "
+                    f"train_loss2={train_loss:7.4f}, test_loss={test_loss:7.4f}, "
                     f"train acc={train_acc*100:7.4f}%, "
                     f"test acc={test_acc*100:7.4f}% ,"
                     f"violation_counter={self.model_watchdog.violation_counter}"
