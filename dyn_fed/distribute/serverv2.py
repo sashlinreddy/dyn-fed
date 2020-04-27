@@ -309,7 +309,7 @@ class ServerV2():
                 multipart.extend(msg)
                 self.ctrl_socket.send_multipart(multipart)
 
-            if self.config.shap.mode == 1:
+            if self.config.comms.mode == 4:
                 self.state = SHAP
             else:
                 self.state = MAP_PARAMS
@@ -601,7 +601,8 @@ class ServerV2():
         n_responses = len(self.heartbeater.hearts)
 
         if self.config.comms.mode == 1 or \
-            self.config.comms.mode == 2:
+            self.config.comms.mode == 2 or \
+                (self.config.comms.mode == 4 and self.state == MAP_PARAMS):
             comm_intervals = np.array(
                 [client.comm_interval for client in self.watch_dog.states]
             )
@@ -627,7 +628,7 @@ class ServerV2():
                 f"b={both}, responses={n_responses}, \nidentities={identities}, "
                 f"intervals for responses={comm_intervals[list(who_comms)]}"
             )
-        elif self.config.shap.mode == 1:
+        elif self.config.comms.mode == 4 and self.state != MAP_PARAMS:
             # Do shapley mode
             n_responses = len(self.heartbeater.hearts)
 
@@ -756,7 +757,7 @@ class ServerV2():
                 n_responses = self._check_responses(n_responses)
 
             self._logger.debug("Done collecting parameters for shap")
-            self.shap_iter += 1
+            self.shap_watchdog.epoch += 1
             self.shap_weights = np.array(weights)
             self.shap_clients = np.array(workers_received)
 
@@ -859,7 +860,7 @@ class ServerV2():
             # Check loss before we start training
             train_acc, test_acc, test_loss, train_loss = self._check_metrics()
 
-            if self.config.shap.mode == 1:
+            if self.config.comms.mode == 4:
                 self.shap_train()
 
             self._logger.info(
@@ -948,8 +949,8 @@ class ServerV2():
             init_params = [p.numpy().copy() for p in model.trainable_weights]
             # Send data or params
             # Run workers for a number of iterations and gather their weights
-            self.shap_iter = 0
-            while self.shap_iter < 1:
+            self.shap_watchdog = SHAPWatchDog()
+            while self.shap_watchdog.epoch < 1:
                 # Need to have a small sleep to enable gevent threading
                 gevent.sleep(0.00000001)
                 self._map(model=model)
@@ -957,7 +958,8 @@ class ServerV2():
                 # Aggregate params
                 self._shap_recv()
 
-            self.shap_watchdog = SHAPWatchDog(self.shap_clients)
+            self.shap_watchdog.set_clients(self.shap_clients)
+
             for i in range(len(self.shap_watchdog.pset)):
                 client_idxs = self.shap_watchdog.pset[i]
                 clients = self.shap_watchdog.clients[client_idxs]
@@ -982,9 +984,43 @@ class ServerV2():
                 test_loss_avg.reset_states()
                 test_acc_avg.reset_states()
 
+            self._logger.debug(f"final_test_loss={test_loss}")
+
             shapley_values = self.shap_watchdog.shapley_values()
-            print(shapley_values)
-            print(np.exp(shapley_values) / np.sum(np.exp(shapley_values)))
+            norm_shap = np.exp(np.abs(shapley_values)) / np.sum(np.exp(np.abs(shapley_values)))
+            min_shap = np.min(np.abs(shapley_values))
+            max_shap = np.max(np.abs(shapley_values))
+            self._logger.debug(f"Min_shap={min_shap}, max_shap={max_shap}")
+            norm = (np.abs(shapley_values) - min_shap) / (max_shap - min_shap)
+            self._logger.debug(f"shap values={shapley_values}")
+            self._logger.debug(f"Normalized shap values={norm_shap}")
+            self._logger.debug(f"min max shap values={norm}")
+            for i in np.arange(len(self.shap_watchdog.clients)):
+                self.watch_dog.states[self.shap_watchdog.clients[i]].shap_value = \
+                    shapley_values[i]
+
+            comm_iterations = np.ceil(norm * self.n_iterations).astype(int)
+            # Clients should have at least 1 iterations
+            comm_iterations = np.where(comm_iterations == 0, 1, comm_iterations)
+
+            self._logger.debug(f"Comm iterations={comm_iterations}")
+
+            comm_intervals = np.ceil(self.max_iter / comm_iterations).astype(int)
+            comm_every_iter = self.max_iter - \
+                (comm_iterations - (self.max_iter // comm_intervals))
+            # comm_every_iter = (comm_iterations - (self.model.max_iter // comm_intervals))
+            
+            self._logger.debug(
+                f"Shap comm intervals={comm_intervals}, "
+                f"Shap comm_every_iter={comm_every_iter}"
+            )
+
+            for i, client in enumerate(self.watch_dog.states):
+                client.comm_iterations = comm_iterations[i]
+                client.comm_interval = comm_intervals[i]
+                client.comm_every_iter = comm_every_iter[i]
+
+            self._send_comm_info()
 
             self._logger.debug(f"Done shap calculation")
             self.state = MAP_PARAMS

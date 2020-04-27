@@ -52,6 +52,7 @@ class WorkerState():
         self._comm_rounds = 0
         self.violated = False
         self.divergence = 0.0
+        self.shap_value = 0
 
     def __repr__(self):
         return f"<WorkerState identity={self.identity.decode()}>"
@@ -317,17 +318,24 @@ class ModelWatchDog():
 class SHAPWatchDog():
     """Watchdog for model related things
     """
-    def __init__(self, clients):
-        self.clients = np.array(list(clients))
-        self.client_int = np.arange(len(self.clients))
-        self.client_mapping = {i:c for (i, c) in zip(self.client_int, self.clients)}
-        self.participants = None
+    def __init__(self):
+        self.clients = None
+        self.client_int = None
         self.subsets = []
         self.sitout = []
         self.counter = 0
+        self.pset = []
+        self.v = None
+        self.epoch = 0
+
+    def set_clients(self, clients):
+        """Set clients
+        """
+        self.clients = np.array(list(clients))
+        self.client_int = np.arange(len(self.clients))
         self.pset = self.powerset()
         self.v = np.zeros(len(self.pset))
-
+        
     def powerset(self):
         """Generate powerset
         """

@@ -374,7 +374,7 @@ class ClientV2():
 
         # Do some work
         tic = time.time()
-        for _ in np.arange(self.config.shap.n_iterations):
+        for _ in np.arange(self.config.comms.shap_epochs):
             start = time.time()
             for x, y in self.train_dataset:
                 train_loop(x, y)
