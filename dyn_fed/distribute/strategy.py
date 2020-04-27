@@ -155,7 +155,7 @@ class MasterWorkerStrategyV2(DistributionStrategy):
             self._server.start()
         else:
 
-            sleeptime = 15 if self.n_workers >= 24 else 5
+            sleeptime = 30 if self.n_workers >= 24 else 5
             time.sleep(sleeptime)
 
             self._client = ClientV2(
