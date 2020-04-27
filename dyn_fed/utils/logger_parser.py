@@ -81,46 +81,50 @@ def main(input_filepath, output_filepath):
                 print(f'No time match for {enc_run_name}')
 
             # Accuracy
-            train_acc_match = re.search(
+            train_acc_match = re.findall(
                 r"(?<=train acc=).+?(?=%)",
                 logfile
             )
             if train_acc_match:
-                train_acc = train_acc_match.group()
+                # train_acc = train_acc_match.group()
+                train_acc = train_acc_match[-1]
                 results.loc[i, "train_acc"] = float(train_acc)
             else:
                 error = True
                 # print(f'No train accuracy match for {enc_run_name}')
 
-            test_acc_match = re.search(
+            test_acc_match = re.findall(
                 r"(?<=test acc=).+?(?=%)",
                 logfile
             )
             if test_acc_match:
-                test_acc = test_acc_match.group()
+                # test_acc = test_acc_match.group()
+                test_acc = test_acc_match[-1]
                 results.loc[i, "test_acc"] = float(test_acc)
             else:
                 error = True
                 # print(f'No train accuracy match for {enc_run_name}')
 
             # Loss
-            train_loss_match = re.search(
+            train_loss_match = re.findall(
                 r"(?<=train_loss=).+?(?=,)",
                 logfile
             )
             if train_loss_match:
-                train_loss = train_loss_match.group()
+                # train_loss = train_loss_match.group()
+                train_loss = train_loss_match[-1]
                 results.loc[i, "train_loss"] = float(train_loss)
             else:
                 error = True
                 # print(f'No train accuracy match for {enc_run_name}')
 
-            test_loss_match = re.search(
+            test_loss_match = re.findall(
                 r"(?<=test_loss=).+?(?=,)",
                 logfile
             )
             if test_loss_match:
-                test_loss = test_loss_match.group()
+                # test_loss = test_loss_match.group()
+                test_loss = test_loss_match[-1]
                 results.loc[i, "test_loss"] = float(test_loss)
             else:
                 error = True
