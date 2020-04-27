@@ -1,7 +1,7 @@
 model:
   version: TF
   type: nn1
-  n_iterations: 100
+  n_iterations: 50
   check_overfitting: False
   # shuffle: 1
   # batch_size: 64
@@ -16,16 +16,18 @@ data:
   unbalanced: 1
 
 optimizer:
-  learning_rate: 0.01 # Learning rate for nn sgd: 0.01, 0.001 for adam
+  learning_rate: 0.001 # Learning rate for nn sgd: 0.01, 0.001 for adam
   clip_norm: 0
   clip_val: 0
   mu_g: 0.0
   n_most_rep: 100
-  name: sgd
+  name: adam
 
 comms:
-  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
+  mode: 4 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
   interval: 1
+  shap_model: logistic
+  shap_epochs: 50
 
 distribute:
   n_workers: 8
@@ -35,7 +37,7 @@ distribute:
   overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
   aggregate_mode: 1 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
   delta_switch: 0.0004
-  delta_threshold: 0.8
+  delta_threshold: 2.2
   timeout: 30
   send_gradients: 0
   norm_epsilon: 1 # 1 for mnist, 10 for F-mnist
