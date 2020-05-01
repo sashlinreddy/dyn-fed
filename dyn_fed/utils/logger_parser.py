@@ -25,7 +25,10 @@ def main(input_filepath, output_filepath):
         "epochs", "delta_threshold", "error"
     ]
 
-    metrics = ["time", "train_acc", "test_acc", "train_loss", "test_loss", "pkt_size"]
+    metrics = [
+        "time", "train_acc", "test_acc", "train_loss",
+        "test_loss", "pkt_size", "comm_rounds"
+    ]
 
     columns = configs + metrics
     results = pd.DataFrame(
@@ -140,6 +143,17 @@ def main(input_filepath, output_filepath):
             else:
                 error = True
                 print(f'No pkt size match for {dirname}')
+
+            comm_rounds_match = re.search(
+                r"(?<=Comm rounds=).+?(?=\n)",
+                logfile
+            )
+            if comm_rounds_match:
+                comm_rounds = comm_rounds_match.group()
+                results.loc[i, "comm_rounds"] = int(comm_rounds)
+            else:
+                error = True
+                print(f'No comm rounds match for {dirname}')
 
             # if not error:
             #     print(f"time={time_sec}, test_acc={test_acc}, pkt_size={pkt_size}")
