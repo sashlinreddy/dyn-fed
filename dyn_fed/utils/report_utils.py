@@ -62,10 +62,10 @@ def generate_all_pivots(df: pd.DataFrame, metrics: List) -> ListOfPandasList:
         for j in np.arange(2):
             query = f'noniid == {i} and unbalanced == {j}'
             queries.append(query)
-            tmp = []
+            tmp = {}
             for m in metrics:
                 p = performance_pivot(df, query, m, columns=columns, xlabel=xlabel)
-                tmp.append(p)
+                tmp[m] = p
             results.append(tmp)
 
     return results, queries
@@ -84,16 +84,32 @@ def generate_packet_size_pivots(df: pd.DataFrame):
     dyn_avg2 = r'DynAvg $\Delta=0.8$' if is_sgd else r'DynAvg $\Delta=2.8$'
 
     columns = [
-        r'FedAvg, $\rho=1$', r'DynAvg SVD', r'DynAvg Loss', dyn_avg1, dyn_avg2,
-        r'FedAvg, $\rho=10$', r'FedAvg, $\rho=20$', r'FedAvg, $\rho=50$',
-        r'FedAvg, $\rho=100$'
+        r'FedAvg, $\rho=1$', r'FedAvg, $\rho=10$', r'FedAvg, $\rho=20$',
+        r'FedAvg, $\rho=50$', r'FedAvg, $\rho=100$', r'DynAvg SVD',
+        r'DynAvg Loss', dyn_avg1, dyn_avg2
     ]
     if df["model_type"].isin(["nn1", "cnn1"]).all():
         columns = [
-            r'FedAvg, $\rho=1$', r'DynAvg SVD', r'DynAvg Loss', dyn_avg1,
-            dyn_avg2, r'FedAvg, $\rho=10$', r'FedAvg, $\rho=50$'
+            r'FedAvg, $\rho=1$', r'FedAvg, $\rho=10$', r'FedAvg, $\rho=50$',
+            r'DynAvg SVD', r'DynAvg Loss', dyn_avg1, dyn_avg2
         ]
 
     pkt_size_piv.columns = columns
+    if df["model_type"].isin(["nn1", "cnn1"]).all():
+        cols = [
+            r'FedAvg, $\rho=1$', r'DynAvg SVD',
+            r'DynAvg Loss', dyn_avg1, dyn_avg2,
+            r'FedAvg, $\rho=10$', r'FedAvg, $\rho=20$',
+            r'FedAvg, $\rho=50$', r'FedAvg, $\rho=100$'
+        ]
+        pkt_size_piv = pkt_size_piv.loc[:, cols]
+    else:
+        cols = [
+            r'FedAvg, $\rho=1$', r'DynAvg SVD',
+            r'DynAvg Loss', dyn_avg1, dyn_avg2,
+            r'FedAvg, $\rho=10$', r'FedAvg, $\rho=20$',
+            r'FedAvg, $\rho=50$', r'FedAvg, $\rho=100$'
+    ]
+        pkt_size_piv = pkt_size_piv.loc[:, cols]
     pkt_size_piv.index = pkt_size_piv.index - 1
     return pkt_size_piv
