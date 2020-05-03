@@ -23,7 +23,12 @@ def plot_results(results,
         for j in range(n_cols):
             row = i * n_cols + j
             if kind == 'bar':
-                results[row][metric].plot(kind=kind, ax=axes[i, j], width=0.85)
+                results[row][metric].plot(
+                    kind=kind,
+                    ax=axes[i, j],
+                    width=0.85,
+                    rot=0
+                )
             else:
                 results[row][metric].plot(
                     kind=kind,
