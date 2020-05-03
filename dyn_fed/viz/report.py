@@ -25,7 +25,12 @@ def plot_results(results,
             if kind == 'bar':
                 results[row][metric].plot(kind=kind, ax=axes[i, j], width=0.85)
             else:
-                results[row][metric].plot(kind=kind, ax=axes[i, j])
+                results[row][metric].plot(
+                    kind=kind,
+                    marker='o',
+                    markersize=2,
+                    ax=axes[i, j]
+                )
             axes[i, j].set_title(
                 titles[row],
                 fontdict=dict(fontsize=title_fontsize)
