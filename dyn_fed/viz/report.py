@@ -1,6 +1,7 @@
 """Visualization for report analysis
 """
 import matplotlib.pyplot as plt
+import numpy as np
 
 def plot_results(results,
                  metric,
@@ -94,3 +95,91 @@ def plot_pkt_size(df1, df2, figsize=(14, 6)):
     plt.setp(axes[0].get_yticklabels(), fontsize=12)
     plt.setp(axes[1].get_yticklabels(), fontsize=12)
     # plt.savefig('../reports/figures/packet-size-analysis.png', dpi=500, format='png')
+
+def plot_model_performance(results,
+                           metric1='test_acc',
+                           metric2='gen_gap',
+                           xlabel='No. of clients',
+                           ylabel1='Accuracy',
+                           ylabel2='Generalization gap',
+                           suptitle='Model Performance',
+                           ylim2=(-0.05, 0.2),
+                           width=0.1,
+                           titles=None,
+                           figsize=(12, 8)):
+    """Plot model performance
+    """
+    nrows = 2
+    ncols = 2
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=figsize,
+        sharey=True,
+        sharex=True
+    )
+    # fig.add_subplot(111, frameon=False)
+    # # hide tick and tick label of the big axes
+    # plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+
+    for i in np.arange(nrows):
+        for j in np.arange(ncols):
+            row = i * ncols + j
+            # q = 3
+            x = np.arange(len(results[row][metric2].index))[0:]
+            bars = np.arange(len(results[row][metric2].columns))
+            min_x = x - width / 2
+            max_x = (x + width * len(bars))
+            multiplier = 10 ** 1
+            ticks = np.floor(((max_x - min_x) / 2 + min_x) * multiplier) / multiplier
+            lines = axes[i][j].plot(
+                ticks,
+                results[row][metric1].values,
+                linestyle='--',
+                linewidth=1.5,
+                marker='o',
+                markersize=3
+            )
+            axes[i][j].set_ylim(0, 100)
+            axes[i][j].set_title(titles[row], fontdict=dict(fontsize=14))
+            ax2 = axes[i][j].twinx()
+            for k in bars:
+                if k == 0:
+                    r = x.copy()
+                else:
+                    r = [b + width for b in r]
+                ax2.bar(r, results[row][metric2].values[:, k], width=width, alpha=0.4)
+
+            # ax.set_xticks([r + width**1/(1/1) for r in range(len(x))])
+            ax2.set_xticks(np.floor(((max_x - min_x) / 2 + min_x) * multiplier) / multiplier)
+            ax2.set_xticklabels(results[row][metric2].index)
+            if j == 0:
+                ax2.set_yticklabels([])
+            ax2.set_ylim(*ylim2)
+            axes[i, j].set_xlabel('')
+            ax2.set_xlabel('')
+
+    axes1 = fig.add_subplot(111, frameon=False)
+    # hide tick and tick label of the big axes
+    plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+            
+    fig.subplots_adjust(right=0.80)
+    fig.legend(lines, results[-1][metric2].columns, loc=7, fontsize=11)
+    plt.setp(axes[1, 0].get_xticklabels(), fontsize=11)
+    plt.setp(axes[1, 1].get_xticklabels(), fontsize=11)
+    plt.setp(axes[0, 1].get_yticklabels(), fontsize=11)
+    plt.setp(axes[1, 1].get_yticklabels(), fontsize=11)
+    plt.ylabel(ylabel1, fontdict=dict(fontsize=14))
+    # axes2.set_ylabel(ylabel2, fontdict=dict(fontsize=14))
+    plt.xlabel(xlabel, fontdict=dict(fontsize=14))
+    plt.suptitle(suptitle, fontsize=18)
+    axes2 = axes1.twinx()
+    axes2.set_yticks([])
+    axes2.set_yticklabels([])
+    # axes2.axis('off')
+    axes2.spines['top'].set_visible(False)
+    axes2.spines['right'].set_visible(False)
+    axes2.spines['bottom'].set_visible(False)
+    axes2.spines['left'].set_visible(False)
+    axes2.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    axes2.set_ylabel(ylabel2, fontdict=dict(fontsize=14), labelpad=33)
