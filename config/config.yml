@@ -1,6 +1,6 @@
 model:
   version: TF
-  type: nn1
+  type: cnn1
   n_iterations: 50
   check_overfitting: False
   # shuffle: 1
@@ -12,8 +12,8 @@ data:
   shuffle: 1
   batch_size: 128
   shuffle_buffer_size: 100
-  noniid: 0
-  unbalanced: 1
+  noniid: 1
+  unbalanced: 0
 
 optimizer:
   learning_rate: 0.001 # Learning rate for nn sgd: 0.01, 0.001 for adam
@@ -24,7 +24,7 @@ optimizer:
   name: adam
 
 comms:
-  mode: 4 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
+  mode: 2 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
   interval: 1
   shap_model: logistic
   shap_epochs: 50
@@ -43,7 +43,7 @@ distribute:
   norm_epsilon: 1 # 1 for mnist, 10 for F-mnist
 
 executor:
-  scenario: 10
+  scenario: 99
   shared_folder: data/
   config_folder: config/
   # tf_dir: logs/tf/

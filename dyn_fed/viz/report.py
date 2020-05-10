@@ -3,6 +3,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from dyn_fed.utils.report_utils import extract_values
+
 def plot_results(results,
                  metric,
                  n_rows=2,
@@ -103,10 +105,12 @@ def plot_model_performance(results,
                            ylabel1='Accuracy',
                            ylabel2='Generalization gap',
                            suptitle='Model Performance',
+                           ylim=(0, 100),
                            ylim2=(-0.05, 0.2),
                            width=0.1,
                            titles=None,
-                           figsize=(12, 8)):
+                           figsize=(12, 8),
+                           bar_alpha=0.4):
     """Plot model performance
     """
     nrows = 2
@@ -140,7 +144,8 @@ def plot_model_performance(results,
                 marker='o',
                 markersize=3
             )
-            axes[i][j].set_ylim(0, 100)
+            if ylim is not None:
+                axes[i][j].set_ylim(*ylim)
             axes[i][j].set_title(titles[row], fontdict=dict(fontsize=14))
             ax2 = axes[i][j].twinx()
             for k in bars:
@@ -148,14 +153,22 @@ def plot_model_performance(results,
                     r = x.copy()
                 else:
                     r = [b + width for b in r]
-                ax2.bar(r, results[row][metric2].values[:, k], width=width, alpha=0.4)
+                ax2.bar(
+                    r,
+                    results[row][metric2].values[:, k],
+                    width=width,
+                    alpha=bar_alpha
+                )
 
             # ax.set_xticks([r + width**1/(1/1) for r in range(len(x))])
-            ax2.set_xticks(np.floor(((max_x - min_x) / 2 + min_x) * multiplier) / multiplier)
+            ax2.set_xticks(
+                np.floor(((max_x - min_x) / 2 + min_x) * multiplier) / multiplier
+            )
             ax2.set_xticklabels(results[row][metric2].index)
             if j == 0:
                 ax2.set_yticklabels([])
-            ax2.set_ylim(*ylim2)
+            if ylim2 is not None:
+                ax2.set_ylim(*ylim2)
             axes[i, j].set_xlabel('')
             ax2.set_xlabel('')
 
@@ -183,3 +196,75 @@ def plot_model_performance(results,
     axes2.spines['left'].set_visible(False)
     axes2.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
     axes2.set_ylabel(ylabel2, fontdict=dict(fontsize=14), labelpad=33)
+
+def plot_loss(results,
+              base_query,
+              queries,
+              nrows=1,
+              ncols=2,
+              title=None,
+              order=None,
+              figsize=(16, 8)):
+    """plot losses
+    """
+    LABEL_LOOKUP = {
+        '0': {
+            '1': {None: r'FedAvg, $\rho=1$'},
+            '10': {None: r'FedAvg, $\rho=10$'},
+            '20': {None: r'FedAvg, $\rho=20$'},
+            '50': {None: r'FedAvg, $\rho=50$'},
+            '100': {None: r'FedAvg, $\rho=100$'}
+        },
+        '1': {'1': {None: r'DynAvg SVD'}},
+        '2': {'1': {None: r'DynAvg Loss'}},
+        '3': {
+            '1': {
+                '0.3': r'DynAvg $\Delta=0.8$',
+                '0.8': r'DynAvg $\Delta=0.8$',
+                '2.2': r'DynAvg $\Delta=2.2$',
+                '2.8': r'DynAvg $\Delta=2.8$'
+            }
+        },
+    }
+    fig, ax = plt.subplots(
+        nrows,
+        ncols,
+        sharex=True,
+        sharey=True,
+        figsize=figsize
+    )
+    ax = np.atleast_2d(ax)
+    for i in range(nrows):
+        for j in range(ncols):
+            row = i * ncols + j
+            query = base_query + " and " + queries[row]
+            lookup = extract_values(results, query)
+            if lookup:
+                plt.figure()
+                k, v = list(lookup[0].items())[0]
+                if title is not None:
+                    ax[i][j].set_title(title, fontdict=dict(fontsize=14))
+                for l in lookup:
+                    k, v = list(l.items())[0]
+                    s = k.split("/")[-2].split("-")
+                    mode = s[5]
+                    interval = s[4]
+                    if len(s) > 10:
+                        thresh = s[-1]
+                    else:
+                        thresh = None
+                    label = LABEL_LOOKUP[mode][interval][thresh]
+                    # plt.plot(v['train'], label="train/" + label)
+                    ax[i][j].plot(v['test'], label=label)
+
+    handles, labels = ax[nrows - 1, ncols - 1].get_legend_handles_labels()
+    handles = np.array(handles)
+    labels = np.array(labels)
+    ax[nrows - 1, ncols - 1].legend().remove()
+    # fig.legend(handles, labels, loc='upper right', fontsize=12)
+    if order is not None:
+        fig.legend(handles[order].tolist(), labels[order].tolist(), loc=7, fontsize=11)
+    else:
+        fig.legend(handles, labels, loc='upper right', fontsize=12)
+    # fig2.tight_layout()
+    fig.subplots_adjust(right=0.85)
