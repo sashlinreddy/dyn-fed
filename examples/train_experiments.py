@@ -15,7 +15,8 @@ from dyn_fed.utils import model_utils
 
 @click.command()
 @click.option('--platform', '-p', default='slurm', type=str, help='Platform running experiments')
-def run(platform):
+@click.option('--dirname', '-d', default=None, type=str, help='Config directory')
+def run(platform, dirname):
     """Controller function which creates the server and starts off the training
 
     Args:
@@ -24,12 +25,16 @@ def run(platform):
             file for different options
     """
     # Load in config to setup model
-    folder_name = model_utils.create_experiments()
-    folder_name = 'config'/folder_name
+    project_dir = Path(__file__).resolve().parents[1]
+    if dirname is None:
+        folder_name = model_utils.create_experiments()
+        folder_name = project_dir/'config'/folder_name
+    else:
+        folder_name = project_dir/'config'/dirname
+
     # n_workers = [8, 32, 64, 128]
     # n_workers = [8, 16, 32, 64]
     # n_workers = [64]
-    project_dir = Path(__file__).resolve().parents[1]
     launch_script_path = str(project_dir/'scripts/slurm_launch.sh')
 
     if platform == 'slurm':
