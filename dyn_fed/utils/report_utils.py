@@ -3,40 +3,59 @@
 import re
 from typing import List, Collection
 from collections import defaultdict
+from functools import partial
 
 import numpy as np
 import pandas as pd
+from scipy.stats import sem
 
 ListOfPandas = Collection[pd.DataFrame]
 ListOfPandasList = Collection[ListOfPandas]
 
-def performance_pivot(df, query, value, columns=None, xlabel=None):
+
+def performance_pivot(df, query, value, columns=None, xlabel=None, aggfunc='mean'):
     """Generates performance pivot for a certain value. Eg. loss or accuracy
     """
-    avg_piv = (
-        df.query(query + 'and interval > 1')
-        .pivot_table(
-            values=value,
-            index="n_clients",
-            columns=['comm_mode', 'interval']
+    try:
+        avg_piv = (
+            df.query(query + 'and interval > 1')
+            .pivot_table(
+                values=value,
+                index="n_clients",
+                columns=['comm_mode', 'interval'],
+                aggfunc=aggfunc
+            )
         )
-    )
-    piv = (
-        df.query(query + 'and interval < 2')
-        .pivot_table(
-            values=value,
-            index="n_clients",
-            columns=['comm_mode', 'delta_threshold']
+
+        piv = (
+            df.query(query + 'and interval < 2')
+            .pivot_table(
+                values=value,
+                index="n_clients",
+                columns=['comm_mode', 'delta_threshold'],
+                aggfunc=aggfunc
+            )
         )
-    )
-    merged = pd.concat([piv, avg_piv], axis=1)
-    
-    if columns is not None:
-        merged.columns = columns
-    if xlabel is not None:
-        merged.index.name = xlabel
-    
+        merged = pd.concat([piv, avg_piv], axis=1)
+
+        if columns is not None:
+            merged.columns = columns
+        if xlabel is not None:
+            merged.index.name = xlabel
+    except Exception as e:
+        from IPython.display import display
+        display(avg_piv)
+        display(piv)
+        display(query)
+        display(value)
+        raise e
+
     return merged
+
+
+def double_std(x):
+    return np.std(x) * 2
+
 
 def generate_all_pivots(df: pd.DataFrame, metrics: List) -> ListOfPandasList:
     """Generate all performance pivots for iid and balanced; iid and unbalanced;
@@ -57,7 +76,7 @@ def generate_all_pivots(df: pd.DataFrame, metrics: List) -> ListOfPandasList:
             r'FedAvg, $\rho=1$', r'DynAvg SVD', r'DynAvg Loss', dyn_avg1,
             dyn_avg2, r'FedAvg, $\rho=10$', r'FedAvg, $\rho=50$'
         ]
-    
+
     results = []
     queries = []
     for i in np.arange(2):
@@ -66,11 +85,39 @@ def generate_all_pivots(df: pd.DataFrame, metrics: List) -> ListOfPandasList:
             queries.append(query)
             tmp = {}
             for m in metrics:
-                p = performance_pivot(df, query, m, columns=columns, xlabel=xlabel)
+                mp = performance_pivot(
+                    df,
+                    query,
+                    m,
+                    columns=columns,
+                    xlabel=xlabel
+                )
+                sdp = performance_pivot(
+                    df,
+                    query,
+                    m,
+                    columns=columns,
+                    xlabel=xlabel,
+                    aggfunc=double_std
+                )
+                sep = performance_pivot(
+                    df,
+                    query,
+                    m,
+                    columns=columns,
+                    xlabel=xlabel,
+                    aggfunc=partial(sem, ddof=0, nan_policy='raise')
+                )
+                p = {
+                    'mean': mp,
+                    'stddev': sdp,
+                    'stderr': sep
+                }
                 tmp[m] = p
             results.append(tmp)
 
     return results, queries
+
 
 def generate_packet_size_pivots(df: pd.DataFrame):
     """Generate packet size pivots
@@ -78,7 +125,9 @@ def generate_packet_size_pivots(df: pd.DataFrame):
     pkt_size_piv = (
         df
         .pivot_table(
-            values="pkt_size", index="n_clients", columns=["comm_mode", "interval", "delta_threshold"]
+            values="pkt_size",
+            index="n_clients",
+            columns=["comm_mode", "interval", "delta_threshold"]
         )
     )
     is_sgd = (df["optimizer"] == "sgd").all()
@@ -111,14 +160,15 @@ def generate_packet_size_pivots(df: pd.DataFrame):
             r'DynAvg Loss', dyn_avg1, dyn_avg2,
             r'FedAvg, $\rho=10$', r'FedAvg, $\rho=20$',
             r'FedAvg, $\rho=50$', r'FedAvg, $\rho=100$'
-    ]
+        ]
         pkt_size_piv = pkt_size_piv.loc[:, cols]
     pkt_size_piv.index = pkt_size_piv.index - 1
     return pkt_size_piv
 
+
 def parse_logs(files, lookup_date):
     idx = files[0].split("/").index(lookup_date)
-    mydict = lambda: defaultdict(mydict)
+    def mydict(): return defaultdict(mydict)
     results = mydict()
     count = 0
     for fname in files:
@@ -144,12 +194,13 @@ def parse_logs(files, lookup_date):
             train_losses = list(map(lambda x: float(x), train_losses))
             test_losses = list(map(lambda x: float(x), test_losses))
             results[name]["train"] = train_losses
-            results[name]["test"] = test_losses  
+            results[name]["test"] = test_losses
             count += 1
 
     print(f"Parsed {count} files")
 
     return results
+
 
 def extract_values(obj, query):
     """Pull all values of specified key from nested JSON."""
@@ -175,7 +226,7 @@ def extract_values(obj, query):
                  unbalanced,
                  learning_rate,
                  n_iterations
-                ) = split_run
+                 ) = split_run
             else:
                 (n_workers,
                  scenario,
@@ -188,7 +239,7 @@ def extract_values(obj, query):
                  learning_rate,
                  n_iterations,
                  delta
-                ) = split_run
+                 ) = split_run
 
             condition = eval(query)
             if condition:
