@@ -36,6 +36,7 @@ from dyn_fed.lib.io.file_io import FileWatcher
 class ClientV2():
     """Client class
     """
+
     def __init__(self, model, optimizer, strategy):
         self.sub = None
         self.push = None
@@ -74,7 +75,8 @@ class ClientV2():
         # Assume all clients have violated the dynamic operator threshold
         self.violated = True
 
-        self._logger = logging.getLogger(f"dfl.distribute.{self.__class__.__name__}")
+        self._logger = logging.getLogger(
+            f"dfl.distribute.{self.__class__.__name__}")
 
         self._logger.info("Setting up...")
 
@@ -87,13 +89,15 @@ class ClientV2():
         if "SLURM_JOBID" in os.environ:
             slurm_job_id = os.environ["SLURM_JOBID"]
             ip_filename = f"ip_config_{slurm_job_id}.json"
-    
-        full_path = os.path.join(self.config.executor.config_folder, ip_filename)
+
+        full_path = os.path.join(
+            self.config.executor.config_folder, ip_filename)
         if os.path.exists(full_path):
             with open(full_path, "r") as f:
                 ip_config = json.load(f)
         else:
-            file_watcher = FileWatcher(self.config.executor.config_folder, full_path)
+            file_watcher = FileWatcher(
+                self.config.executor.config_folder, full_path)
             file_found = file_watcher.run(timeout=60)
             if file_found:
                 self._logger.info("Found IP Address file. Loading...")
@@ -121,17 +125,18 @@ class ClientV2():
         dev.connect_out(f'tcp://{master_ip_address}:5561')
         dev.start()
 
-        subscriber = context.socket(zmq.SUB) # pylint: disable=no-member
+        subscriber = context.socket(zmq.SUB)  # pylint: disable=no-member
         subscriber.connect(f"tcp://{master_ip_address}:5560")
         # subscriber.connect(f"tcp://{master_ip_address}:5563")
-        subscriber.setsockopt(zmq.SUBSCRIBE, b"") # pylint: disable=no-member
+        subscriber.setsockopt(zmq.SUBSCRIBE, b"")  # pylint: disable=no-member
 
-        self.push = context.socket(zmq.PUSH) # pylint: disable=no-member
+        self.push = context.socket(zmq.PUSH)  # pylint: disable=no-member
         self.push.connect(f"tcp://{master_ip_address}:5567")
         # push_socket.connect(f"tcp://{master_ip_address}:5562")
 
-        ctrl_socket = context.socket(zmq.DEALER) # pylint: disable=no-member
-        ctrl_socket.setsockopt_string(zmq.IDENTITY, self.identity) # pylint: disable=no-member
+        ctrl_socket = context.socket(zmq.DEALER)  # pylint: disable=no-member
+        ctrl_socket.setsockopt_string(
+            zmq.IDENTITY, self.identity)  # pylint: disable=no-member
         ctrl_socket.connect(f"tcp://{master_ip_address}:5566")
         # ctrl_socket.connect(f"tcp://{master_ip_address}:5565")
 
@@ -142,7 +147,7 @@ class ClientV2():
         # wait for connections
         time.sleep(1)
 
-        self._logger.info(f"Connected")       
+        self._logger.info(f"Connected")
 
     def _check_metrics(self):
         """Checks metrics on training and validation dataset
@@ -164,7 +169,7 @@ class ClientV2():
         test_loss = self.test_loss_avg.result()
         test_acc = self.test_acc_avg.result()
 
-        return test_acc, test_loss 
+        return test_acc, test_loss
 
     def _training_loop(self):
         """Perform training loop
@@ -187,7 +192,8 @@ class ClientV2():
             grads = t.gradient(loss, self.model.trainable_variables)
 
             # Optimize the model
-            self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
+            self.optimizer.apply_gradients(
+                zip(grads, self.model.trainable_variables))
 
             # Track progress
             self.epoch_loss_avg(loss)
@@ -202,7 +208,6 @@ class ClientV2():
             end = time.time()
             elapsed = end - start
             self._logger.debug(f"Gradient calc elapsed time={elapsed:7.4f}")
-
 
             epoch_loss = self.epoch_loss_avg.result()
             epoch_train_acc = self.epoch_accuracy.result()
@@ -238,20 +243,20 @@ class ClientV2():
         """Receive communication information
         """
         self.comm_iterations, self.comm_interval, self.comm_every_iter = \
-                parse_comm_setup_from_string(msg[1])
+            parse_comm_setup_from_string(msg[1])
         self.start_comms_iter = self.max_iter - \
             self.comm_iterations
-            
+
         self._logger.debug(
             f"Comm iterations={self.comm_iterations}, "
             f"Comm interval={self.comm_interval}"
         )
-    
+
     def setup(self, train_dataset, test_dataset=None):
         """Setup server with train and test data and train steps
         """
         self.train_dataset = train_dataset
-        
+
         if self.config.model.check_overfitting:
             X_test, y_test = test_dataset
             n_samples = X_test.shape[0]
@@ -260,7 +265,8 @@ class ClientV2():
             self.test_dataset = test_dataset
 
         # Define loss function
-        self.loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+        self.loss_func = tf.keras.losses.SparseCategoricalCrossentropy(
+            from_logits=True)
 
         self.epoch_loss_avg = tf.keras.metrics.Mean()
         self.epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
@@ -284,7 +290,8 @@ class ClientV2():
                 (X, y)
             )
             self.train_dataset = (
-                self.train_dataset.shuffle(self.config.data.shuffle_buffer_size)
+                self.train_dataset.shuffle(
+                    self.config.data.shuffle_buffer_size)
                 .batch(self.config.data.batch_size)
             )
 
@@ -298,7 +305,7 @@ class ClientV2():
             self._logger.info(f"X.shape={X.shape}, y.shape={y.shape}")
 
             if self.config.comms.mode == 1 or \
-                self.config.distribute.aggregate_mode == 3:
+                    self.config.distribute.aggregate_mode == 3:
                 tic = time.time()
                 idx_95 = arg_svd(X)
                 self._logger.info(
@@ -341,13 +348,14 @@ class ClientV2():
 
         optimizer = tf.keras.optimizers.Adam(0.001)
 
-        loss_func = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+        loss_func = tf.keras.losses.SparseCategoricalCrossentropy(
+            from_logits=True)
 
         epoch_loss_avg = tf.keras.metrics.Mean()
         epoch_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
         test_loss_avg = tf.keras.metrics.Mean()
         test_acc_avg = tf.keras.metrics.SparseCategoricalAccuracy()
-        
+
         # Update local model using global parameters
         model.set_weights(parameters)
 
@@ -413,7 +421,7 @@ class ClientV2():
     def recv_params(self, msg):
         """Recv params
         """
-        _ = msg[0] # Topic
+        _ = msg[0]  # Topic
         cmd = msg[1]
         if cmd == b"WORK_PARAMS":
             self._logger.info("Receiving params...")
@@ -426,14 +434,16 @@ class ClientV2():
                 parameters = parse_params_from_stringv2(msg[2])
                 packet_size = len(msg[2])
                 self._logger.debug(f"Packet size of params={packet_size}")
-                
+
                 # Update local model using global parameters
                 self.model.set_weights(parameters)
             else:
-                self._logger.debug("Delta < threshold - no need to update params")
+                self._logger.debug(
+                    "Delta < threshold - no need to update params")
 
             update_ref_model = msg[3]
-            update_ref_model = parse_numpy_from_string(update_ref_model, dtype=bool, shape=())
+            update_ref_model = parse_numpy_from_string(
+                update_ref_model, dtype=bool, shape=())
             self._logger.debug(f"Update ref model={update_ref_model}")
             if update_ref_model:
                 self.model_watchdog.update_ref_model(parameters)
@@ -463,7 +473,8 @@ class ClientV2():
 
             send_work = (self.iter - 1) % self.comm_interval == 0
             send_work = send_work or (self.iter >= self.comm_every_iter)
-            send_work = send_work and self.violated # If work is violated, we send the work
+            # If work is violated, we send the work
+            send_work = send_work and self.violated
             if self.config.comms.mode == 3:
                 send_work = send_work or (self.iter == self.max_iter)
 
@@ -479,7 +490,8 @@ class ClientV2():
             elif not send_work and self.config.comms.mode == 3:
                 self._logger.debug(f"Skipping sending work...")
                 multipart = [b"SKIP", self.identity.encode()]
-                data = [params_skip_response_to_string(self.model_watchdog.divergence)]
+                data = [params_skip_response_to_string(
+                    self.model_watchdog.divergence)]
                 multipart.extend(data)
                 self.push.send_multipart(multipart)
 
