@@ -25,7 +25,10 @@ def main(input_filepath, output_filepath):
         "epochs", "delta_threshold", "error"
     ]
 
-    metrics = ["time", "train_acc", "test_acc", "train_loss", "test_loss", "pkt_size"]
+    metrics = [
+        "time", "train_acc", "test_acc", "train_loss",
+        "test_loss", "pkt_size", "comm_rounds"
+    ]
 
     columns = configs + metrics
     results = pd.DataFrame(
@@ -44,7 +47,7 @@ def main(input_filepath, output_filepath):
             )
             if jobid_match:
                 results.loc[i, "jobid"] = jobid_match.group()
-            
+
             match = re.search(
                 r"(?<=Beginning run for ).+?(?=\n)",
                 logfile
@@ -66,7 +69,7 @@ def main(input_filepath, output_filepath):
                 results.loc[i, "learning_rate"] = float(enc_list[8])
                 results.loc[i, "epochs"] = int(enc_list[9])
                 if len(enc_list) > 10:
-                    results.loc[i, "delta_threshold"] = enc_list[10]                    
+                    results.loc[i, "delta_threshold"] = enc_list[10]
 
             # Time taken
             iteration_match = re.search(
@@ -141,6 +144,21 @@ def main(input_filepath, output_filepath):
                 error = True
                 print(f'No pkt size match for {dirname}')
 
+            comm_rounds_match = re.search(
+                r"(?<=Comm rounds=).+?(?=\n)",
+                logfile
+            )
+            if comm_rounds_match:
+                comm_rounds = comm_rounds_match.group()
+                try:
+                    results.loc[i, "comm_rounds"] = int(comm_rounds)
+                except ValueError as e:
+                    error = True
+                    print(f'{e}')
+            else:
+                error = True
+                print(f'No comm rounds match for {dirname}')
+
             # if not error:
             #     print(f"time={time_sec}, test_acc={test_acc}, pkt_size={pkt_size}")
             # else:
@@ -159,6 +177,7 @@ def main(input_filepath, output_filepath):
 
     results.to_csv(output_filepath, index=False)
 
+
 if __name__ == "__main__":
 
-    main() # pylint: disable=no-value-for-parameter
+    main()  # pylint: disable=no-value-for-parameter
