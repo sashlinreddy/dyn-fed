@@ -85,7 +85,9 @@ def gen_exp_perms(experiments_cfg):
             continue
         # Exclude threshold > 0 for mode != 3
         # For now adam optimizer delta threshold no work
-        elif (d.get("mode") != 3 and d.get("delta_threshold") > 0.0):
+        elif ((d.get("mode") != 3) and (d.get("delta_threshold") > 0.0)):
+            continue
+        elif ((d.get("mode") == 3) and (d.get("delta_threshold") == 0.0)):
             continue
         elif ((d.get('mode') == 3) and (d.get('optimizer') == 'adam') \
             and (d.get("delta_threshold") < 2.0)):
@@ -141,6 +143,7 @@ def create_experiments(project_dir=None):
             n_workers=experiment.get('n_workers', 8),
             agg_mode=experiment.get('aggregate_mode', 0),
             delta_threshold=experiment.get('delta_threshold', 0.0),
+            scenario=experiment.get('scenario', 1),
             data_dir=experiment.get('shared_folder', 'data/mnist/')
         )
         counter = i + 1
