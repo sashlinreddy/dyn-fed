@@ -27,7 +27,8 @@ def main(input_filepath, output_filepath):
 
     metrics = [
         "time", "train_acc", "test_acc", "train_loss",
-        "test_loss", "pkt_size", "comm_rounds"
+        "test_loss", "pkt_size", "comm_rounds",
+        "svd_time"
     ]
 
     columns = configs + metrics
@@ -131,6 +132,14 @@ def main(input_filepath, output_filepath):
                 results.loc[i, "test_loss"] = float(test_loss)
             else:
                 error = True
+
+            svd_match = re.search(
+                r"(?<=calculate SVDs=).+?(?=\n)",
+                logfile
+            )
+            if svd_match:
+                svd_time = float(svd_match.group())
+                results.loc[i, "svd_time"] = svd_time
 
             # Packet size
             pkt_size_match = re.search(
