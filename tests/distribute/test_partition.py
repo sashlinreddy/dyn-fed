@@ -14,9 +14,9 @@ logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 # Need to disable capturing for tensorflow and matplotlib
 # before importing from dataset
 # pylint: disable=wrong-import-position
-from fault_tolerant_ml.data import \
+from dyn_fed.data import \
     Dataset
-from fault_tolerant_ml.data.utils import next_batch
+from dyn_fed.data.utils import next_batch, next_batch_unbalanced
 
 
 class TestPartition(unittest.TestCase):
@@ -61,3 +61,23 @@ class TestPartition(unittest.TestCase):
             # All shapes should be 720 since we have an overlap
             self.assertEqual(X_batch.shape, (720, 784))
             self.assertEqual(y_batch.shape, (720, 10))
+
+    def test_unbalanced_dataset(self):
+        """Test unbalanced partitioning
+        """
+        n_samples = 60000
+        n_workers = 7
+        np.random.seed(2)
+        x = np.random.randint(0, n_samples, size=(n_samples, 784))
+        y = np.random.randint(0, 2, size=(n_samples, 10))
+        batch_gen = next_batch_unbalanced(x, y, n_workers, shuffle=True)
+
+        shapes = []
+
+        for i in np.arange(n_workers):
+            x_batch, _ = next(batch_gen)
+            shapes.append(x_batch.shape[0])
+
+        assert shapes == [9710, 3350, 14328, 9756, 7752, 1773, 13331]
+
+

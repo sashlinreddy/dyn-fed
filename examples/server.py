@@ -2,18 +2,15 @@
 """
 import logging
 import time
-import threading
 import signal
 
 import numpy as np
 import zmq.green as zmq
-from zmq.eventloop import zmqstream
 import gevent
 
 from tornado import ioloop
-# import tornado
 
-from fault_tolerant_ml.distribute.states import MAP, MAP_PARAMS, REDUCE, START
+from dyn_fed.distribute.states import MAP, MAP_PARAMS, START
 
 logging.basicConfig(level="INFO")
 logger = logging.getLogger()
@@ -230,7 +227,7 @@ class Server():
         self.heart_pub_socket.close()
         
     def send_work(self):
-        """Send work to workers
+        """Send work to clients
         """
         # while True:
         #     print("Hello")
@@ -252,7 +249,7 @@ class Server():
             gevent.sleep(0.000000001)
 
             if self.state == MAP:
-                logger.info("Sending work to workers")
+                logger.info("Sending work to clients")
                 # First map data
                 A = np.random.randn(10, 1)
                 logger.info(f"Hearts={self.hearts}")
@@ -285,13 +282,13 @@ class Server():
                             msg = self.pull.recv_multipart()
                             logger.info(msg)
                             cmd = msg[0]
-                            worker = msg[1]
+                            client = msg[1]
                             content = msg[2]
                             if cmd == b"WORK":
                                 buf = memoryview(content)
                                 arr = np.frombuffer(buf, dtype=np.float).copy()
                                 logger.info(
-                                    f"Received work from {worker}, content.shape={arr.shape}"
+                                    f"Received work from {client}, content.shape={arr.shape}"
                                 )
 
                             i += 1

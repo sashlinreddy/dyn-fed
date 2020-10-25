@@ -1,5 +1,5 @@
 import unittest
-from fault_tolerant_ml.operators.tensor import Tensor
+from dyn_fed.operators.tensor import Tensor
 
 class TestTensorSum(unittest.TestCase):
     

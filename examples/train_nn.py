@@ -11,30 +11,30 @@ import numpy as np
 np.random.seed(42)
 from dotenv import find_dotenv, load_dotenv
 
-from fault_tolerant_ml.data import MNist
-from fault_tolerant_ml.distribute import MasterWorkerStrategy
+from dyn_fed.data import MNist
+from dyn_fed.distribute import MasterWorkerStrategy
 
-from fault_tolerant_ml.lib.io import file_io
-from fault_tolerant_ml.losses import CrossEntropyLoss
-# from fault_tolerant_ml.models.linear_model import LogisticRegression
-from fault_tolerant_ml.metrics import accuracy_scorev2, confusion_matrix
-from fault_tolerant_ml.optimizers import SGD, Adam
-from fault_tolerant_ml.utils import model_utils, setup_logger
+from dyn_fed.lib.io import file_io
+from dyn_fed.losses import CrossEntropyLoss
+# from dyn_fed.models.linear_model import LogisticRegression
+from dyn_fed.metrics import accuracy_scorev2, confusion_matrix
+from dyn_fed.optimizers import SGD, Adam
+from dyn_fed.utils import model_utils, setup_logger
 from ft_models import MLP
 
 
 @click.command()
 @click.argument('n_workers', type=int)
-@click.option('--role', '-r', default="worker", type=str)
+@click.option('--role', '-r', default="client", type=str)
 @click.option('--verbose', '-v', default="INFO", type=str)
 @click.option('--identity', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
 @click.option('--add', '-a', default=0, type=int)
 def run(n_workers, role, verbose, identity, tmux, add):
-    """Controller function which creates the master and starts off the training
+    """Controller function which creates the server and starts off the training
 
     Args:
-        n_workers (int): No. of workers to be used for the session
+        n_workers (int): No. of clients to be used for the session
         verbose (int): The logger level as an integer. See more in the logging
             file for different options
 
@@ -44,7 +44,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
 
     if "LOGDIR" in os.environ:
         pass # For now not flusing logs
-        # from fault_tolerant_ml.lib.io.file_io import flush_dir
+        # from dyn_fed.lib.io.file_io import flush_dir
         # _ = [os.path.join(os.environ["LOGDIR"], "tf/")]
         # ignore_dir = []
         # flush_dir(os.environ["LOGDIR"], ignore_dir=ignore_dir)
@@ -54,7 +54,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
     if 'PROJECT_DIR' in os.environ:
         config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
         
-    cfg = file_io.load_model_config(config_path)
+    cfg = file_io.load_yaml(config_path)
 
     model_cfg = cfg['model']
     opt_cfg = cfg['optimizer']
@@ -88,7 +88,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
     logger = None
     data = None
 
-    if role == "master":
+    if role == "server":
         # Setup logger
         setup_logger(level=verbose)
 
@@ -156,7 +156,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
     )
 
     try:
-        logger = logging.getLogger("ftml.scripts.train")
+        logger = logging.getLogger("dfl.scripts.train")
         logger.info(f"Starting run: {encoded_run_name}")
         logger.info(f"Optimizer={optimizer}")
 
@@ -171,7 +171,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
         logger.info("COMPLETED TRAINING")
         logger.info("*******************************")
 
-        if role == "master":
+        if role == "server":
             
             # Print confusion matrix
             y_pred = model.forward(data.X_test)

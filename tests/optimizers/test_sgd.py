@@ -6,14 +6,14 @@ import unittest
 
 import numpy as np
 
-from fault_tolerant_ml.data import MNist
-from fault_tolerant_ml.lib.io import file_io
-from fault_tolerant_ml.losses import CrossEntropyLoss
-from fault_tolerant_ml.operators import Tensor
-from fault_tolerant_ml.optimizers import SGDOptimizer
-from fault_tolerant_ml.utils import maths
+from dyn_fed.data import MNist
+from dyn_fed.lib.io import file_io
+from dyn_fed.losses import CrossEntropyLoss
+from dyn_fed.operators import Tensor
+from dyn_fed.optimizers import SGDOptimizer
+from dyn_fed.utils import maths
 
-logger = logging.getLogger("ftml.optimizers.tests.test_sgd")
+logger = logging.getLogger("dfl.optimizers.tests.test_sgd")
 
 class TestSGDOptimizer(unittest.TestCase):
     """Tests for SGD
@@ -22,7 +22,7 @@ class TestSGDOptimizer(unittest.TestCase):
         """Set up
         """
 
-        cfg = file_io.load_model_config("config.yml")
+        cfg = file_io.load_yaml("config.yml")
         executor_cfg = cfg['executor']
         data_dir = executor_cfg['shared_folder']
         # Get data
@@ -48,7 +48,7 @@ class TestSGDOptimizer(unittest.TestCase):
 
         W_prev = Tensor(np.random.randn(784, 10).astype(np.float32) * 0.01, is_param=True)
         loss = CrossEntropyLoss()
-        optimizer = SGDOptimizer(loss, learning_rate=0.99, role="worker")
+        optimizer = SGDOptimizer(loss, learning_rate=0.99, role="client")
 
         # Forward pass
         s = self.data.X_train @ W_prev

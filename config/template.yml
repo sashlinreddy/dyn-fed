@@ -1,0 +1,44 @@
+model:
+  version: {{ model_version }}
+  type: {{ model_type }}
+  n_iterations: {{ n_iterations }}
+  check_overfitting: {{ check_overfitting }}
+
+data:
+  name: {{ data_name }}
+  shuffle: 1
+  batch_size: 64
+  shuffle_buffer_size: 100
+  noniid: {{ noniid }}
+  unbalanced: {{ unbalanced }}
+
+optimizer:
+  learning_rate: {{ learning_rate }}
+  clip_norm: 0
+  clip_val: 0
+  mu_g: 0.0
+  n_most_rep: 100
+  name: {{ optimizer }}
+
+comms:
+  mode: {{ comm_mode }} # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss, 3: dynamic averaging paper
+  interval: {{ interval }}
+
+distribute:
+  n_workers: {{ n_workers }}
+  strategy: mw
+  remap: 1
+  quantize: 0
+  overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
+  aggregate_mode: {{ agg_mode }} # 0: Avg, 1: Weighted avg, 2: Weighted by loss
+  delta_switch: 0.0004
+  delta_threshold: {{ delta_threshold }} # For dynamic averaging paper
+  timeout: 30
+  send_gradients: 0
+  norm_epsilon: 10
+
+executor:
+  scenario: {{ scenario }}
+  shared_folder: {{ data_dir }}
+  config_folder: "config/"
+  # tf_dir: "logs/tf/"

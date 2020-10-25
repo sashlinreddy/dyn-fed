@@ -14,7 +14,7 @@ import zmq
 
 # local
 import MDP
-from fault_tolerant_ml.utils.zhelpers import dump
+from dyn_fed.utils.zhelpers import dump
 
 class Service(object):
     """a single Service"""

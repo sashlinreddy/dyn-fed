@@ -112,6 +112,7 @@ logs/
 ip_config*.json
 *.conf
 .DS_Store
+config-*
 
 # Protobuf
 *_pb2.py

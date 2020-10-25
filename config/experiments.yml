@@ -1,0 +1,12 @@
+n_workers: [8, 16, 24, 32]
+model_version: [TF]
+model_type: [logistic, nn1, cnn1]
+mode: [0, 1, 2] # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss Run all 2s again
+aggregate_mode: [1] # 0: Avg, 1: Weighted avg, 2: Weighted by loss, 3: Weight by svd
+interval: [1, 10, 20, 50, 100]
+data_name: [mnist, fashion-mnist]
+delta_threshold: [0.0, 0.3, 0.8, 4.3, 4.8]
+noniid: [0, 1]
+unbalanced: [0, 1]
+optimizer: [sgd, adam]
+scenario: [5, 6, 7, 8]

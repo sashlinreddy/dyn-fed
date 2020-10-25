@@ -1,0 +1,44 @@
+model:
+  version: TF
+  type: nn1
+  n_iterations: 100
+  check_overfitting: False
+
+data:
+  name: mnist
+  shuffle: 1
+  batch_size: 64
+  shuffle_buffer_size: 100
+  noniid: 0
+  unbalanced: 0
+
+optimizer:
+  learning_rate: 0.01
+  clip_norm: 0
+  clip_val: 0
+  mu_g: 0.0
+  n_most_rep: 100
+  name: sgd
+
+comms:
+  mode: 0 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss, 3: dynamic averaging paper
+  interval: 1
+
+distribute:
+  n_workers: 8
+  strategy: mw
+  remap: 1
+  quantize: 0
+  overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
+  aggregate_mode: 1 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
+  delta_switch: 0.0004
+  delta_threshold: 0.8 # For dynamic averaging paper
+  timeout: 30
+  send_gradients: 0
+  norm_epsilon: 10
+
+executor:
+  scenario: 3
+  shared_folder: data/fashion-mnist
+  config_folder: "config/"
+  # tf_dir: "logs/tf/"

@@ -1,21 +1,25 @@
-import unittest
-import numpy as np
+"""Test for quantizations
+"""
 import logging
-from fault_tolerant_ml.utils.maths import linspace_quantization, reconstruct_approximation
+import unittest
 
-logger = logging.getLogger("ftml.utils.tests.test_matrix_ops")
+import numpy as np
+
+from dyn_fed.utils.maths import (linspace_quantization,
+                                           reconstruct_approximation)
+
+logger = logging.getLogger("dfl.utils.tests.test_matrix_ops")
 
 class TestMatrixOps(unittest.TestCase):
-
+    """Tests for matrix ops
+    """
     def setUp(self):
         """Set up
         """
-        pass
 
     def tearDown(self):
         """Tear down
         """
-        pass
 
     def test_quantization(self):
         """Test quantization size
@@ -49,8 +53,8 @@ class TestMatrixOps(unittest.TestCase):
     def test_reconstruct_error(self):
         """Test reconstruct error
         """
-
-        # Reconstruct error should be small enough for us to be comfortable with approximating the parameters
+        # Reconstruct error should be small enough for us to be comfortable
+        # with approximating the parameters
         eps = 0.1
         interval = 100
         W = np.random.randn(784, 10).astype(np.float32)
@@ -64,5 +68,7 @@ class TestMatrixOps(unittest.TestCase):
         delta = np.max(abs(W - r_W))
         logger.info(f"Delta={delta}")
 
-        assert delta < eps, "Reconstruct error is too large, consider a different interval for np.linspace"
-
+        self.assertTrue(
+            delta < eps,
+            "Reconstruct error is too large, consider a different interval for np.linspace"
+        )

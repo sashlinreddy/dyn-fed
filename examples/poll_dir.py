@@ -1,9 +1,9 @@
-from fault_tolerant_ml.lib.io.file_io import FileWatcher
+from dyn_fed.lib.io.file_io import FileWatcher
 import logging
 import sys
 
 if __name__ == '__main__':
-    logger = logging.getLogger('ftml')
+    logger = logging.getLogger('dfl')
     formatter = logging.Formatter('%(asctime)s - %(name)s.%(funcName)s() - %(levelname)s - %(message)s',
                                   "%Y-%m-%d %H:%M:%S")
     ch = logging.StreamHandler(sys.stdout)

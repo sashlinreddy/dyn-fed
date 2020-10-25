@@ -1,26 +1,49 @@
 model:
-  n_iterations: 100
-  shuffle: 0
-  batch_size: 32
+  version: TF
+  type: logistic
+  n_iterations: 50
+  check_overfitting: False
+  # shuffle: 1
+  # batch_size: 64
+  # shuffle_buffer_size: 100
+
+data:
+  name: fashion-mnist
+  shuffle: 1
+  batch_size: 128
+  shuffle_buffer_size: 100
+  noniid: 0
+  unbalanced: 0
 
 optimizer:
-  learning_rate: 0.99
+  learning_rate: 0.01 # Learning rate for nn sgd: 0.01, 0.001 for adam
   clip_norm: 0
   clip_val: 0
   mu_g: 0.0
   n_most_rep: 100
-  name: "sgd"
+  name: sgd
 
-executor:
-  strategy: "mw"
-  scenario: 7
+comms:
+  mode: 1 # 0: Normal, 1: dynamic comms svd, 2: dynamic comms loss 3: dynamic averaging paper
+  interval: 1
+  shap_model: logistic
+  shap_epochs: 50
+
+distribute:
+  n_workers: 8
+  strategy: mw
   remap: 1
   quantize: 0
-  overlap: 0.8 # TODO: Experiment more with overlap and weighted loss
-  comm_period: 20
-  aggregate_mode: 2 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
+  overlap: 0.0 # TODO: Experiment more with overlap and weighted loss
+  aggregate_mode: 1 # 0: Avg, 1: Weighted avg, 2: Weighted by loss
   delta_switch: 0.0004
+  delta_threshold: 1.3
   timeout: 30
   send_gradients: 0
-  shared_folder: "data/"
-  config_folder: "config/"
+  norm_epsilon: 1 # 1 for mnist, 10 for F-mnist
+
+executor:
+  scenario: 99
+  shared_folder: data/
+  config_folder: config/
+  # tf_dir: logs/tf/

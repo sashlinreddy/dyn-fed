@@ -1,11 +1,10 @@
-# Fault Tolerant Machine Learning
+# Dynamic Averaging techniques for Federated Machine Learning
 
-Fault tolerant framework for machine learning algorithms
+Dynamic averaging framework for federated machine learning algorithms
 
 ____
 
 * Free software: MIT license
-* Documentation: https://fault-tolerant-ml.readthedocs.io.
 
 ## Prerequisites
 
@@ -21,21 +20,21 @@ ____
 ## Features
 
 * Parameter quantization
-* Fault tolerant training - master keeps track of workers most representative data samples. If the worker goes down, the master redistributes those points to the workers that continue to do work
+* Fault tolerant training - server keeps track of clients most representative data samples. If the worker goes down, the server redistributes those points to the clients that continue to do work
 * Periodic communication - Workers only communicate parameters based on a selected interval
 
 ## Development
 
 ```bash
-git clone https://github.com/sashlinreddy/fault-tolerant-ml.git
+git clone https://github.com/sashlinreddy/dyn-fed.git
 ```
 
-First you need to compile the protocol buffer file. The definitions are in the [ftml.proto](protos/ftml.proto) file.
+First you need to compile the protocol buffer file. The definitions are in the [dfl.proto](protos/dfl.proto) file.
 
 Compilation is executed with the following command:
 
 ```bash
-protoc -I=protos/ --python_out=fault_tolerant_ml/proto/ protos/ftml.proto
+protoc -I=protos/ --python_out=dyn_fed/proto/ protos/dfl.proto
 ```
 
 ### Local development (With tmux)
@@ -43,8 +42,8 @@ protoc -I=protos/ --python_out=fault_tolerant_ml/proto/ protos/ftml.proto
 ```bash
 tmux
 export LOGDIR=${PWD}/logs
-./scripts/master_local.sh $N_WORKERS -v INFO -m $MODEL_TYPE # Run in separate window
-./scripts/worker_local.sh $N_WORKERS -v INFO -m $MODEL_TYPE # Set "setw synchronize-panes on" as a tmux setting. Use Ctrl+B,: for insert mode
+./scripts/client_local.sh $N_WORKERS -v $VERBOSE -m $MODEL_TYPE # Run in separate window
+./scripts/server_local.sh $N_WORKERS -v $VERBOSE -m $MODEL_TYPE # Set "setw synchronize-panes on" as a tmux setting. Use Ctrl+B,: for insert mode
 ```
 
 To view the results on tensorboard assuming you are in the parent directory:
@@ -57,49 +56,67 @@ Go to http://localhost:6006.
 
 ### Running on SLURM cluster
 
+The [slurm launch](scripts/slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [server execution script](examples/tf_train_model.py). However, arguments can be passed to the job submission as below:
+
 ```bash
-sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh
+sbatch -n $ntasks dyn-fed/scripts/slurm_launch.sh -m $MODEL_TYPE -v $VERBOSE
 ```
 
-The [slurm launch](slurm_launch.sh) generates a multi-prog on the fly with desired arguments. The above command will launch a job with the default arguments specified in [master execution script](scripts/run_master.py). However, arguments can be passed to the job submission as below:
+## Generate multiple experiments
 
 ```bash
-sbatch -n $ntasks fault-tolerant-ml/slurm_launch.sh -v 20
+(ftml) $ python dyn-fed/examples/train_experiments.py
+```
+
+## Cancel multiple jobs
+
+```bash
+squeue -u $USER | grep $JOBIDSTART |awk '{print $1}' | xargs -n 1 scancel
 ```
 
 ## Setup config
 
-The config of the model can be set in the [config file](config.yml). The dataset can be configured in this file as well as the following parameters:
+The config of the model can be set in the [config file](config/config.yml). The dataset can be configured in this file as well as the following parameters:
 
 * model
+    * type: Type of model
     * n_iterations:  No. of iterations
     * shuffle: Whether or not to shuffle the data in each iteration
 
+* data
+  * name: Dataset name
+  * shuffle: Whether or not to shuffle dataset # Not used
+  * batch_size: Data batch size
+  * shuffle_buffer_size: Shuffle buffer size
+  * noniid: Whether or not to make dataset noniid
+  * unbalanced: Whether or not to make dataset unbalanced
+
 * optimizer
     * learning_rate: Rate at which model learns
-        * Mnist: SGD: 0.99, Adam: 0.01
-        * Fashion Mnist: SGD: 0.25, Adam: 0.001
-    * mu_g: Weighting given to global W when workers updating local parameters. 0.0 for normal local update.
-    * n_most_rep: No. of most representative data points to keep track of when worker goes down
+        * Mnist: SGD: 0.01, Adam: 0.001
+        * Fashion Mnist: SGD: 0.01, Adam: 0.001
     * name: Name of optimizer (Currently supports sgd and adam)
 
-* executor:
+* distribute
     * strategy: Name of distribution strategy
-    * scenario: Scenario type, see code for more details.
     * remap: Redistribution strategy
     * quantize: Whether or not to use quantization when communicating parameters
     * comm_period: How often to communicate parameters
     * delta_switch: When to switch to every iteration communication
-    * timeout: Time given for any workers to join
-    * send_gradients: Whether or not to send gradients back to master
+    * delta_threshold: For dynamic averaging paper
+    * timeout: Time given for any clients to join
+    * send_gradients: Whether or not to send gradients back to server
     * shared_folder: Dataset to be used
+
+* executor
+    * scenario: Scenario type, see code for more details
 
 ## View Results
 
 To view the results on tensorboard:
 
 ```bash
-sbatch tensorboard_slurm.sh
+sbatch scripts/tensorboard_slurm.sh
 ```
 
 Check the output log located in $HOME/logs. 
@@ -114,7 +131,7 @@ View tensorboard on http://localhost:6006 :)
 To pull results for log files run the following:
 
 ```bash
-python fault-tolerant-ml/fault_tolerant_ml/utils/logger_parser.py logs/slurm/[fashion-mnist|mnist]/ fault-tolerant-ml/data/[fashion_mnist|mnist]_results.csv
+python dyn-fed/dyn_fed/utils/logger_parser.py logs/slurm/[fashion-mnist|mnist]/ fault-tolerant-ml/data/[fashion_mnist|mnist]_results.csv
 ```
 
 ## Run tests
@@ -131,6 +148,7 @@ nosetests -vv
 
 * [Automatic differentiation lecture notes](http://www.cs.cmu.edu/~wcohen/10-605/notes/autodiff.pdf)
 * [Automatic differentation wiki](https://en.wikipedia.org/wiki/Automatic_differentiation)
+* https://archive.ics.uci.edu/ml/datasets/YearPredictionMSD
 * https://github.com/joelgrus/autograd/tree/master
 * https://github.com/ddbourgin
 
