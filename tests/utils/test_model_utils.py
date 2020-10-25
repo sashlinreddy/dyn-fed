@@ -8,7 +8,7 @@ logging.getLogger("tensorflow").setLevel(logging.CRITICAL)
 logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
 
 # pylint: disable=wrong-import-position
-from dyn_fed.lib.io.file_io import load_model_config
+from dyn_fed.lib.io.file_io import load_yaml
 from dyn_fed.utils.model_utils import encode_run_name
 
 logger = logging.getLogger("dfl.utils.tests.utils.test_model_utils")
@@ -29,16 +29,16 @@ class TestModelUtils(unittest.TestCase):
         """Test encoding of model name
         """
         n_workers = 8
-        filename = 'config.yml'
+        filename = 'config/config.yml'
         config_path = self.config_dir/filename
             
-        cfg = load_model_config(config_path)
+        cfg = load_yaml(config_path)
 
         logger.debug(f"Config={cfg}")
 
         encoded_run_name = encode_run_name(n_workers, cfg)
 
-        expected_run_name = "8-1-1-0-0-0.0-100-0.0-0-1-0"
+        expected_run_name = '8-3-0-1-1-0-0-0-0.01-100'
 
         logger.debug(f"Encoded run name={encoded_run_name}, expected={expected_run_name}")
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J ftml
 #SBATCH -o /home-mscluster/sreddy/logs/slurm/slurm_%j.log
-#SBATCH -t 07:00
+#SBATCH -t 30:00
 #SBATCH -p batch
 #SBATCH --export=LOGDIR=/home-mscluster/sreddy/logs/slurm,FIGDIR=/home-mscluster/sreddy/dyn-fed/reports/figures,PROJECT_DIR=/home-mscluster/sreddy/dyn-fed
 # ,TFDIR=/home-mscluster/sreddy/logs/
@@ -32,20 +32,22 @@ EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_logistic.py
 if [ "$MODEL" == "LINEAR" ]; then
     echo "Running Linear Model"
     EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_linear.py
-elif [ "$MODEL" == "LOG2" ]; then
-    echo "Running Logistic 2 Model"
-    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_logisticv2.py
+elif [ "$MODEL" == "V2" ]; then
+    echo "Running Version2 Model"
+    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_model.py
 elif [ "$MODEL" == "NN" ]; then
     echo "Running NN Model"
     EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_nn.py
+elif [ "$MODEL" == "TF" ]; then
+    echo "Running TF Model"
+    EXE_PATH=/home-mscluster/sreddy/dyn-fed/examples/train_tf_model.py
 fi
 
 export PYTHON_EXE=/home-mscluster/sreddy/miniconda3/envs/ftml/bin/python3
 export MASTER_EXE=$EXE_PATH
 export WORKER_EXE=$EXE_PATH
-export DATA_DIR=/home-mscluster/sreddy/dyn-fed/data/fashion-mnist
 
-echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r master $verbose $config > /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
-echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r worker $verbose -i %t $config >> /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
+echo -e '0\t' $PYTHON_EXE $MASTER_EXE $SLURM_NTASKS -r server $verbose $config > /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
+echo -e '*\t' $PYTHON_EXE $WORKER_EXE $SLURM_NTASKS -r client $verbose -i %t $config >> /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf
 
 srun --multi-prog /home-mscluster/sreddy/dyn-fed/m_w_$SLURM_JOBID.conf

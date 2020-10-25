@@ -225,6 +225,25 @@ def params_response_to_stringv2(trainable_vars, loss):
 
     return buffer
 
+def params_skip_response_to_string(divergence):
+    """Parameter response protobuf serialization
+
+    Args:
+        model_layers (list): List of model layers (dfl.Layer)
+        most_rep (np.ndarray): Most representative data points
+        loss (float): Loss for corresponding epoch
+
+    Returns:
+        msg (byte string): Serialized parameters
+    """
+    msg = dfl_pb2.SubscriptionResponseV2(
+        divergence=divergence
+    )
+
+    buffer = msg.SerializeToString()
+
+    return buffer
+
 def parse_numpy_from_string(data, dtype, shape):
     """Reconstruct numpy array from buffer given dtype and shape
 
@@ -433,3 +452,18 @@ def parse_params_response_from_stringv2(msg):
 
     return weights, loss
     
+def parse_skip_params_from_string(msg):
+    """Parameters protobuf deserialization
+
+    Args:
+        msg (byte string): Byte array to be reconstructed
+
+    Returns:
+        layers (list): List of parameters received
+    """
+    subscription = dfl_pb2.SubscriptionResponseV2()
+    subscription.ParseFromString(msg)
+
+    divergence = subscription.divergence
+
+    return divergence

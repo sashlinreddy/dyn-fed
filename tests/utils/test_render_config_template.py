@@ -21,8 +21,8 @@ class TestConfigTemplating(unittest.TestCase):
         """Set up
         """
         self.test_dir = test_dir = Path(__file__).resolve().parents[1]
-        self.template_dir = test_dir/"utils/template.yml"
-        self.config_dir = test_dir/"utils/"
+        self.template_dir = test_dir/"utils/config/template.yml"
+        self.config_dir = test_dir/"utils/config/"
 
     def tearDown(self):
         """Tear down
@@ -34,13 +34,21 @@ class TestConfigTemplating(unittest.TestCase):
         output = render_template(
             self.config_dir,
             "template.yml",
+            model_version="TF",
+            model_type="nn1",
             n_iterations=100,
+            check_overfitting=False,
+            data_name="mnist",
+            noniid=0,
+            unbalanced=0,
+            learning_rate=0.01,
+            optimizer="sgd",
             comm_mode=0,
             interval=1,
-            agg_mode=0,
-            data_dir="\"data/fashion-mnist/\"",
-            noniid=0,
-            unbalanced=0
+            n_workers=8,
+            agg_mode=1,
+            delta_threshold=0.8,
+            data_dir="data/fashion-mnist"
         )
 
         logger.debug(f"Output={output}")

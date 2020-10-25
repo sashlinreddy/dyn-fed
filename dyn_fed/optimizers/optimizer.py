@@ -191,7 +191,7 @@ class SGD(Optimizer):
             self._most_rep = np.argsort(-batch_loss.data.flatten())[0:self._n_most_rep]
             batch_loss = np.mean(batch_loss).data
 
-        # Calculate worker loss - this is aggregated
+        # Calculate client loss - this is aggregated
         # batch_loss = np.mean(abs(batch_loss))
 
         return batch_loss
@@ -269,7 +269,7 @@ class Adam(Optimizer):
             self._most_rep = np.argsort(-batch_loss.data.flatten())[0:self._n_most_rep]
             batch_loss = np.mean(batch_loss).data
         
-        # Calculate worker loss - this is aggregated
+        # Calculate client loss - this is aggregated
         # batch_loss = np.mean(abs(batch_loss))
 
         return batch_loss
@@ -391,7 +391,7 @@ class SGDOptimizer(OptimizerV1):
         # Calculate loss between predicted and actual using selected loss function
         batch_loss = self.loss(y, y_pred, reduce=False)
 
-        if self._role != "master":
+        if self._role != "server":
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
             if batch_loss.shape[1] > 1:
@@ -399,7 +399,7 @@ class SGDOptimizer(OptimizerV1):
                 self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
             else:
                 self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
-            # Calculate worker loss - this is aggregated
+            # Calculate client loss - this is aggregated
             batch_loss = np.mean(abs(batch_loss))
 
         return batch_loss
@@ -436,7 +436,7 @@ class SGDOptimizer(OptimizerV1):
         """
         W_g = kwargs.get("W_g")
 
-        if self.role != "worker":
+        if self.role != "client":
             W = W - self.learning_rate * W.grad
         else:
             W = (
@@ -512,7 +512,7 @@ class AdamOptimizer(OptimizerV1):
         # Calculate loss between predicted and actual using selected loss function
         batch_loss = self.loss(y, y_pred, reduce=False)
 
-        if self._role != "master":
+        if self._role != "server":
             # Calculate most representative data points. We regard data points that have a 
             # high loss to be most representative
             if batch_loss.shape[1] > 1:
@@ -520,7 +520,7 @@ class AdamOptimizer(OptimizerV1):
                 self._most_rep = np.argsort(-temp.flatten())[0:self._n_most_rep]
             else:
                 self._most_rep = np.argsort(-batch_loss.flatten())[0:self._n_most_rep]
-            # Calculate worker loss - this is aggregated
+            # Calculate client loss - this is aggregated
             batch_loss = np.mean(abs(batch_loss))
 
         return batch_loss

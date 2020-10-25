@@ -41,15 +41,15 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
         if self.strategy.name == "local":
             pass # TODO: Local strategy
         elif self.strategy.name == "master_worker":
-            if self.strategy.role == "master":
-                # Setup master
+            if self.strategy.role == "server":
+                # Setup server
                 self._master = Master(
                     model=self
                 )
 
-                self._logger.info("Connecting master sockets")
+                self._logger.info("Connecting server sockets")
                 self._master.connect()
-                # setattr(master, "train_iter", train_iter)
+                # setattr(server, "train_iter", train_iter)
                 # time.sleep(1)
             else:
 
@@ -102,9 +102,9 @@ class LogisticRegression(BaseEstimator, LinearClassifierMixin):
             i += 1
 
     def _fit_mw(self, X=None, y=None):
-        """Training logistic regression using the master worker strategy
+        """Training logistic regression using the server client strategy
         """
-        if self.strategy.role == "master":
+        if self.strategy.role == "server":
             # Master training
             self._master.start(X)
         else:

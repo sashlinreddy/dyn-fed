@@ -23,16 +23,16 @@ from ft_models import LogisticRegression
 
 @click.command()
 @click.argument('n_workers', type=int)
-@click.option('--role', '-r', default="worker", type=str)
+@click.option('--role', '-r', default="client", type=str)
 @click.option('--verbose', '-v', default="INFO", type=str)
 @click.option('--identity', '-i', default="", type=str)
 @click.option('--tmux', '-t', default=0, type=int)
 @click.option('--add', '-a', default=0, type=int)
 def run(n_workers, role, verbose, identity, tmux, add):
-    """Controller function which creates the master and starts off the training
+    """Controller function which creates the server and starts off the training
 
     Args:
-        n_workers (int): No. of workers to be used for the session
+        n_workers (int): No. of clients to be used for the session
         verbose (int): The logger level as an integer. See more in the logging
             file for different options
     """
@@ -50,7 +50,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
     if 'PROJECT_DIR' in os.environ:
         config_path = os.path.join(os.environ['PROJECT_DIR'], config_path)
         
-    cfg = file_io.load_model_config(config_path)
+    cfg = file_io.load_yaml(config_path)
 
     model_cfg = cfg['model']
     opt_cfg = cfg['optimizer']
@@ -84,7 +84,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
     logger = None
     data = None
 
-    if role == "master":
+    if role == "server":
         # Setup logger
         setup_logger(level=verbose)
 
@@ -168,7 +168,7 @@ def run(n_workers, role, verbose, identity, tmux, add):
         logger.info("COMPLETED TRAINING")
         logger.info("*******************************")
 
-        if role == "master":
+        if role == "server":
             
             # Print confusion matrix
             y_pred = model.forward(data.X_test)

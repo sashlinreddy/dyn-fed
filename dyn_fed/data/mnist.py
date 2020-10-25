@@ -9,8 +9,7 @@ import numpy as np
 
 from dyn_fed.operators import Tensor
 from dyn_fed.data.utils import one_hot
-
-from .base import Dataset
+from dyn_fed.data.base import _unarchive, Dataset
 
 def _preprocess(X_train,
                 y_train,
@@ -76,21 +75,14 @@ def _preprocess(X_train,
 
     return data
 
-def _unarchive(fname):
-    """Unarchive filename
-    """
-    with gzip.open(fname) as f:
-        _, _, dims = struct.unpack('>HBB', f.read(4))
-        shape = tuple(struct.unpack('>I', f.read(4))[0] for d in range(dims))
-        return np.fromstring(f.read(), dtype=np.uint8).reshape(shape)
-
 def load_data(path: Optional[str]=None,
               noniid: Optional[bool]=False,
               onehot=False,
               convert_types=False,
               reshape: Optional[bool]=False,
               test_only: Optional[bool]=False,
-              tensorize: Optional[bool]=False):
+              tensorize: Optional[bool]=False,
+              rgb_channel: Optional[bool]=False):
     """Load mnist data - returns numpy train and test sets
     """
     # For now just using this path
@@ -142,6 +134,10 @@ def load_data(path: Optional[str]=None,
             X_test = Tensor(X_test)
             y_test = Tensor(y_test)
 
+        if rgb_channel:
+            X_train = X_train[..., np.newaxis]
+            X_test = X_test[..., np.newaxis]
+
         data = (X_train, y_train, X_test, y_test)
     else:
         X_test = _unarchive(x_test_fname)
@@ -166,6 +162,9 @@ def load_data(path: Optional[str]=None,
         if tensorize:
             X_test = Tensor(X_test)
             y_test = Tensor(y_test)
+
+        if rgb_channel:
+            X_test = X_test[..., np.newaxis]
 
         data = (X_test, y_test)
 

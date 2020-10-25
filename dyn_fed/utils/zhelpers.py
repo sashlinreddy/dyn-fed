@@ -75,7 +75,7 @@ def recv_array(socket, flags=0, copy=True, track=False):
     return A.reshape(md['shape'])
 
 def multipart_params(data_list):
-    """Prep model parameters to send to workers.
+    """Prep model parameters to send to clients.
 
     Get parameters from each layer and append the data, dtype and shape a list
     to send. Also quantize parameters if quantize flag = 1

@@ -13,7 +13,7 @@ print(f"Dummy data.shape={dummy_data.X.shape}")
 msg = dummy_data.to_string()
 
 for _ in range(N_TASKS):
-    # LRU worker is next waiting in the queue
+    # LRU client is next waiting in the queue
     address, empty, ready = client.recv_multipart()
 
     client.send_multipart([

@@ -32,10 +32,10 @@ class Coordinator():
         if running_time > timeout:
             self._logger.debug(f"Running time exceeded timeout={running_time}")
             active_workers = set(watch_dog.active_workers)
-            # Get workers that we did not receive work from
+            # Get clients that we did not receive work from
             diff = active_workers - workers_received
             for w in diff:
-                # Set dead workers state to false
+                # Set dead clients state to false
                 watch_dog.states[w].state = False
                 if strategy.remap != 1:                                    
                     watch_dog.states[w].idxs = watch_dog.states[w].most_representative
@@ -54,10 +54,10 @@ class Coordinator():
 
         socket.send_multipart(multipart)
 
-    def send(self, socket, worker, data, tag=b""):
-        """Send to specific rank/worker
+    def send(self, socket, client, data, tag=b""):
+        """Send to specific rank/client
         """
-        multipart = [worker, tag]
+        multipart = [client, tag]
         multipart.extend(data)
         socket.send_multipart(multipart)
 
@@ -73,9 +73,9 @@ class Coordinator():
 
         Args:
             d_Wbs (list): List of parameters received
-            errors (list): List of losses for each worker
+            errors (list): List of losses for each client
             model (dfl.Model): Model being used
-            samples (list): List containing number of samples for each worker
+            samples (list): List containing number of samples for each client
             n_samples (int): Total number of samples
             mode (int): Aggregation mode (default: 0)
 
@@ -83,19 +83,19 @@ class Coordinator():
             parameters (list): List of numpy matrices for each layer
         """
         # pylint: disable=too-many-arguments, too-many-locals
-        # Iterate through workers and weight parameters by corresponding epoch loss
+        # Iterate through clients and weight parameters by corresponding epoch loss
         parameters = [[np.zeros_like(l.W.data), np.zeros_like(l.b.data)] for l in model.layers]
         sum_es = np.sum(np.exp(errors))
         epoch_loss = np.mean(errors)
         for j in np.arange(len(errors)):
-            weight = 1.0 / len(errors)  # Default aggregation is the average across workers
-            # Weight by loss calculated by worker - worker with highest loss has greater weight
+            weight = 1.0 / len(errors)  # Default aggregation is the average across clients
+            # Weight by loss calculated by client - client with highest loss has greater weight
             if mode == 1:
                 n_samples_worker = samples[j]
                 weight = n_samples_worker / n_samples
             elif mode == 2:
                 weight = np.exp(errors[j]) / sum_es
-            self._logger.debug(f"worker={j}, weight={weight}, loss={errors[j]}")
+            self._logger.debug(f"client={j}, weight={weight}, loss={errors[j]}")
             for k in np.arange(model.n_layers):
                 parameters[k][0] += (
                     d_Wbs[j][k][0] * weight
@@ -111,7 +111,7 @@ class Coordinator():
         return parameters, epoch_loss
 
     def collect(self, events, socket, params, aggregate_mode=0):
-        """Receives gradients from workers
+        """Receives gradients from clients
 
         Args:
             events (dict): Dictionary of events from our poller
@@ -119,9 +119,9 @@ class Coordinator():
         Returns:
             d_W (numpy.ndarray): Our gradient matrix that is aggregated
             with a weighting according to the number of samples each 
-            worker has
+            client has
             epoch_loss (float): The loss for this epoch aggregated from each
-            worker, also weighted according to the work each worker did
+            client, also weighted according to the work each client did
         """
         self._logger.debug(f"Collecting gradients")
         watch_dog = params["watch_dog"]
@@ -129,7 +129,7 @@ class Coordinator():
         W: np.ndarray = params["W"]
         epoch_loss: int = 0.0
 
-        self._logger.debug(f"Alive workers={watch_dog.n_alive}")
+        self._logger.debug(f"Alive clients={watch_dog.n_alive}")
 
         i = 0
         running_time = 0
@@ -175,12 +175,12 @@ class Coordinator():
                         continue
 
                 if i == 0:
-                    worker, content = msg
+                    client, content = msg
                 else:
                     # Receive multipart including command message
                     cmd = msg[0]
                     if cmd == b"WORK":
-                        worker, content = msg[1:]
+                        client, content = msg[1:]
                     elif cmd == b"CONNECT":
                         # self.register_workers(msg[1])
                         watch_dog.add_worker(msg[1])
@@ -199,23 +199,23 @@ class Coordinator():
                 else:
                     parameters, mr, loss = parse_params_response_from_string(content)
 
-                # Determine current index - we will map this back to the global index if worker dies
+                # Determine current index - we will map this back to the global index if client dies
                 if params["strategy"].remap == 2:
-                    watch_dog.states[worker].most_representative = \
-                        watch_dog.states[worker].lower_bound + mr
+                    watch_dog.states[client].most_representative = \
+                        watch_dog.states[client].lower_bound + mr
                     # self._logger.debug(
-                    # f"Min mr={np.min(watch_dog.states[worker].most_representative)}, 
-                    # Max mr={np.max(watch_dog.states[worker].most_representative)}")
+                    # f"Min mr={np.min(watch_dog.states[client].most_representative)}, 
+                    # Max mr={np.max(watch_dog.states[client].most_representative)}")
                 else:
-                    watch_dog.states[worker].most_representative = \
-                        np.min(watch_dog.states[worker].idxs) + mr
+                    watch_dog.states[client].most_representative = \
+                        np.min(watch_dog.states[client].idxs) + mr
 
-                # Accumulate data for each worker
+                # Accumulate data for each client
                 errors.append(loss)
                 d_Wbs.append(parameters)
-                samples.append(watch_dog.states[worker].n_samples)
+                samples.append(watch_dog.states[client].n_samples)
 
-                workers_received.add(worker)
+                workers_received.add(client)
 
                 i += 1
                 running_time = 0
@@ -260,8 +260,8 @@ class Coordinator():
             
         self.bcast(socket=socket, data=multipart, subscribe_msg=subscribe_msg)
 
-    def _map(self, socket, data, workers, params, gen_func):
-        """Maps data to workers on startup or new worker
+    def _map(self, socket, data, clients, params, gen_func):
+        """Maps data to clients on startup or new client
         """
         # Distribute data/data indices to work on
         self._logger.debug("Distributor distributing data")
@@ -286,12 +286,12 @@ class Coordinator():
         if params["remap"] != 1:
             self.labels_per_worker = {}
 
-        # Iterate through workers and send
+        # Iterate through clients and send
         i = 0
-        for worker in workers:
+        for client in clients:
 
-            if worker.state:
-                worker.mr_idxs_used = False
+            if client.state:
+                client.mr_idxs_used = False
                 # Get next batch to send
                 X_batch, y_batch = next(batch_gen)
                 X_batch = X_batch.data
@@ -306,55 +306,55 @@ class Coordinator():
                 if (state == REMAP) and (params["remap"] == 1):
                     classes, dists = np.unique(y_b, return_counts=True)
                     self._logger.debug(f"Classes={classes}")
-                    self.labels_per_worker[worker][1][classes] = \
-                        self.labels_per_worker[worker][1][classes] + dists
+                    self.labels_per_worker[client][1][classes] = \
+                        self.labels_per_worker[client][1][classes] + dists
                 else:
-                    self.labels_per_worker[worker] = np.unique(y_b, return_counts=True)
+                    self.labels_per_worker[client] = np.unique(y_b, return_counts=True)
 
                 # Serialize data
                 msg = [setup_to_string(X_batch, y_batch, n_samples, state)]
 
-                # Keep track of samples per worker
+                # Keep track of samples per client
                 # Redistribute all data points
                 if (state == MAP) or params["remap"] == 2:
-                    worker.n_samples = X_batch.shape[0]
+                    client.n_samples = X_batch.shape[0]
                     lower_bound = X_batch.shape[0] * i
                     upper_bound = lower_bound + X_batch.shape[0]
-                    worker.idxs = np.arange(lower_bound, upper_bound)
-                    if worker.most_representative is None:
-                        worker.most_representative = np.zeros((params["n_most_rep"],))
-                        worker.lower_bound = lower_bound
-                        worker.upper_bound = upper_bound
-                # Redistribute only most representative data points for dead workers
+                    client.idxs = np.arange(lower_bound, upper_bound)
+                    if client.most_representative is None:
+                        client.most_representative = np.zeros((params["n_most_rep"],))
+                        client.lower_bound = lower_bound
+                        client.upper_bound = upper_bound
+                # Redistribute only most representative data points for dead clients
                 elif params["remap"] == 1:
-                    worker.n_samples += X_batch.shape[0]
+                    client.n_samples += X_batch.shape[0]
                     lower_bound = X_batch.shape[0] * i
                     upper_bound = lower_bound + X_batch.shape[0]
                     batch_range = np.arange(lower_bound, upper_bound)
                     new_range = np.arange(
-                        worker.upper_bound, 
-                        worker.upper_bound + batch_range.shape[0]
+                        client.upper_bound, 
+                        client.upper_bound + batch_range.shape[0]
                     ) 
                     self._logger.debug(
                         f"New range={new_range}, "
-                        f"worker max idx={np.max(worker.idxs)}, "
-                        f"upper bound={worker.upper_bound}"
+                        f"client max idx={np.max(client.idxs)}, "
+                        f"upper bound={client.upper_bound}"
                     )
-                    worker.upper_bound = worker.upper_bound + batch_range.shape[0]
-                    if not worker.mapping:
-                        worker.mapping = dict(zip(worker.idxs, worker.idxs))
+                    client.upper_bound = client.upper_bound + batch_range.shape[0]
+                    if not client.mapping:
+                        client.mapping = dict(zip(client.idxs, client.idxs))
                     
                     self._logger.debug(f"Batch range shape={batch_range}, i={i}")
                     global_idxs = [mapping.get(j) for j in batch_range]
                     self._logger.debug(f"global idxs={global_idxs}, i={i}")
-                    worker.mapping.update(dict(zip(new_range, global_idxs)))
-                    worker.idxs = np.hstack((worker.idxs, global_idxs))
-                    if worker.most_representative is None:
-                        worker.most_representative = np.zeros((params["n_most_rep"],))
+                    client.mapping.update(dict(zip(new_range, global_idxs)))
+                    client.idxs = np.hstack((client.idxs, global_idxs))
+                    if client.most_representative is None:
+                        client.most_representative = np.zeros((params["n_most_rep"],))
 
                 self.send(
                     socket=socket,
-                    worker=worker.identity,
+                    client=client.identity,
                     data=msg,
                     tag=b"WORK"
                 )
@@ -362,20 +362,20 @@ class Coordinator():
                 i += 1
 
         self._logger.debug(
-            f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in workers]}"
+            f"Worker ranges={[(np.min(w.idxs), np.max(w.idxs)) for w in clients]}"
         )
-        self._logger.debug(f"Labels per worker={self.labels_per_worker}")
+        self._logger.debug(f"Labels per client={self.labels_per_worker}")
 
-    def map(self, socket, data, workers, params, gen_func=None):
+    def map(self, socket, data, clients, params, gen_func=None):
         """Sends the data to the necessary destination
                 
         Args:
             socket (zmq.Socket): ZMQ socket to push messages to subscribers
             data (numpy.ndarray): Data matrix that will be partitioned and
-            distributed to each worker
-            workers (distribute.WorkerStates): worker state objects containing
-            state of worker and other info
-            params (dict): Additional params to send to all workers
+            distributed to each client
+            clients (distribute.WorkerStates): client state objects containing
+            state of client and other info
+            params (dict): Additional params to send to all clients
             gen_func (generator func): A generator function to distribute the data
         """
         
@@ -385,4 +385,4 @@ class Coordinator():
         if state == MAP_PARAMS:
             self._map_params(socket, data, params)
         else:
-            self._map(socket, data, workers, params, gen_func)
+            self._map(socket, data, clients, params, gen_func)

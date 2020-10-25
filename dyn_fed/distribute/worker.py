@@ -1,6 +1,6 @@
-"""Contains all worker logic for fault tolerant ml
+"""Contains all client logic for fault tolerant ml
 
-All worker devices will contain worker logic
+All client devices will contain client logic
 """
 
 import json
@@ -26,13 +26,13 @@ class Worker(object):
     """Worker class for distributed machine learning system
     
     Attributes:
-        worker_id (str): Unique identifier for worker
-        subscriber (zmq.Socket): zmq.SUB socket which subscribes to all master published messages
-        connected (bool): Whether or not the worker is connected successfully to the master
+        worker_id (str): Unique identifier for client
+        subscriber (zmq.Socket): zmq.SUB socket which subscribes to all server published messages
+        connected (bool): Whether or not the client is connected successfully to the server
     """
     def __init__(self, model, verbose, identity=None):
 
-        self.worker_id = str(uuid.uuid4()) if identity is None else f"worker-{identity}"
+        self.worker_id = str(uuid.uuid4()) if identity is None else f"client-{identity}"
         self.subscriber = None
         self.connected = False
 
@@ -96,18 +96,18 @@ class Worker(object):
         return poller
 
     def _receive_data(self, start=True):
-        """Receives data from worker
+        """Receives data from client
 
-        Receives and makes sense of the data received from the master.
+        Receives and makes sense of the data received from the server.
         Also initializes the optimizer since we receive the learning rate
-        from the master at this stage.
+        from the server at this stage.
 
         Args:
             start (bool): Whether or not we received the data at the beginning
-            of the workers life span. 
+            of the clients life span. 
 
         Returns:
-            n_samples (int): No. of samples in the dataset for a worker
+            n_samples (int): No. of samples in the dataset for a client
             n_features (int): No. of features in the dataset
             n_classes (int): No. of classes/labels
         """
@@ -156,7 +156,7 @@ class Worker(object):
 
         Returns:
             cmd (bytes): Command whether to EXIT or WORK
-            msg (bytes): Parameter tensor from master in bytes
+            msg (bytes): Parameter tensor from server in bytes
         """
         self._logger.debug("Receiving contents")
         contents = self.subscriber.recv_multipart()
@@ -170,10 +170,10 @@ class Worker(object):
         return cmd, msg
 
     def _parse_msg(self, cmd, msg):
-        """Parse contents received from master
+        """Parse contents received from server
 
         Args:
-            cmd (byte): Command received from master
+            cmd (byte): Command received from server
             msg (byte array): Parameter Tensor as bytes
 
         Returns:
@@ -253,7 +253,7 @@ class Worker(object):
 
                 X_batch = self.X[start:end]
                 y_batch = self.y[start:end]
-                # Each worker does work and we get the resulting parameters
+                # Each client does work and we get the resulting parameters
                 batch_loss, most_representative = \
                 self._do_work(
                     X_batch,
@@ -331,7 +331,7 @@ class Worker(object):
             # Get messages ready to send by converting them to
             # bytes format. We do not need to send the shape 
             # since the gradients have the same shape as W which
-            # the master already owns
+            # the server already owns
             if self.quantize:
                 # d_W = linspace_quantization(d_W, interval=100)
                 # self.model.layers[0].W = \
@@ -359,7 +359,7 @@ class Worker(object):
             multipart = self._prep_multipart(data)
             self.push_socket.send_multipart(multipart)
 
-            self._logger.debug("Sent work back to master")
+            self._logger.debug("Sent work back to server")
 
         return session_end
 
@@ -423,11 +423,11 @@ class Worker(object):
     def start(self):
         """Worker session
 
-        Boots up the worker to start receiving data. Thereafter, the worker
+        Boots up the client to start receiving data. Thereafter, the client
         does the heavy lifting by computing the gradients of the parameter
-        matrix. This is returned to the master, where the master will aggregate
+        matrix. This is returned to the server, where the server will aggregate
         gradients and apply them to the global W. The parameters will be
-        distributed back to the worker and this occurs iteratively, to find the
+        distributed back to the client and this occurs iteratively, to find the
         global minima for the parameter matrix.
         """
         poller = self._setup_poller()

@@ -15,7 +15,7 @@ def decode_msg(worker_params):
     """Decodes a single zmq message containing W and b
 
     Args:
-        worker_params (list of byte strings): W and b params received from corresponding worker
+        worker_params (list of byte strings): W and b params received from corresponding client
 
     Returns:
         W (np.ndarray): Parameter matrix as numpy array
@@ -30,13 +30,13 @@ def decode_msg(worker_params):
     return [W, b]
 
 def decode_params(n_layers, parameters, worker_params, n_items=6):
-    """Collect all parameters across workers to master and decode
+    """Collect all parameters across clients to server and decode
 
     Args:
         model (dfl.Model): Fault tolerant model
         parameters (np.ndarray): Tensor where we store the collected messages
-        worker_params (byte string): Multipart message received from worker
-        n_items (int): Length of message received from worker that we need
+        worker_params (byte string): Multipart message received from client
+        n_items (int): Length of message received from client that we need
         to decode (default: 6). 3 messages for the W tensor 
         (data, dtype, shape) and 3 for the bias vector (data, dtype, shape)
 

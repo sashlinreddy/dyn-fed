@@ -70,13 +70,13 @@ def main():
         sockets = dict(poller.poll())
 
         if backend in sockets:
-            # Handle worker activity on the backend
+            # Handle client activity on the backend
             request = backend.recv_multipart()
-            worker, _, client = request[:3]
+            client, _, client = request[:3]
             if not workers:
-                # Poll for clients now that a worker is available
+                # Poll for clients now that a client is available
                 poller.register(frontend, zmq.POLLIN)
-            workers.append(worker)
+            workers.append(client)
             if client != b"READY" and len(request) > 3:
                 # If client reply, send rest back to frontend
                 _, reply = request[3:]
@@ -86,10 +86,10 @@ def main():
                     break
 
         if frontend in sockets:
-            # Get next client request, route to last-used worker
+            # Get next client request, route to last-used client
             client, _, request = frontend.recv_multipart()
-            worker = workers.pop(0)
-            backend.send_multipart([worker, b"", client, b"", request])
+            client = workers.pop(0)
+            backend.send_multipart([client, b"", client, b"", request])
             if not workers:
                 # Don't poll clients if no workers are available
                 poller.unregister(frontend)

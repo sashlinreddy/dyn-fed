@@ -34,10 +34,10 @@ class dfl_train(dfl_wrapper):
     def __call__(self, *args, **kwargs):
 
         try:
-            # Detect all workers by polling by whoevers sending their worker ids
+            # Detect all clients by polling by whoevers sending their client ids
             self.obj.detect_workers()
             if not self.obj.watch_dog.states:
-                logger.info("No workers found")
+                logger.info("No clients found")
                 raise KeyboardInterrupt
 
             self.decorated(self.obj)
@@ -58,10 +58,10 @@ class dfl_trainv2(dfl_wrapper):
     def __call__(self, *args, **kwargs):
 
         try:
-            # Detect all workers by polling by whoevers sending their worker ids
+            # Detect all clients by polling by whoevers sending their client ids
             self.obj.detect_workers()
             if not self.obj.watch_dog.states:
-                logger.info("No workers found")
+                logger.info("No clients found")
                 raise KeyboardInterrupt
             # self.obj.model.iter = 0
             # i = 0
@@ -84,7 +84,7 @@ class dfl_trainv2(dfl_wrapper):
                         if command == b"CONNECT":
                             self.obj.register_workers()
 
-            # Tell workers to exit
+            # Tell clients to exit
             self.obj.done()
             self.obj.state = COMPLETE
             end = time.time()
@@ -105,7 +105,7 @@ class dfl_trainv2(dfl_wrapper):
             logger.info("Exiting peacefully. Cleaning up...")
 
 class dfl_train_collect(dfl_wrapper):
-    """Collect wrapper for master
+    """Collect wrapper for server
     """
     def __call__(self, *args, **kwargs):
         events = args[0]

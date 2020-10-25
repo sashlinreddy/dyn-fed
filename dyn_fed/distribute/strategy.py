@@ -5,13 +5,13 @@ from typing import List
 import time
 import logging
 
-from dyn_fed.distribute.masterv3 import MasterV3
-from dyn_fed.distribute.workerv3 import WorkerV3
+from dyn_fed.distribute.serverv2 import ServerV2
+from dyn_fed.distribute.clientv2 import ClientV2
 
 class DistributionStrategy(metaclass=ABCMeta):
     """Strategy for distributing within the cluster
     
-    Responsible for master-worker strategy. Contains all variables regarding the strategy
+    Responsible for server-client strategy. Contains all variables regarding the strategy
     
     Attributes:
         type (int): strategy type
@@ -50,10 +50,10 @@ class LocalStrategy(DistributionStrategy):
 
 
 class MasterWorkerStrategy(DistributionStrategy):
-    """Master worker strategy for distributing within the cluster
+    """Master client strategy for distributing within the cluster
     
     Attributes:
-        n_workers (int): No. of workers being used for session
+        n_workers (int): No. of clients being used for session
         remap (int): Remap strategy
         quantize (int): Whether or not to quantize parameters
         comm_period (int): Communicate every comm_period iteration(s)
@@ -61,12 +61,12 @@ class MasterWorkerStrategy(DistributionStrategy):
         weighted by loss, etc)
         delta_switch (float): The delta threshold we reach before switching back
         to communication every iteration
-        worker_timeout (int): Timeout to pickup workers
+        worker_timeout (int): Timeout to pickup clients
         send_gradients (int): Whether or not to send gradients or parameters
         shared_folder (str): Path to shared data folder
-        role (str): Master or worker role
+        role (str): Master or client role
     """
-    def __init__(self, n_workers, config, role='master'):
+    def __init__(self, n_workers, config, role='server'):
         self.n_workers = n_workers
         self.config = config
         
@@ -88,10 +88,10 @@ class MasterWorkerStrategy(DistributionStrategy):
         pass
 
 class MasterWorkerStrategyV2(DistributionStrategy):
-    """Master worker strategy for distributing within the cluster
+    """Master client strategy for distributing within the cluster
     
     Attributes:
-        n_workers (int): No. of workers being used for session
+        n_workers (int): No. of clients being used for session
         remap (int): Remap strategy
         quantize (int): Whether or not to quantize parameters
         comm_period (int): Communicate every comm_period iteration(s)
@@ -99,12 +99,12 @@ class MasterWorkerStrategyV2(DistributionStrategy):
         weighted by loss, etc)
         delta_switch (float): The delta threshold we reach before switching back
         to communication every iteration
-        worker_timeout (int): Timeout to pickup workers
+        worker_timeout (int): Timeout to pickup clients
         send_gradients (int): Whether or not to send gradients or parameters
         shared_folder (str): Path to shared data folder
-        role (str): Master or worker role
+        role (str): Master or client role
     """
-    def __init__(self, n_workers, config, role='master'):
+    def __init__(self, n_workers, config, role='server'):
         self.n_workers = n_workers
         self.config = config
 
@@ -140,33 +140,35 @@ class MasterWorkerStrategyV2(DistributionStrategy):
         optimizer = args[1]
         train_dataset = args[2]
         test_dataset = kwargs.get('test_dataset')
-        if self.role == "master":
-            # Setup master
-            self._logger.debug("Setting up master")
-            self._master = MasterV3(
+        if self.role == "server":
+            # Setup server
+            self._logger.debug("Setting up server")
+            self._server = ServerV2(
                 model=model,
                 optimizer=optimizer,
                 strategy=self
             )
-            self._master.setup(
+            self._server.setup(
                 train_dataset=train_dataset,
                 test_dataset=test_dataset,
             )
-            self._master.start()
+            self._server.start()
         else:
 
-            time.sleep(3)
+            sleeptime = 30 # if self.n_workers >= 24 else 10
+            time.sleep(sleeptime)
 
-            self._worker = WorkerV3(
+            self._client = ClientV2(
                 model=model,
                 optimizer=optimizer,
                 strategy=self
             )
 
-            self._worker.setup(
-                train_dataset=None
+            self._client.setup(
+                train_dataset=None,
+                test_dataset=test_dataset
             )
 
-            self._worker.start()
+            self._client.start()
 
-            self._logger.info("Connecting worker sockets")
+            self._logger.info("Connecting client sockets")

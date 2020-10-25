@@ -48,4 +48,4 @@ def plot_distributed_class_balance(x, y, class_names, filepath, **kwargs):
     fig = class_balance.fig
 
     if tf_logger is not None:
-        tf_logger.images("class-bal-master", [fig], iteration)
+        tf_logger.images("class-bal-server", [fig], iteration)
